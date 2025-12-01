@@ -10,7 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { fetchPendingPayables, fetchPaymentSummary } from '@/lib/queries/finance'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, getPaymentStatusVariant } from '@/lib/utils'
 import { DollarSign, Calendar, AlertTriangle, TrendingUp, Truck, Package } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -20,17 +20,6 @@ export default async function FinancePage() {
     fetchPendingPayables(),
     fetchPaymentSummary(),
   ])
-
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case 'Paid':
-        return 'success'
-      case 'Scheduled':
-        return 'warning'
-      default:
-        return 'default'
-    }
-  }
 
   return (
     <div className="flex flex-col">
@@ -43,10 +32,10 @@ export default async function FinancePage() {
         {/* Summary Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-blue-100 p-2">
-                  <DollarSign className="h-5 w-5 text-blue-600" />
+                  <DollarSign className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">待付总额</p>
@@ -56,10 +45,10 @@ export default async function FinancePage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-purple-100 p-2">
-                  <Package className="h-5 w-5 text-purple-600" />
+                  <Package className="h-6 w-6 text-purple-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">采购应付</p>
@@ -69,10 +58,10 @@ export default async function FinancePage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-green-100 p-2">
-                  <Truck className="h-5 w-5 text-green-600" />
+                  <Truck className="h-6 w-6 text-green-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">物流应付</p>
@@ -82,10 +71,10 @@ export default async function FinancePage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-yellow-100 p-2">
-                  <Calendar className="h-5 w-5 text-yellow-600" />
+                  <Calendar className="h-6 w-6 text-yellow-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">下月到期</p>
@@ -95,10 +84,10 @@ export default async function FinancePage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className={`rounded-lg p-2 ${summary.overdue_amount > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
-                  <AlertTriangle className={`h-5 w-5 ${summary.overdue_amount > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+                  <AlertTriangle className={`h-6 w-6 ${summary.overdue_amount > 0 ? 'text-red-600' : 'text-gray-400'}`} />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">逾期金额</p>
@@ -176,7 +165,7 @@ export default async function FinancePage() {
                           {formatCurrency(item.amount_usd)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={getStatusVariant(item.payment_status)}>
+                          <Badge variant={getPaymentStatusVariant(item.payment_status)}>
                             {item.payment_status === 'Pending' ? '待付' :
                              item.payment_status === 'Scheduled' ? '已排期' : '已付'}
                           </Badge>

@@ -1,11 +1,16 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
-import type { Shipment, ShipmentItem, Warehouse } from '@/lib/types/database'
+import type { Shipment, ShipmentItem, Warehouse, WarehouseType } from '@/lib/types/database'
 
 /**
  * Fetch all shipments with details
  */
 export async function fetchShipments(): Promise<
-  (Shipment & { warehouse_name?: string; item_count?: number })[]
+  (Shipment & {
+    warehouse_name?: string
+    warehouse_code?: string
+    warehouse_type?: WarehouseType
+    item_count?: number
+  })[]
 > {
   const supabase = await createServerSupabaseClient()
 
@@ -19,14 +24,18 @@ export async function fetchShipments(): Promise<
     return []
   }
 
-  // Fetch warehouse names
+  // Fetch warehouse details (name, code, type)
   const warehouseIds = [...new Set(shipments?.map((s) => s.destination_warehouse_id) || [])]
   const { data: warehouses } = await supabase
     .from('warehouses')
-    .select('id, warehouse_name')
+    .select('id, warehouse_name, warehouse_code, warehouse_type')
     .in('id', warehouseIds)
 
-  const warehouseMap = new Map(warehouses?.map((w) => [w.id, w.warehouse_name]) || [])
+  const warehouseMap = new Map(warehouses?.map((w) => [w.id, {
+    name: w.warehouse_name,
+    code: w.warehouse_code,
+    type: w.warehouse_type as WarehouseType,
+  }]) || [])
 
   // Fetch item counts
   const shipmentIds = shipments?.map((s) => s.id) || []
@@ -41,11 +50,16 @@ export async function fetchShipments(): Promise<
     itemCountMap.set(item.shipment_id, current + item.shipped_qty)
   })
 
-  return (shipments || []).map((s) => ({
-    ...s,
-    warehouse_name: warehouseMap.get(s.destination_warehouse_id),
-    item_count: itemCountMap.get(s.id) || 0,
-  }))
+  return (shipments || []).map((s) => {
+    const warehouseInfo = warehouseMap.get(s.destination_warehouse_id)
+    return {
+      ...s,
+      warehouse_name: warehouseInfo?.name,
+      warehouse_code: warehouseInfo?.code,
+      warehouse_type: warehouseInfo?.type,
+      item_count: itemCountMap.get(s.id) || 0,
+    }
+  })
 }
 
 /**

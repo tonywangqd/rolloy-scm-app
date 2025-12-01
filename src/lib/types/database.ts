@@ -116,6 +116,41 @@ export type Database = {
       v_weekly_sales: {
         Row: WeeklySalesView
       }
+      v_inventory_projection_12weeks: {
+        Row: InventoryProjection12WeeksView
+      }
+      v_replenishment_suggestions: {
+        Row: ReplenishmentSuggestionView
+      }
+      v_po_deliveries_summary: {
+        Row: PODeliveriesSummaryView
+      }
+    }
+    Functions: {
+      get_next_po_number: {
+        Args: { order_date?: string }
+        Returns: string
+      }
+      get_next_delivery_number: {
+        Args: { delivery_date?: string }
+        Returns: string
+      }
+      validate_po_number_format: {
+        Args: { po_num: string }
+        Returns: boolean
+      }
+      get_deliveries_by_po: {
+        Args: { po_id_param: string }
+        Returns: DeliveryDetail[]
+      }
+      get_deliveries_by_sku: {
+        Args: {
+          sku_param: string
+          start_date?: string
+          end_date?: string
+        }
+        Returns: DeliveryBySKU[]
+      }
     }
   }
 }
@@ -722,6 +757,127 @@ export interface WeeklySalesView {
   forecast_qty: number
   actual_qty: number | null
   effective_qty: number
+}
+
+export interface InventoryProjection12WeeksView {
+  sku: string
+  product_name: string
+  week_iso: string
+  week_start_date: string
+  week_end_date: string
+  week_offset: number
+  opening_stock: number
+  incoming_qty: number
+  effective_sales: number
+  forecast_qty: number
+  actual_qty: number
+  closing_stock: number
+  safety_stock_threshold: number
+  stock_status: 'Stockout' | 'Risk' | 'OK'
+  weeks_until_stockout: number | null
+  calculated_at: string
+}
+
+export interface ReplenishmentSuggestionView {
+  sku: string
+  product_name: string
+  risk_week_iso: string
+  risk_week_start: string
+  risk_week_end: string
+  suggested_order_qty: number
+  order_deadline_week: string
+  order_deadline_date: string
+  ship_deadline_week: string
+  ship_deadline_date: string
+  priority: 'Critical' | 'High' | 'Medium' | 'Low'
+  opening_stock: number
+  closing_stock: number
+  safety_stock_threshold: number
+  effective_sales: number
+  stock_status: 'Stockout' | 'Risk' | 'OK'
+  is_overdue: boolean
+  days_until_deadline: number
+  calculated_at: string
+}
+
+export interface PODeliveriesSummaryView {
+  po_id: string
+  po_number: string
+  batch_code: string
+  po_status: POStatus
+  actual_order_date: string | null
+  supplier_name: string | null
+  po_item_id: string
+  sku: string
+  channel_code: string | null
+  ordered_qty: number
+  total_delivered_qty: number
+  sum_delivery_qty: number
+  delivery_count: number
+  remaining_qty: number
+  fulfillment_percentage: number
+  latest_delivery_date: string | null
+  total_delivered_value_usd: number
+  payment_statuses: PaymentStatus[] | null
+}
+
+export interface DeliveryDetail {
+  delivery_id: string
+  delivery_number: string
+  sku: string
+  channel_code: string | null
+  delivered_qty: number
+  planned_delivery_date: string | null
+  actual_delivery_date: string | null
+  unit_cost_usd: number
+  total_value_usd: number | null
+  payment_status: PaymentStatus
+  payment_due_date: string | null
+  remarks: string | null
+  created_at: string
+}
+
+export interface DeliveryBySKU {
+  delivery_id: string
+  delivery_number: string
+  po_number: string
+  batch_code: string
+  supplier_name: string | null
+  delivered_qty: number
+  actual_delivery_date: string | null
+  unit_cost_usd: number
+  total_value_usd: number | null
+  payment_status: PaymentStatus
+}
+
+// ================================================================
+// QUERY FILTER TYPES
+// ================================================================
+
+export interface InventoryProjectionFilters {
+  sku?: string
+  skus?: string[]
+  week_iso?: string
+  stock_status?: 'Stockout' | 'Risk' | 'OK' | 'All'
+  min_week_offset?: number
+  max_week_offset?: number
+}
+
+export interface ReplenishmentSuggestionFilters {
+  sku?: string
+  priority?: 'Critical' | 'High' | 'Medium' | 'Low'
+  is_overdue?: boolean
+  max_days_until_deadline?: number
+}
+
+export interface RiskSummaryStats {
+  total_skus: number
+  ok_count: number
+  risk_count: number
+  stockout_count: number
+  critical_priority_count: number
+  high_priority_count: number
+  overdue_count: number
 }
 
 // ================================================================

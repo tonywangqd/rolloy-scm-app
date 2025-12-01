@@ -11,19 +11,24 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { fetchSalesForecasts, fetchSalesActuals, getCurrentWeek } from '@/lib/queries/planning'
-import { formatNumber } from '@/lib/utils'
-import { Calendar, TrendingUp, TrendingDown, BarChart3, FileEdit, FileCheck } from 'lucide-react'
+import { fetchSalesForecasts, fetchSalesActuals, getCurrentWeek, fetchSalesTimeline } from '@/lib/queries/planning'
+import { fetchInventoryProjection12Weeks } from '@/lib/queries/inventory-projection'
+import { formatNumber, getSalesForecastStatusVariant } from '@/lib/utils'
+import { Calendar, TrendingUp, TrendingDown, BarChart3, FileEdit, FileCheck, Package } from 'lucide-react'
+import { SalesTimeline } from '@/components/planning/sales-timeline'
+import { InventoryProjectionChart } from '@/components/planning/inventory-projection-chart'
 
 export const dynamic = 'force-dynamic'
 
 export default async function PlanningPage() {
   const currentWeek = getCurrentWeek()
 
-  // Fetch recent forecasts and actuals
-  const [forecasts, actuals] = await Promise.all([
+  // Fetch recent forecasts and actuals, timeline data, and inventory projections
+  const [forecasts, actuals, timelineData, inventoryProjections] = await Promise.all([
     fetchSalesForecasts(),
     fetchSalesActuals(),
+    fetchSalesTimeline(),
+    fetchInventoryProjection12Weeks().catch(() => []), // Gracefully handle if view doesn't exist
   ])
 
   // Group by week for summary
@@ -62,10 +67,10 @@ export default async function PlanningPage() {
         {/* Stats Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-blue-100 p-2">
-                  <Calendar className="h-5 w-5 text-blue-600" />
+                  <Calendar className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">当前周</p>
@@ -75,10 +80,10 @@ export default async function PlanningPage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-purple-100 p-2">
-                  <BarChart3 className="h-5 w-5 text-purple-600" />
+                  <BarChart3 className="h-6 w-6 text-purple-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">预测总量</p>
@@ -88,10 +93,10 @@ export default async function PlanningPage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-green-100 p-2">
-                  <TrendingUp className="h-5 w-5 text-green-600" />
+                  <TrendingUp className="h-6 w-6 text-green-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">实际总量</p>
@@ -101,13 +106,13 @@ export default async function PlanningPage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className={`rounded-lg p-2 ${variance >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
                   {variance >= 0 ? (
-                    <TrendingUp className="h-5 w-5 text-green-600" />
+                    <TrendingUp className="h-6 w-6 text-green-600" />
                   ) : (
-                    <TrendingDown className="h-5 w-5 text-red-600" />
+                    <TrendingDown className="h-6 w-6 text-red-600" />
                   )}
                 </div>
                 <div>
@@ -120,6 +125,27 @@ export default async function PlanningPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Sales Timeline Chart */}
+        <SalesTimeline data={timelineData} />
+
+        {/* Inventory Projection Chart */}
+        {inventoryProjections.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Package className="h-5 w-5 text-purple-600" />
+                <h2 className="text-lg font-semibold">库存预测趋势</h2>
+              </div>
+              <Link href="/planning/projection">
+                <Button variant="outline" size="sm">
+                  查看详情
+                </Button>
+              </Link>
+            </div>
+            <InventoryProjectionChart data={inventoryProjections} />
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div className="flex items-center justify-between">
@@ -203,13 +229,9 @@ export default async function PlanningPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {hasActual ? (
-                            <Badge variant="success">已录入</Badge>
-                          ) : hasForecast ? (
-                            <Badge variant="warning">待录入</Badge>
-                          ) : (
-                            <Badge variant="default">无数据</Badge>
-                          )}
+                          <Badge variant={getSalesForecastStatusVariant(hasActual, hasForecast)}>
+                            {hasActual ? '已录入' : hasForecast ? '待录入' : '无数据'}
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     )

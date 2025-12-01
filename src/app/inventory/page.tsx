@@ -15,7 +15,7 @@ import {
   fetchInventoryByWarehouse,
   fetchIncomingInventory,
 } from '@/lib/queries/inventory'
-import { formatNumber, formatDate } from '@/lib/utils'
+import { formatNumber, formatDate, getWarehouseTypeVariant } from '@/lib/utils'
 import { Package, Warehouse, Truck, BoxIcon, ArrowDown } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -39,10 +39,10 @@ export default async function InventoryPage() {
         {/* Stats Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-blue-100 p-2">
-                  <Package className="h-5 w-5 text-blue-600" />
+                  <Package className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">总库存</p>
@@ -52,10 +52,10 @@ export default async function InventoryPage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-orange-100 p-2">
-                  <BoxIcon className="h-5 w-5 text-orange-600" />
+                  <BoxIcon className="h-6 w-6 text-orange-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">FBA 库存</p>
@@ -65,10 +65,10 @@ export default async function InventoryPage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-purple-100 p-2">
-                  <Warehouse className="h-5 w-5 text-purple-600" />
+                  <Warehouse className="h-6 w-6 text-purple-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">3PL 库存</p>
@@ -78,10 +78,10 @@ export default async function InventoryPage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-green-100 p-2">
-                  <Package className="h-5 w-5 text-green-600" />
+                  <Package className="h-6 w-6 text-green-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">SKU 数</p>
@@ -91,10 +91,10 @@ export default async function InventoryPage() {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-6">
               <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-yellow-100 p-2">
-                  <Truck className="h-5 w-5 text-yellow-600" />
+                  <Truck className="h-6 w-6 text-yellow-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">在途数量</p>
@@ -229,7 +229,7 @@ export default async function InventoryPage() {
                   <div key={warehouse.warehouse_id} className="rounded-lg border p-4">
                     <div className="mb-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Badge variant={warehouse.warehouse_type === 'FBA' ? 'warning' : 'default'}>
+                        <Badge variant={getWarehouseTypeVariant(warehouse.warehouse_type)}>
                           {warehouse.warehouse_type}
                         </Badge>
                         <span className="font-semibold">{warehouse.warehouse_code}</span>

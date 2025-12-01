@@ -86,6 +86,18 @@ export function formatCurrency(value: number): string {
 }
 
 /**
+ * Format number as CNY currency (人民币)
+ */
+export function formatCurrencyCNY(value: number): string {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+/**
  * Format number with thousands separator
  */
 export function formatNumber(value: number): string {
@@ -167,6 +179,27 @@ export function getPOStatusVariant(status: string): StatusVariant {
       return 'default'
     case 'Cancelled':
       return 'danger'
+    default:
+      return 'default'
+  }
+}
+
+export function getSalesForecastStatusVariant(hasActual: boolean, hasForecast: boolean): StatusVariant {
+  if (hasActual) {
+    return 'success'
+  } else if (hasForecast) {
+    return 'warning'
+  } else {
+    return 'default'
+  }
+}
+
+export function getWarehouseTypeVariant(warehouseType: string): StatusVariant {
+  switch (warehouseType) {
+    case 'FBA':
+      return 'warning'
+    case '3PL':
+      return 'default'
     default:
       return 'default'
   }
