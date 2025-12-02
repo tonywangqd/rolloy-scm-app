@@ -32,10 +32,11 @@ ON CONFLICT (sku) DO UPDATE SET
   unit_cost_usd = EXCLUDED.unit_cost_usd;
 
 -- Channels
-INSERT INTO channels (channel_code, channel_name, platform, region, is_active)
+-- Note: Only using columns that exist in the actual database
+INSERT INTO channels (channel_code, channel_name, is_active)
 VALUES
-  ('AMZ-US', 'Amazon US', 'Amazon', 'North America', true),
-  ('SHOP-US', 'Shopify US', 'Shopify', 'North America', true)
+  ('AMZ-US', 'Amazon US', true),
+  ('SHOP-US', 'Shopify US', true)
 ON CONFLICT (channel_code) DO NOTHING;
 
 -- Warehouses
