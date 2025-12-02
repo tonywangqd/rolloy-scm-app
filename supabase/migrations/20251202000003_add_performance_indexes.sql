@@ -119,56 +119,48 @@ CREATE INDEX IF NOT EXISTS idx_shipment_items_sku
 ON shipment_items(sku);
 
 -- ================================================================
--- WEEKLY SALES FORECASTS INDEXES
+-- SALES FORECASTS INDEXES
 -- Optimize queries for sales planning and inventory projection calculations
 -- ================================================================
 
--- Index for year_week lookups (used in week-based planning views)
--- Common query: SELECT * FROM weekly_sales_forecasts WHERE year_week = '2025-W49'
-CREATE INDEX IF NOT EXISTS idx_weekly_sales_forecasts_year_week
-ON weekly_sales_forecasts(year_week);
-
 -- Index for sku lookups (used in product sales history)
--- Common query: SELECT * FROM weekly_sales_forecasts WHERE sku = 'SKU-001'
-CREATE INDEX IF NOT EXISTS idx_weekly_sales_forecasts_sku
-ON weekly_sales_forecasts(sku);
+CREATE INDEX IF NOT EXISTS idx_sales_forecasts_sku
+ON sales_forecasts(sku);
 
--- Composite index for SKU + year_week (used in inventory projection calculations)
--- Common query: SELECT * FROM weekly_sales_forecasts WHERE sku = 'SKU-001' AND year_week = '2025-W49'
+-- Index for week_iso lookups (used in week-based planning views)
+CREATE INDEX IF NOT EXISTS idx_sales_forecasts_week_iso
+ON sales_forecasts(week_iso);
+
+-- Composite index for SKU + week_iso (used in inventory projection calculations)
 -- This is the MOST CRITICAL INDEX for inventory projection performance
-CREATE INDEX IF NOT EXISTS idx_weekly_sales_forecasts_sku_week
-ON weekly_sales_forecasts(sku, year_week);
+CREATE INDEX IF NOT EXISTS idx_sales_forecasts_sku_week
+ON sales_forecasts(sku, week_iso);
 
 -- Index for channel_code (used in channel-based analytics)
--- Common query: SELECT * FROM weekly_sales_forecasts WHERE channel_code = 'AMZ-US'
-CREATE INDEX IF NOT EXISTS idx_weekly_sales_forecasts_channel
-ON weekly_sales_forecasts(channel_code);
+CREATE INDEX IF NOT EXISTS idx_sales_forecasts_channel
+ON sales_forecasts(channel_code);
 
 -- ================================================================
--- WEEKLY SALES ACTUALS INDEXES
+-- SALES ACTUALS INDEXES
 -- Optimize queries for actual sales tracking and variance analysis
 -- ================================================================
 
--- Index for year_week lookups (used in actual vs forecast comparisons)
--- Common query: SELECT * FROM weekly_sales_actuals WHERE year_week = '2025-W49'
-CREATE INDEX IF NOT EXISTS idx_weekly_sales_actuals_year_week
-ON weekly_sales_actuals(year_week);
-
 -- Index for sku lookups (used in SKU performance tracking)
--- Common query: SELECT * FROM weekly_sales_actuals WHERE sku = 'SKU-001'
-CREATE INDEX IF NOT EXISTS idx_weekly_sales_actuals_sku
-ON weekly_sales_actuals(sku);
+CREATE INDEX IF NOT EXISTS idx_sales_actuals_sku
+ON sales_actuals(sku);
 
--- Composite index for SKU + year_week (used in effective sales calculations)
--- Common query: SELECT * FROM weekly_sales_actuals WHERE sku = 'SKU-001' AND year_week = '2025-W49'
+-- Index for week_iso lookups (used in actual vs forecast comparisons)
+CREATE INDEX IF NOT EXISTS idx_sales_actuals_week_iso
+ON sales_actuals(week_iso);
+
+-- Composite index for SKU + week_iso (used in effective sales calculations)
 -- This index is CRITICAL for the dual-track sales logic (COALESCE(actual, forecast))
-CREATE INDEX IF NOT EXISTS idx_weekly_sales_actuals_sku_week
-ON weekly_sales_actuals(sku, year_week);
+CREATE INDEX IF NOT EXISTS idx_sales_actuals_sku_week
+ON sales_actuals(sku, week_iso);
 
 -- Index for channel_code (used in channel performance reports)
--- Common query: SELECT * FROM weekly_sales_actuals WHERE channel_code = 'AMZ-US'
-CREATE INDEX IF NOT EXISTS idx_weekly_sales_actuals_channel
-ON weekly_sales_actuals(channel_code);
+CREATE INDEX IF NOT EXISTS idx_sales_actuals_channel
+ON sales_actuals(channel_code);
 
 -- ================================================================
 -- INVENTORY SNAPSHOTS INDEXES
@@ -210,8 +202,7 @@ ON products(spu);
 CREATE INDEX IF NOT EXISTS idx_products_is_active
 ON products(is_active);
 
-CREATE INDEX IF NOT EXISTS idx_products_category
-ON products(category);
+-- Note: category index removed - column may not exist in actual schema
 
 -- Channels table indexes
 CREATE INDEX IF NOT EXISTS idx_channels_channel_code
@@ -242,10 +233,10 @@ ON suppliers(is_active);
 -- Add explanatory comments to critical indexes
 -- ================================================================
 
-COMMENT ON INDEX idx_weekly_sales_forecasts_sku_week IS
+COMMENT ON INDEX idx_sales_forecasts_sku_week IS
 'Critical index for inventory projection calculations - optimizes dual-track sales logic';
 
-COMMENT ON INDEX idx_weekly_sales_actuals_sku_week IS
+COMMENT ON INDEX idx_sales_actuals_sku_week IS
 'Critical index for effective sales calculations - used in COALESCE(actual, forecast) queries';
 
 COMMENT ON INDEX idx_shipments_warehouse_arrival IS
@@ -266,8 +257,8 @@ ANALYZE purchase_orders;
 ANALYZE purchase_order_items;
 ANALYZE shipments;
 ANALYZE shipment_items;
-ANALYZE weekly_sales_forecasts;
-ANALYZE weekly_sales_actuals;
+ANALYZE sales_forecasts;
+ANALYZE sales_actuals;
 ANALYZE inventory_snapshots;
 ANALYZE production_deliveries;
 ANALYZE products;
