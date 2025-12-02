@@ -1,8 +1,17 @@
 'use server'
 
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/auth/check-auth'
 import { revalidatePath } from 'next/cache'
 import type { WeeklySalesForecastInsert, WeeklySalesActualInsert } from '@/lib/types/database'
+import {
+  weeklySalesForecastInsertSchema,
+  weeklySalesActualInsertSchema,
+  batchSalesForecastsSchema,
+  batchSalesActualsSchema,
+  copyForecastsSchema,
+  deleteSalesForecastSchema,
+} from '@/lib/validations'
 
 /**
  * Create or update sales forecast
@@ -10,11 +19,25 @@ import type { WeeklySalesForecastInsert, WeeklySalesActualInsert } from '@/lib/t
 export async function upsertSalesForecast(
   forecast: WeeklySalesForecastInsert
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = weeklySalesForecastInsertSchema.safeParse(forecast)
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('weekly_sales_forecasts')
-    .upsert(forecast, {
+    .upsert(validation.data, {
       onConflict: 'year_week,sku,channel_code',
     })
 
@@ -33,11 +56,25 @@ export async function upsertSalesForecast(
 export async function batchUpsertSalesForecasts(
   forecasts: WeeklySalesForecastInsert[]
 ): Promise<{ success: boolean; error?: string; count?: number }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = batchSalesForecastsSchema.safeParse(forecasts)
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('weekly_sales_forecasts')
-    .upsert(forecasts, {
+    .upsert(validation.data, {
       onConflict: 'year_week,sku,channel_code',
     })
 
@@ -47,7 +84,7 @@ export async function batchUpsertSalesForecasts(
 
   revalidatePath('/planning')
   revalidatePath('/planning/forecasts')
-  return { success: true, count: forecasts.length }
+  return { success: true, count: validation.data.length }
 }
 
 /**
@@ -56,11 +93,25 @@ export async function batchUpsertSalesForecasts(
 export async function upsertSalesActual(
   actual: WeeklySalesActualInsert
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = weeklySalesActualInsertSchema.safeParse(actual)
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('weekly_sales_actuals')
-    .upsert(actual, {
+    .upsert(validation.data, {
       onConflict: 'year_week,sku,channel_code',
     })
 
@@ -79,11 +130,25 @@ export async function upsertSalesActual(
 export async function batchUpsertSalesActuals(
   actuals: WeeklySalesActualInsert[]
 ): Promise<{ success: boolean; error?: string; count?: number }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = batchSalesActualsSchema.safeParse(actuals)
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('weekly_sales_actuals')
-    .upsert(actuals, {
+    .upsert(validation.data, {
       onConflict: 'year_week,sku,channel_code',
     })
 
@@ -93,7 +158,7 @@ export async function batchUpsertSalesActuals(
 
   revalidatePath('/planning')
   revalidatePath('/planning/actuals')
-  return { success: true, count: actuals.length }
+  return { success: true, count: validation.data.length }
 }
 
 /**
@@ -104,6 +169,20 @@ export async function deleteSalesForecast(
   sku: string,
   channelCode: string
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = deleteSalesForecastSchema.safeParse({ yearWeek, sku, channelCode })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
@@ -130,6 +209,20 @@ export async function deleteSalesActual(
   sku: string,
   channelCode: string
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = deleteSalesForecastSchema.safeParse({ yearWeek, sku, channelCode })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
@@ -155,6 +248,20 @@ export async function copyForecastsToWeek(
   fromWeek: string,
   toWeek: string
 ): Promise<{ success: boolean; error?: string; count?: number }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = copyForecastsSchema.safeParse({ fromWeek, toWeek })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   // Fetch source forecasts

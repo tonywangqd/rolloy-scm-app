@@ -1,5 +1,11 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { WeeklySalesForecast, WeeklySalesActual, Product, Channel } from '@/lib/types/database'
+import {
+  getCurrentWeek,
+  compareWeeks,
+  addWeeksToWeekString,
+  getWeekRange,
+} from '@/lib/utils/date'
 
 /**
  * Fetch weekly sales forecasts with product and channel info
@@ -172,53 +178,9 @@ export async function fetchAvailableWeeks(): Promise<string[]> {
   return [...new Set(data?.map((d) => d.year_week) || [])]
 }
 
-/**
- * Get current ISO week
- */
-export function getCurrentWeek(): string {
-  const now = new Date()
-  const startOfYear = new Date(now.getFullYear(), 0, 1)
-  const days = Math.floor((now.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000))
-  const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
-  return `${now.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`
-}
-
-/**
- * Calculate ISO week for a given date
- */
-function getISOWeek(date: Date): string {
-  const year = date.getFullYear()
-  const startOfYear = new Date(year, 0, 1)
-  const days = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000))
-  const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
-  return `${year}-W${weekNumber.toString().padStart(2, '0')}`
-}
-
-/**
- * Add weeks to a date
- */
-function addWeeks(date: Date, weeks: number): Date {
-  const result = new Date(date)
-  result.setDate(result.getDate() + weeks * 7)
-  return result
-}
-
-/**
- * Parse ISO week string to year and week number
- */
-function parseISOWeek(weekISO: string): { year: number; week: number } | null {
-  const match = weekISO.match(/^(\d{4})-W(\d{2})$/)
-  if (!match) return null
-  return { year: parseInt(match[1]), week: parseInt(match[2]) }
-}
-
-/**
- * Compare two ISO week strings
- * Returns: -1 if a < b, 0 if a === b, 1 if a > b
- */
-function compareISOWeeks(a: string, b: string): number {
-  return a.localeCompare(b)
-}
+// Week utility functions have been moved to @/lib/utils/date
+// Re-export getCurrentWeek for backward compatibility
+export { getCurrentWeek } from '@/lib/utils/date'
 
 /**
  * Fetch sales timeline: past 4 weeks + current week + future 12 weeks
@@ -242,13 +204,14 @@ export async function fetchSalesTimeline(): Promise<{
 
   // Get current week and calculate range
   const currentWeek = getCurrentWeek()
-  const now = new Date()
 
   // Calculate week range: past 4 weeks + current + future 12 weeks = 17 weeks
-  const startDate = addWeeks(now, -4)
-  const endDate = addWeeks(now, 12)
-  const weekFrom = getISOWeek(startDate)
-  const weekTo = getISOWeek(endDate)
+  const weekFrom = addWeeksToWeekString(currentWeek, -4)
+  const weekTo = addWeeksToWeekString(currentWeek, 12)
+
+  if (!weekFrom || !weekTo) {
+    throw new Error('Failed to calculate week range')
+  }
 
   // Fetch forecasts and actuals in parallel
   // Note: Data is in sales_forecasts/sales_actuals tables with week_iso field
@@ -277,18 +240,7 @@ export async function fetchSalesTimeline(): Promise<{
   const productNameMap = new Map(products.map((p) => [p.sku, p.product_name]))
 
   // Generate all weeks in the range
-  const allWeeks: string[] = []
-  let currentDate = new Date(startDate)
-  while (currentDate <= endDate) {
-    const weekISO = getISOWeek(currentDate)
-    if (!allWeeks.includes(weekISO)) {
-      allWeeks.push(weekISO)
-    }
-    currentDate = addWeeks(currentDate, 1)
-  }
-
-  // Sort weeks
-  allWeeks.sort(compareISOWeeks)
+  const allWeeks = getWeekRange(weekFrom, weekTo)
 
   // Aggregate by week
   const weekMap = new Map<string, { forecast: number; actual: number }>()
@@ -306,7 +258,7 @@ export async function fetchSalesTimeline(): Promise<{
   // Build weeks array with type classification
   const weeks = allWeeks.map((weekISO) => {
     const data = weekMap.get(weekISO) || { forecast: 0, actual: 0 }
-    const comparison = compareISOWeeks(weekISO, currentWeek)
+    const comparison = compareWeeks(weekISO, currentWeek)
     const week_type: 'past' | 'current' | 'future' =
       comparison < 0 ? 'past' : comparison === 0 ? 'current' : 'future'
 

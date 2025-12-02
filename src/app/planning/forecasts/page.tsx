@@ -19,6 +19,7 @@ import { ArrowLeft, Save, Copy, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Product, Channel, WeeklySalesForecast } from '@/lib/types/database'
+import { getCurrentWeek, addWeeksToWeekString } from '@/lib/utils/date'
 
 interface ForecastRow {
   id?: string
@@ -39,20 +40,18 @@ export default function ForecastsPage() {
   const [availableWeeks, setAvailableWeeks] = useState<string[]>([])
   const [forecasts, setForecasts] = useState<ForecastRow[]>([])
 
-  // Generate week options (current week + next 12 weeks)
+  // Generate week options (past 4 weeks + current week + next 12 weeks = 17 weeks)
   const generateWeekOptions = () => {
     const weeks: string[] = []
-    const now = new Date()
+    const currentWeek = getCurrentWeek()
+
     for (let i = -4; i <= 12; i++) {
-      const date = new Date(now)
-      date.setDate(date.getDate() + i * 7)
-      const year = date.getFullYear()
-      const startOfYear = new Date(year, 0, 1)
-      const days = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000))
-      const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
-      weeks.push(`${year}-W${weekNumber.toString().padStart(2, '0')}`)
+      const week = addWeeksToWeekString(currentWeek, i)
+      if (week) {
+        weeks.push(week)
+      }
     }
-    return [...new Set(weeks)]
+    return weeks
   }
 
   useEffect(() => {
@@ -76,12 +75,7 @@ export default function ForecastsPage() {
 
       // Set current week as default
       if (!selectedWeek && generatedWeeks.length > 0) {
-        const now = new Date()
-        const year = now.getFullYear()
-        const startOfYear = new Date(year, 0, 1)
-        const days = Math.floor((now.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000))
-        const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
-        setSelectedWeek(`${year}-W${weekNumber.toString().padStart(2, '0')}`)
+        setSelectedWeek(getCurrentWeek())
       }
     }
 

@@ -19,6 +19,7 @@ import { ArrowLeft, Save, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Product, Channel } from '@/lib/types/database'
+import { getCurrentWeek, addWeeksToWeekString } from '@/lib/utils/date'
 
 interface ActualRow {
   id?: string
@@ -40,20 +41,18 @@ export default function ActualsPage() {
   const [availableWeeks, setAvailableWeeks] = useState<string[]>([])
   const [actuals, setActuals] = useState<ActualRow[]>([])
 
-  // Generate week options (past 12 weeks + current week)
+  // Generate week options (past 12 weeks + current week + 1 future week)
   const generateWeekOptions = () => {
     const weeks: string[] = []
-    const now = new Date()
+    const currentWeek = getCurrentWeek()
+
     for (let i = -12; i <= 1; i++) {
-      const date = new Date(now)
-      date.setDate(date.getDate() + i * 7)
-      const year = date.getFullYear()
-      const startOfYear = new Date(year, 0, 1)
-      const days = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000))
-      const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
-      weeks.push(`${year}-W${weekNumber.toString().padStart(2, '0')}`)
+      const week = addWeeksToWeekString(currentWeek, i)
+      if (week) {
+        weeks.push(week)
+      }
     }
-    return [...new Set(weeks)]
+    return weeks
   }
 
   useEffect(() => {
@@ -80,14 +79,10 @@ export default function ActualsPage() {
 
       // Set last week as default (most common use case for entering actuals)
       if (!selectedWeek && generatedWeeks.length > 0) {
-        const now = new Date()
-        const lastWeek = new Date(now)
-        lastWeek.setDate(lastWeek.getDate() - 7)
-        const year = lastWeek.getFullYear()
-        const startOfYear = new Date(year, 0, 1)
-        const days = Math.floor((lastWeek.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000))
-        const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
-        setSelectedWeek(`${year}-W${weekNumber.toString().padStart(2, '0')}`)
+        const lastWeek = addWeeksToWeekString(getCurrentWeek(), -1)
+        if (lastWeek) {
+          setSelectedWeek(lastWeek)
+        }
       }
     }
 

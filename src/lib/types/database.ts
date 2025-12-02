@@ -151,6 +151,52 @@ export type Database = {
         }
         Returns: DeliveryBySKU[]
       }
+      create_purchase_order_with_items: {
+        Args: {
+          p_po_number: string
+          p_batch_code: string
+          p_supplier_id?: string
+          p_planned_order_date?: string
+          p_actual_order_date?: string
+          p_planned_ship_date?: string
+          p_po_status?: string
+          p_remarks?: string
+          p_items?: unknown
+        }
+        Returns: {
+          success: boolean
+          po_id: string | null
+          error_message: string | null
+        }[]
+      }
+      create_shipment_with_items: {
+        Args: {
+          p_tracking_number: string
+          p_batch_code?: string
+          p_logistics_batch_code?: string
+          p_destination_warehouse_id?: string
+          p_customs_clearance?: boolean
+          p_logistics_plan?: string
+          p_logistics_region?: string
+          p_planned_departure_date?: string
+          p_actual_departure_date?: string
+          p_planned_arrival_days?: number
+          p_planned_arrival_date?: string
+          p_actual_arrival_date?: string
+          p_weight_kg?: number
+          p_unit_count?: number
+          p_cost_per_kg_usd?: number
+          p_surcharge_usd?: number
+          p_tax_refund_usd?: number
+          p_remarks?: string
+          p_items?: unknown
+        }
+        Returns: {
+          success: boolean
+          shipment_id: string | null
+          error_message: string | null
+        }[]
+      }
     }
   }
 }

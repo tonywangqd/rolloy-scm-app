@@ -2,7 +2,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/auth/check-auth'
 import type { PaymentStatus, Region } from '@/lib/types/database'
+import { shipmentInsertSchema, shipmentItemInsertSchema, paymentStatusSchema, deleteByIdSchema } from '@/lib/validations'
+import { z } from 'zod'
 
 interface ShipmentData {
   tracking_number: string
@@ -32,73 +35,85 @@ interface ShipmentItemData {
 
 /**
  * Create a new shipment with items
+ * Uses atomic RPC function to ensure data consistency
  */
 export async function createShipment(
   shipmentData: ShipmentData,
   items: ShipmentItemData[]
 ): Promise<{ success: boolean; error?: string; data?: { id: string } }> {
   try {
-    const supabase = await createServerSupabaseClient()
-
-    // Calculate total cost
-    const freightCost = (shipmentData.weight_kg || 0) * (shipmentData.cost_per_kg_usd || 0)
-    const totalCost = freightCost + shipmentData.surcharge_usd - shipmentData.tax_refund_usd
-
-    // Insert shipment
-    const { data: shipment, error: shipmentError } = await supabase
-      .from('shipments')
-      .insert({
-        tracking_number: shipmentData.tracking_number,
-        batch_code: shipmentData.batch_code,
-        logistics_batch_code: shipmentData.logistics_batch_code,
-        destination_warehouse_id: shipmentData.destination_warehouse_id,
-        customs_clearance: shipmentData.customs_clearance,
-        logistics_plan: shipmentData.logistics_plan,
-        logistics_region: shipmentData.logistics_region,
-        planned_departure_date: shipmentData.planned_departure_date,
-        actual_departure_date: shipmentData.actual_departure_date,
-        planned_arrival_days: shipmentData.planned_arrival_days,
-        planned_arrival_date: shipmentData.planned_arrival_date,
-        actual_arrival_date: shipmentData.actual_arrival_date,
-        weight_kg: shipmentData.weight_kg,
-        unit_count: shipmentData.unit_count,
-        cost_per_kg_usd: shipmentData.cost_per_kg_usd,
-        surcharge_usd: shipmentData.surcharge_usd,
-        tax_refund_usd: shipmentData.tax_refund_usd,
-        total_cost_usd: totalCost,
-        payment_status: 'Pending',
-        remarks: shipmentData.remarks,
-      })
-      .select('id')
-      .single()
-
-    if (shipmentError) {
-      console.error('Error creating shipment:', shipmentError)
-      return { success: false, error: shipmentError.message }
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
     }
 
-    // Insert shipment items
-    if (items.length > 0) {
-      const itemsToInsert = items.map((item) => ({
-        shipment_id: shipment.id,
-        sku: item.sku,
-        shipped_qty: item.shipped_qty,
-      }))
-
-      const { error: itemsError } = await supabase
-        .from('shipment_items')
-        .insert(itemsToInsert)
-
-      if (itemsError) {
-        console.error('Error creating shipment items:', itemsError)
-        // Cleanup: delete the shipment if items failed
-        await supabase.from('shipments').delete().eq('id', shipment.id)
-        return { success: false, error: itemsError.message }
+    // Validate shipment data
+    const shipmentValidation = shipmentInsertSchema.safeParse(shipmentData)
+    if (!shipmentValidation.success) {
+      return {
+        success: false,
+        error: `Shipment validation error: ${shipmentValidation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
       }
     }
 
+    // Validate items
+    const itemsSchema = z.array(shipmentItemInsertSchema.omit({ id: true, shipment_id: true })).min(1)
+    const itemsValidation = itemsSchema.safeParse(items)
+    if (!itemsValidation.success) {
+      return {
+        success: false,
+        error: `Items validation error: ${itemsValidation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Convert items to JSONB format expected by the function
+    const itemsJson = itemsValidation.data.map((item) => ({
+      sku: item.sku,
+      shipped_qty: item.shipped_qty,
+    }))
+
+    // Call RPC function for atomic operation
+    const { data, error } = await supabase.rpc('create_shipment_with_items', {
+      p_tracking_number: shipmentValidation.data.tracking_number,
+      p_batch_code: shipmentValidation.data.batch_code || null,
+      p_logistics_batch_code: shipmentValidation.data.logistics_batch_code || null,
+      p_destination_warehouse_id: shipmentValidation.data.destination_warehouse_id,
+      p_customs_clearance: shipmentValidation.data.customs_clearance,
+      p_logistics_plan: shipmentValidation.data.logistics_plan || null,
+      p_logistics_region: shipmentValidation.data.logistics_region || null,
+      p_planned_departure_date: shipmentValidation.data.planned_departure_date || null,
+      p_actual_departure_date: shipmentValidation.data.actual_departure_date || null,
+      p_planned_arrival_days: shipmentValidation.data.planned_arrival_days || null,
+      p_planned_arrival_date: shipmentValidation.data.planned_arrival_date || null,
+      p_actual_arrival_date: shipmentValidation.data.actual_arrival_date || null,
+      p_weight_kg: shipmentValidation.data.weight_kg || null,
+      p_unit_count: shipmentValidation.data.unit_count || null,
+      p_cost_per_kg_usd: shipmentValidation.data.cost_per_kg_usd || null,
+      p_surcharge_usd: shipmentValidation.data.surcharge_usd || 0,
+      p_tax_refund_usd: shipmentValidation.data.tax_refund_usd || 0,
+      p_remarks: shipmentValidation.data.remarks || null,
+      p_items: itemsJson,
+    })
+
+    if (error) {
+      console.error('Error creating shipment:', error)
+      return { success: false, error: error.message }
+    }
+
+    // Check RPC function result
+    if (!data || data.length === 0) {
+      return { success: false, error: 'No response from database function' }
+    }
+
+    const result = data[0]
+    if (!result.success) {
+      return { success: false, error: result.error_message || 'Unknown error' }
+    }
+
     revalidatePath('/logistics')
-    return { success: true, data: { id: shipment.id } }
+    return { success: true, data: { id: result.shipment_id } }
   } catch (error) {
     console.error('Error creating shipment:', error)
     return { success: false, error: 'Failed to create shipment' }
@@ -113,11 +128,34 @@ export async function updateShipmentPaymentStatus(
   newStatus: PaymentStatus
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate ID
+    const idValidation = deleteByIdSchema.safeParse({ id: shipmentId })
+    if (!idValidation.success) {
+      return {
+        success: false,
+        error: `Validation error: ${idValidation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
+    // Validate status
+    const statusValidation = paymentStatusSchema.safeParse(newStatus)
+    if (!statusValidation.success) {
+      return {
+        success: false,
+        error: `Validation error: ${statusValidation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
     const supabase = await createServerSupabaseClient()
 
     const { error } = await supabase
       .from('shipments')
-      .update({ payment_status: newStatus })
+      .update({ payment_status: statusValidation.data })
       .eq('id', shipmentId)
 
     if (error) {

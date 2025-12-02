@@ -1,7 +1,9 @@
 'use server'
 
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/auth/check-auth'
 import { revalidatePath } from 'next/cache'
+import { inventorySnapshotUpsertSchema, batchInventorySnapshotsSchema, deleteInventorySnapshotSchema, deleteByIdSchema } from '@/lib/validations'
 
 /**
  * Update inventory snapshot
@@ -11,15 +13,33 @@ export async function updateInventorySnapshot(
   warehouseId: string,
   qtyOnHand: number
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = inventorySnapshotUpsertSchema.safeParse({
+    sku,
+    warehouse_id: warehouseId,
+    qty_on_hand: qtyOnHand,
+  })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('inventory_snapshots')
     .upsert(
       {
-        sku,
-        warehouse_id: warehouseId,
-        qty_on_hand: qtyOnHand,
+        sku: validation.data.sku,
+        warehouse_id: validation.data.warehouse_id,
+        qty_on_hand: validation.data.qty_on_hand,
         last_counted_at: new Date().toISOString(),
       },
       {
@@ -42,9 +62,23 @@ export async function updateInventorySnapshot(
 export async function batchUpdateInventorySnapshots(
   updates: { sku: string; warehouse_id: string; qty_on_hand: number }[]
 ): Promise<{ success: boolean; error?: string; count?: number }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = batchInventorySnapshotsSchema.safeParse(updates)
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
-  const dataToUpsert = updates.map((u) => ({
+  const dataToUpsert = validation.data.map((u) => ({
     ...u,
     last_counted_at: new Date().toISOString(),
   }))
@@ -61,7 +95,7 @@ export async function batchUpdateInventorySnapshots(
 
   revalidatePath('/inventory')
   revalidatePath('/')
-  return { success: true, count: updates.length }
+  return { success: true, count: validation.data.length }
 }
 
 /**
@@ -71,6 +105,20 @@ export async function deleteInventorySnapshot(
   sku: string,
   warehouseId: string
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = deleteInventorySnapshotSchema.safeParse({ sku, warehouseId })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
@@ -94,6 +142,20 @@ export async function deleteInventorySnapshot(
 export async function processShipmentArrival(
   shipmentId: string
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate ID
+  const validation = deleteByIdSchema.safeParse({ id: shipmentId })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => e.message).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   // Get shipment details

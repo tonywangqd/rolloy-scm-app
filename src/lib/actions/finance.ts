@@ -1,7 +1,9 @@
 'use server'
 
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/auth/check-auth'
 import { revalidatePath } from 'next/cache'
+import { updatePaymentStatusSchema, batchUpdatePaymentStatusSchema } from '@/lib/validations'
 
 /**
  * Update procurement payment status
@@ -10,11 +12,25 @@ export async function updateProcurementPaymentStatus(
   id: string,
   status: 'Pending' | 'Scheduled' | 'Paid'
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = updatePaymentStatusSchema.safeParse({ id, status })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('production_deliveries')
-    .update({ payment_status: status })
+    .update({ payment_status: validation.data.status })
     .eq('id', id)
 
   if (error) {
@@ -33,11 +49,25 @@ export async function updateLogisticsPaymentStatus(
   id: string,
   status: 'Pending' | 'Scheduled' | 'Paid'
 ): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate input
+  const validation = updatePaymentStatusSchema.safeParse({ id, status })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('shipments')
-    .update({ payment_status: status })
+    .update({ payment_status: validation.data.status })
     .eq('id', id)
 
   if (error) {
@@ -56,10 +86,25 @@ export async function batchUpdatePaymentStatus(
   items: { id: string; type: 'procurement' | 'logistics' }[],
   status: 'Pending' | 'Scheduled' | 'Paid'
 ): Promise<{ success: boolean; error?: string; updated: number }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error, updated: 0 }
+  }
+
+  // Validate input
+  const validation = batchUpdatePaymentStatusSchema.safeParse({ items, status })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+      updated: 0,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
 
-  const procurementIds = items.filter((i) => i.type === 'procurement').map((i) => i.id)
-  const logisticsIds = items.filter((i) => i.type === 'logistics').map((i) => i.id)
+  const procurementIds = validation.data.items.filter((i) => i.type === 'procurement').map((i) => i.id)
+  const logisticsIds = validation.data.items.filter((i) => i.type === 'logistics').map((i) => i.id)
 
   let updated = 0
   let errorMsg = ''
@@ -67,7 +112,7 @@ export async function batchUpdatePaymentStatus(
   if (procurementIds.length > 0) {
     const { error } = await supabase
       .from('production_deliveries')
-      .update({ payment_status: status })
+      .update({ payment_status: validation.data.status })
       .in('id', procurementIds)
 
     if (error) {
@@ -80,7 +125,7 @@ export async function batchUpdatePaymentStatus(
   if (logisticsIds.length > 0) {
     const { error } = await supabase
       .from('shipments')
-      .update({ payment_status: status })
+      .update({ payment_status: validation.data.status })
       .in('id', logisticsIds)
 
     if (error) {
