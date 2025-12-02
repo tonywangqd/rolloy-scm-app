@@ -1,5 +1,5 @@
 -- ================================================================
--- Test Data Generation Script
+-- Test Data Generation Script (Safe Version)
 -- Purpose: Generate sample data for algorithm validation
 -- Run in Supabase SQL Editor
 -- ================================================================
@@ -15,24 +15,22 @@ TRUNCATE TABLE sales_forecasts CASCADE;
 TRUNCATE TABLE inventory_snapshots CASCADE;
 
 -- ================================================================
--- MASTER DATA (If not exists)
+-- MASTER DATA - Using only basic required columns
 -- ================================================================
 
 -- Products (5 SKUs for testing)
--- Note: Only using columns that exist in the actual database
-INSERT INTO products (sku, spu, color_code, product_name, unit_cost_usd, safety_stock_weeks, is_active)
+INSERT INTO products (sku, product_name, unit_cost_usd, safety_stock_weeks, is_active)
 VALUES
-  ('SKU-001', 'SPU-A', 'BLK', 'Product A - Black', 25.00, 2, true),
-  ('SKU-002', 'SPU-A', 'WHT', 'Product A - White', 25.00, 2, true),
-  ('SKU-003', 'SPU-B', 'BLK', 'Product B - Black', 35.00, 3, true),
-  ('SKU-004', 'SPU-C', 'RED', 'Product C - Red', 45.00, 2, true),
-  ('SKU-005', 'SPU-D', 'BLU', 'Product D - Blue', 30.00, 2, true)
+  ('SKU-001', 'Product A - Black', 25.00, 2, true),
+  ('SKU-002', 'Product A - White', 25.00, 2, true),
+  ('SKU-003', 'Product B - Black', 35.00, 3, true),
+  ('SKU-004', 'Product C - Red', 45.00, 2, true),
+  ('SKU-005', 'Product D - Blue', 30.00, 2, true)
 ON CONFLICT (sku) DO UPDATE SET
   product_name = EXCLUDED.product_name,
   unit_cost_usd = EXCLUDED.unit_cost_usd;
 
 -- Channels
--- Note: Only using columns that exist in the actual database
 INSERT INTO channels (channel_code, channel_name, is_active)
 VALUES
   ('AMZ-US', 'Amazon US', true),
@@ -47,18 +45,17 @@ VALUES
   ('3PL-LA', '3PL Los Angeles', '3PL', 'West', true)
 ON CONFLICT (warehouse_code) DO NOTHING;
 
--- Suppliers
-INSERT INTO suppliers (supplier_code, supplier_name, contact_name, payment_terms_days, is_active)
+-- Suppliers (minimal columns)
+INSERT INTO suppliers (supplier_code, supplier_name, is_active)
 VALUES
-  ('SUP-001', 'Shenzhen Factory A', 'John Chen', 60, true),
-  ('SUP-002', 'Guangzhou Factory B', 'Mary Wang', 60, true)
+  ('SUP-001', 'Shenzhen Factory A', true),
+  ('SUP-002', 'Guangzhou Factory B', true)
 ON CONFLICT (supplier_code) DO NOTHING;
 
 -- ================================================================
 -- CURRENT INVENTORY (Week 0 starting point)
 -- ================================================================
 
--- Get warehouse IDs
 DO $$
 DECLARE
   v_fba_ont8_id UUID;
@@ -88,7 +85,6 @@ END $$;
 -- SALES FORECASTS (Next 12 weeks)
 -- ================================================================
 
--- Generate forecasts for each SKU x Channel x Week
 INSERT INTO sales_forecasts (sku, channel_code, week_iso, week_start_date, week_end_date, forecast_qty)
 SELECT
   sku,
@@ -96,7 +92,6 @@ SELECT
   TO_CHAR(week_start, 'IYYY-"W"IW') as week_iso,
   week_start::date as week_start_date,
   (week_start + INTERVAL '6 days')::date as week_end_date,
-  -- Random forecast between 50-200
   FLOOR(RANDOM() * 150 + 50)::integer as forecast_qty
 FROM
   (SELECT UNNEST(ARRAY['SKU-001', 'SKU-002', 'SKU-003', 'SKU-004', 'SKU-005']) as sku) skus,
@@ -110,7 +105,7 @@ ON CONFLICT (sku, channel_code, week_iso) DO UPDATE SET
   forecast_qty = EXCLUDED.forecast_qty;
 
 -- ================================================================
--- SALES ACTUALS (Past 4 weeks - with some variance from forecast)
+-- SALES ACTUALS (Past 4 weeks)
 -- ================================================================
 
 INSERT INTO sales_actuals (sku, channel_code, week_iso, week_start_date, week_end_date, actual_qty)
@@ -120,7 +115,6 @@ SELECT
   TO_CHAR(week_start, 'IYYY-"W"IW') as week_iso,
   week_start::date as week_start_date,
   (week_start + INTERVAL '6 days')::date as week_end_date,
-  -- Actual = Forecast * (0.8 to 1.2 variance)
   FLOOR(RANDOM() * 180 + 40)::integer as actual_qty
 FROM
   (SELECT UNNEST(ARRAY['SKU-001', 'SKU-002', 'SKU-003', 'SKU-004', 'SKU-005']) as sku) skus,
@@ -134,7 +128,7 @@ ON CONFLICT (sku, channel_code, week_iso) DO UPDATE SET
   actual_qty = EXCLUDED.actual_qty;
 
 -- ================================================================
--- PURCHASE ORDERS (2 orders: 1 confirmed, 1 in production)
+-- PURCHASE ORDERS
 -- ================================================================
 
 DO $$
@@ -147,26 +141,24 @@ BEGIN
   SELECT id INTO v_supplier1_id FROM suppliers WHERE supplier_code = 'SUP-001';
   SELECT id INTO v_supplier2_id FROM suppliers WHERE supplier_code = 'SUP-002';
 
-  -- PO-1: Confirmed, ordered 2 weeks ago
+  -- PO-1: Confirmed
   INSERT INTO purchase_orders (po_number, batch_code, supplier_id, po_status, planned_order_date, actual_order_date, planned_ship_date)
   VALUES ('PO-2025-001', 'BATCH-2025-Q1-01', v_supplier1_id, 'Confirmed',
           CURRENT_DATE - INTERVAL '14 days', CURRENT_DATE - INTERVAL '14 days', CURRENT_DATE + INTERVAL '7 days')
   RETURNING id INTO v_po1_id;
 
-  -- PO-1 Items
   INSERT INTO purchase_order_items (po_id, sku, channel_code, ordered_qty, delivered_qty, unit_price_usd)
   VALUES
     (v_po1_id, 'SKU-001', 'AMZ-US', 1000, 0, 25.00),
     (v_po1_id, 'SKU-002', 'AMZ-US', 800, 0, 25.00),
     (v_po1_id, 'SKU-003', 'SHOP-US', 500, 0, 35.00);
 
-  -- PO-2: In Production, ordered 1 week ago
+  -- PO-2: In Production
   INSERT INTO purchase_orders (po_number, batch_code, supplier_id, po_status, planned_order_date, actual_order_date, planned_ship_date)
   VALUES ('PO-2025-002', 'BATCH-2025-Q1-02', v_supplier2_id, 'In Production',
           CURRENT_DATE - INTERVAL '7 days', CURRENT_DATE - INTERVAL '7 days', CURRENT_DATE + INTERVAL '14 days')
   RETURNING id INTO v_po2_id;
 
-  -- PO-2 Items
   INSERT INTO purchase_order_items (po_id, sku, channel_code, ordered_qty, delivered_qty, unit_price_usd)
   VALUES
     (v_po2_id, 'SKU-004', 'AMZ-US', 600, 0, 45.00),
@@ -174,7 +166,7 @@ BEGIN
 END $$;
 
 -- ================================================================
--- SHIPMENTS (1 in transit, 1 arrived)
+-- SHIPMENTS
 -- ================================================================
 
 DO $$
@@ -187,43 +179,37 @@ BEGIN
   SELECT id INTO v_fba_ont8_id FROM warehouses WHERE warehouse_code = 'FBA-ONT8';
   SELECT id INTO v_3pl_la_id FROM warehouses WHERE warehouse_code = '3PL-LA';
 
-  -- Shipment 1: In Transit (departed 5 days ago, arriving in 10 days)
+  -- Shipment 1: In Transit
   INSERT INTO shipments (
-    tracking_number, batch_code, logistics_batch_code, destination_warehouse_id,
-    customs_clearance, logistics_plan, logistics_region,
+    tracking_number, batch_code, destination_warehouse_id,
     planned_departure_date, actual_departure_date,
-    planned_arrival_days, planned_arrival_date,
-    weight_kg, unit_count, cost_per_kg_usd, surcharge_usd, tax_refund_usd, payment_status
+    planned_arrival_date,
+    weight_kg, cost_per_kg_usd, surcharge_usd, tax_refund_usd, payment_status
   ) VALUES (
-    'TRK-2025-001', 'BATCH-2025-Q1-01', 'LOG-001', v_fba_ont8_id,
-    true, 'Sea Freight', 'West',
+    'TRK-2025-001', 'BATCH-2025-Q1-01', v_fba_ont8_id,
     CURRENT_DATE - INTERVAL '5 days', CURRENT_DATE - INTERVAL '5 days',
-    15, CURRENT_DATE + INTERVAL '10 days',
-    500.0, 100, 2.5, 100.0, 50.0, 'Pending'
+    CURRENT_DATE + INTERVAL '10 days',
+    500.0, 2.5, 100.0, 50.0, 'Pending'
   ) RETURNING id INTO v_shipment1_id;
 
-  -- Shipment 1 Items
   INSERT INTO shipment_items (shipment_id, sku, shipped_qty)
   VALUES
     (v_shipment1_id, 'SKU-001', 300),
     (v_shipment1_id, 'SKU-002', 250);
 
-  -- Shipment 2: Arrived (arrived yesterday)
+  -- Shipment 2: Arrived
   INSERT INTO shipments (
-    tracking_number, batch_code, logistics_batch_code, destination_warehouse_id,
-    customs_clearance, logistics_plan, logistics_region,
+    tracking_number, batch_code, destination_warehouse_id,
     planned_departure_date, actual_departure_date,
-    planned_arrival_days, planned_arrival_date, actual_arrival_date,
-    weight_kg, unit_count, cost_per_kg_usd, surcharge_usd, tax_refund_usd, payment_status
+    planned_arrival_date, actual_arrival_date,
+    weight_kg, cost_per_kg_usd, surcharge_usd, tax_refund_usd, payment_status
   ) VALUES (
-    'TRK-2025-002', 'BATCH-2025-Q1-01', 'LOG-002', v_3pl_la_id,
-    true, 'Air Freight', 'West',
+    'TRK-2025-002', 'BATCH-2025-Q1-01', v_3pl_la_id,
     CURRENT_DATE - INTERVAL '10 days', CURRENT_DATE - INTERVAL '10 days',
-    7, CURRENT_DATE - INTERVAL '3 days', CURRENT_DATE - INTERVAL '1 day',
-    200.0, 50, 8.0, 200.0, 80.0, 'Pending'
+    CURRENT_DATE - INTERVAL '3 days', CURRENT_DATE - INTERVAL '1 day',
+    200.0, 8.0, 200.0, 80.0, 'Pending'
   ) RETURNING id INTO v_shipment2_id;
 
-  -- Shipment 2 Items
   INSERT INTO shipment_items (shipment_id, sku, shipped_qty)
   VALUES
     (v_shipment2_id, 'SKU-003', 200),
@@ -235,34 +221,13 @@ END $$;
 -- ================================================================
 
 SELECT 'Products' as table_name, COUNT(*) as count FROM products
-UNION ALL
-SELECT 'Channels', COUNT(*) FROM channels
-UNION ALL
-SELECT 'Warehouses', COUNT(*) FROM warehouses
-UNION ALL
-SELECT 'Suppliers', COUNT(*) FROM suppliers
-UNION ALL
-SELECT 'Inventory Snapshots', COUNT(*) FROM inventory_snapshots
-UNION ALL
-SELECT 'Sales Forecasts', COUNT(*) FROM sales_forecasts
-UNION ALL
-SELECT 'Sales Actuals', COUNT(*) FROM sales_actuals
-UNION ALL
-SELECT 'Purchase Orders', COUNT(*) FROM purchase_orders
-UNION ALL
-SELECT 'PO Items', COUNT(*) FROM purchase_order_items
-UNION ALL
-SELECT 'Shipments', COUNT(*) FROM shipments
-UNION ALL
-SELECT 'Shipment Items', COUNT(*) FROM shipment_items;
-
--- ================================================================
--- SUCCESS MESSAGE
--- ================================================================
-DO $$
-BEGIN
-  RAISE NOTICE '========================================';
-  RAISE NOTICE 'Test data generation complete!';
-  RAISE NOTICE 'You can now test the calculation audit page.';
-  RAISE NOTICE '========================================';
-END $$;
+UNION ALL SELECT 'Channels', COUNT(*) FROM channels
+UNION ALL SELECT 'Warehouses', COUNT(*) FROM warehouses
+UNION ALL SELECT 'Suppliers', COUNT(*) FROM suppliers
+UNION ALL SELECT 'Inventory Snapshots', COUNT(*) FROM inventory_snapshots
+UNION ALL SELECT 'Sales Forecasts', COUNT(*) FROM sales_forecasts
+UNION ALL SELECT 'Sales Actuals', COUNT(*) FROM sales_actuals
+UNION ALL SELECT 'Purchase Orders', COUNT(*) FROM purchase_orders
+UNION ALL SELECT 'PO Items', COUNT(*) FROM purchase_order_items
+UNION ALL SELECT 'Shipments', COUNT(*) FROM shipments
+UNION ALL SELECT 'Shipment Items', COUNT(*) FROM shipment_items;
