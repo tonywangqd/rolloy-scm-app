@@ -5,7 +5,8 @@ import type {
   PendingPayablesView,
   Product,
   Channel,
-  Warehouse
+  Warehouse,
+  InventoryProjection12WeeksView
 } from '@/lib/types/database'
 
 /**
@@ -176,4 +177,28 @@ export async function fetchMasterDataCounts(): Promise<{
     warehouses: warehouses.count || 0,
     suppliers: suppliers.count || 0,
   }
+}
+
+/**
+ * Fetch stock risk alerts for dashboard
+ * Returns SKUs that will face stockouts or risks within the next 3 weeks
+ */
+export async function fetchStockRiskAlerts(): Promise<InventoryProjection12WeeksView[]> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('v_inventory_projection_12weeks')
+    .select('*')
+    .in('stock_status', ['Stockout', 'Risk'])
+    .lte('week_offset', 3)
+    .order('week_offset', { ascending: true })
+    .order('stock_status', { ascending: true }) // Stockout first, then Risk
+    .limit(10)
+
+  if (error) {
+    console.error('Error fetching stock risk alerts:', error)
+    return []
+  }
+
+  return data || []
 }

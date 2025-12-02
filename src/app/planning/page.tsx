@@ -36,13 +36,13 @@ export default async function PlanningPage() {
   const actualByWeek = new Map<string, number>()
 
   forecasts.forEach((f) => {
-    const current = forecastByWeek.get(f.year_week) || 0
-    forecastByWeek.set(f.year_week, current + f.forecast_qty)
+    const current = forecastByWeek.get(f.week_iso) || 0
+    forecastByWeek.set(f.week_iso, current + f.forecast_qty)
   })
 
   actuals.forEach((a) => {
-    const current = actualByWeek.get(a.year_week) || 0
-    actualByWeek.set(a.year_week, current + a.actual_qty)
+    const current = actualByWeek.get(a.week_iso) || 0
+    actualByWeek.set(a.week_iso, current + a.actual_qty)
   })
 
   // Get unique weeks sorted

@@ -170,3 +170,79 @@ export async function updateShipmentPaymentStatus(
     return { success: false, error: 'Failed to update payment status' }
   }
 }
+
+/**
+ * Mark shipment as arrived
+ * Updates the arrival date and processes inventory updates
+ */
+export async function markShipmentArrived(
+  shipmentId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate ID
+    const idValidation = deleteByIdSchema.safeParse({ id: shipmentId })
+    if (!idValidation.success) {
+      return {
+        success: false,
+        error: `Validation error: ${idValidation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Check if shipment exists and is not already arrived
+    const { data: shipment, error: fetchError } = await supabase
+      .from('shipments')
+      .select('id, tracking_number, actual_arrival_date')
+      .eq('id', shipmentId)
+      .single()
+
+    if (fetchError || !shipment) {
+      console.error('Error fetching shipment:', fetchError)
+      return { success: false, error: 'Shipment not found' }
+    }
+
+    if (shipment.actual_arrival_date) {
+      return { success: false, error: 'Shipment has already arrived' }
+    }
+
+    // Update shipment arrival date
+    const today = new Date().toISOString().split('T')[0]
+    const { error: updateError } = await supabase
+      .from('shipments')
+      .update({ actual_arrival_date: today })
+      .eq('id', shipmentId)
+
+    if (updateError) {
+      console.error('Error updating arrival date:', updateError)
+      return { success: false, error: updateError.message }
+    }
+
+    // Import and call processShipmentArrival from inventory actions
+    const { processShipmentArrival } = await import('@/lib/actions/inventory')
+    const inventoryResult = await processShipmentArrival(shipmentId)
+
+    if (!inventoryResult.success) {
+      // Rollback: revert arrival date
+      await supabase
+        .from('shipments')
+        .update({ actual_arrival_date: null })
+        .eq('id', shipmentId)
+
+      return { success: false, error: inventoryResult.error || 'Failed to update inventory' }
+    }
+
+    revalidatePath('/logistics')
+    revalidatePath('/inventory')
+    revalidatePath('/')
+    return { success: true }
+  } catch (error) {
+    console.error('Error marking shipment as arrived:', error)
+    return { success: false, error: 'Failed to mark shipment as arrived' }
+  }
+}

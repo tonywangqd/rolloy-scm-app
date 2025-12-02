@@ -1,5 +1,6 @@
 import { Header } from '@/components/layout/header'
 import { KPICards } from '@/components/dashboard/kpi-cards'
+import { RiskAlerts } from '@/components/dashboard/risk-alerts'
 import { InventoryTable } from '@/components/dashboard/inventory-table'
 import { MasterDataStats } from '@/components/dashboard/master-data-stats'
 import { QuickActions } from '@/components/dashboard/quick-actions'
@@ -10,6 +11,7 @@ import {
   fetchDashboardKPIs,
   fetchInventorySummary,
   fetchMasterDataCounts,
+  fetchStockRiskAlerts,
 } from '@/lib/queries/dashboard'
 import {
   fetchWeeklySalesTrend,
@@ -22,10 +24,11 @@ export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage() {
   // Fetch data in parallel
-  const [kpis, inventory, masterData, salesTrend, channelSales, skuSales] = await Promise.all([
+  const [kpis, inventory, masterData, riskAlerts, salesTrend, channelSales, skuSales] = await Promise.all([
     fetchDashboardKPIs(),
     fetchInventorySummary(),
     fetchMasterDataCounts(),
+    fetchStockRiskAlerts(),
     fetchWeeklySalesTrend(),
     fetchSalesByChannel(),
     fetchSalesBySku(),
@@ -39,6 +42,9 @@ export default async function DashboardPage() {
       />
 
       <div className="flex-1 space-y-6 p-6">
+        {/* Risk Alerts - Top Priority */}
+        <RiskAlerts alerts={riskAlerts} />
+
         {/* KPI Cards */}
         <KPICards data={kpis} />
 

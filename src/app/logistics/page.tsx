@@ -14,6 +14,7 @@ import {
 import { fetchShipments } from '@/lib/queries/logistics'
 import { formatDate, formatCurrencyCNY, getWarehouseTypeVariant } from '@/lib/utils'
 import { PaymentStatusToggle } from '@/components/logistics/payment-status-toggle'
+import { ArrivalConfirmButton } from '@/components/logistics/arrival-confirm-button'
 import { Plus, Eye, Truck, Package } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -177,9 +178,27 @@ export default async function LogisticsPage() {
                       </TableCell>
                       <TableCell>
                         {shipment.actual_arrival_date ? (
-                          <span className="text-green-600">
-                            {formatDate(shipment.actual_arrival_date)}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-green-600 font-medium">
+                              {formatDate(shipment.actual_arrival_date)}
+                            </span>
+                            <span className="text-xs text-gray-500">已到货</span>
+                          </div>
+                        ) : shipment.actual_departure_date ? (
+                          <div className="space-y-1">
+                            {shipment.planned_arrival_date && (
+                              <div className="text-sm">
+                                {formatDate(shipment.planned_arrival_date)}
+                                <span className="ml-1 text-xs text-orange-500">预计</span>
+                              </div>
+                            )}
+                            <ArrivalConfirmButton
+                              shipmentId={shipment.id}
+                              trackingNumber={shipment.tracking_number}
+                              warehouseName={shipment.warehouse_name}
+                              warehouseCode={shipment.warehouse_code}
+                            />
+                          </div>
                         ) : shipment.planned_arrival_date ? (
                           <span>
                             {formatDate(shipment.planned_arrival_date)}

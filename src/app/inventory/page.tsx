@@ -15,8 +15,9 @@ import {
   fetchInventoryByWarehouse,
   fetchIncomingInventory,
 } from '@/lib/queries/inventory'
-import { formatNumber, formatDate, getWarehouseTypeVariant } from '@/lib/utils'
-import { Package, Warehouse, Truck, BoxIcon, ArrowDown } from 'lucide-react'
+import { formatNumber, formatDate } from '@/lib/utils'
+import { Package, Warehouse, Truck, BoxIcon } from 'lucide-react'
+import { InventoryByWarehouse } from '@/components/inventory/inventory-by-warehouse'
 
 export const dynamic = 'force-dynamic'
 
@@ -219,43 +220,7 @@ export default async function InventoryPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {warehouseInventory.length === 0 ? (
-              <div className="flex h-32 items-center justify-center text-gray-500">
-                暂无库存数据
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {warehouseInventory.map((warehouse) => (
-                  <div key={warehouse.warehouse_id} className="rounded-lg border p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={getWarehouseTypeVariant(warehouse.warehouse_type)}>
-                          {warehouse.warehouse_type}
-                        </Badge>
-                        <span className="font-semibold">{warehouse.warehouse_code}</span>
-                        <span className="text-gray-500">- {warehouse.warehouse_name}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-sm text-gray-500">总库存: </span>
-                        <span className="font-semibold">{formatNumber(warehouse.total_qty)}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {warehouse.items.map((item) => (
-                        <div
-                          key={item.sku}
-                          className="flex items-center gap-2 rounded bg-gray-50 px-3 py-1 text-sm"
-                        >
-                          <span className="font-medium">{item.sku}</span>
-                          <span className="text-gray-400">|</span>
-                          <span>{formatNumber(item.qty)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <InventoryByWarehouse warehouseInventory={warehouseInventory} />
           </CardContent>
         </Card>
       </div>

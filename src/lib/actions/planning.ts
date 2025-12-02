@@ -3,10 +3,10 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth/check-auth'
 import { revalidatePath } from 'next/cache'
-import type { WeeklySalesForecastInsert, WeeklySalesActualInsert } from '@/lib/types/database'
+import type { SalesForecastInsert, SalesActualInsert } from '@/lib/types/database'
 import {
-  weeklySalesForecastInsertSchema,
-  weeklySalesActualInsertSchema,
+  salesForecastInsertSchema,
+  salesActualInsertSchema,
   batchSalesForecastsSchema,
   batchSalesActualsSchema,
   copyForecastsSchema,
@@ -17,7 +17,7 @@ import {
  * Create or update sales forecast
  */
 export async function upsertSalesForecast(
-  forecast: WeeklySalesForecastInsert
+  forecast: SalesForecastInsert
 ): Promise<{ success: boolean; error?: string }> {
   const authResult = await requireAuth()
   if ('error' in authResult) {
@@ -25,7 +25,7 @@ export async function upsertSalesForecast(
   }
 
   // Validate input
-  const validation = weeklySalesForecastInsertSchema.safeParse(forecast)
+  const validation = salesForecastInsertSchema.safeParse(forecast)
   if (!validation.success) {
     return {
       success: false,
@@ -36,9 +36,9 @@ export async function upsertSalesForecast(
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
-    .from('weekly_sales_forecasts')
+    .from('sales_forecasts')
     .upsert(validation.data, {
-      onConflict: 'year_week,sku,channel_code',
+      onConflict: 'week_iso,sku,channel_code',
     })
 
   if (error) {
@@ -54,7 +54,7 @@ export async function upsertSalesForecast(
  * Batch upsert sales forecasts
  */
 export async function batchUpsertSalesForecasts(
-  forecasts: WeeklySalesForecastInsert[]
+  forecasts: SalesForecastInsert[]
 ): Promise<{ success: boolean; error?: string; count?: number }> {
   const authResult = await requireAuth()
   if ('error' in authResult) {
@@ -73,9 +73,9 @@ export async function batchUpsertSalesForecasts(
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
-    .from('weekly_sales_forecasts')
+    .from('sales_forecasts')
     .upsert(validation.data, {
-      onConflict: 'year_week,sku,channel_code',
+      onConflict: 'week_iso,sku,channel_code',
     })
 
   if (error) {
@@ -91,7 +91,7 @@ export async function batchUpsertSalesForecasts(
  * Create or update sales actual
  */
 export async function upsertSalesActual(
-  actual: WeeklySalesActualInsert
+  actual: SalesActualInsert
 ): Promise<{ success: boolean; error?: string }> {
   const authResult = await requireAuth()
   if ('error' in authResult) {
@@ -99,7 +99,7 @@ export async function upsertSalesActual(
   }
 
   // Validate input
-  const validation = weeklySalesActualInsertSchema.safeParse(actual)
+  const validation = salesActualInsertSchema.safeParse(actual)
   if (!validation.success) {
     return {
       success: false,
@@ -110,9 +110,9 @@ export async function upsertSalesActual(
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
-    .from('weekly_sales_actuals')
+    .from('sales_actuals')
     .upsert(validation.data, {
-      onConflict: 'year_week,sku,channel_code',
+      onConflict: 'week_iso,sku,channel_code',
     })
 
   if (error) {
@@ -128,7 +128,7 @@ export async function upsertSalesActual(
  * Batch upsert sales actuals
  */
 export async function batchUpsertSalesActuals(
-  actuals: WeeklySalesActualInsert[]
+  actuals: SalesActualInsert[]
 ): Promise<{ success: boolean; error?: string; count?: number }> {
   const authResult = await requireAuth()
   if ('error' in authResult) {
@@ -147,9 +147,9 @@ export async function batchUpsertSalesActuals(
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
-    .from('weekly_sales_actuals')
+    .from('sales_actuals')
     .upsert(validation.data, {
-      onConflict: 'year_week,sku,channel_code',
+      onConflict: 'week_iso,sku,channel_code',
     })
 
   if (error) {
@@ -165,7 +165,7 @@ export async function batchUpsertSalesActuals(
  * Delete sales forecast
  */
 export async function deleteSalesForecast(
-  yearWeek: string,
+  weekIso: string,
   sku: string,
   channelCode: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -175,7 +175,7 @@ export async function deleteSalesForecast(
   }
 
   // Validate input
-  const validation = deleteSalesForecastSchema.safeParse({ yearWeek, sku, channelCode })
+  const validation = deleteSalesForecastSchema.safeParse({ weekIso, sku, channelCode })
   if (!validation.success) {
     return {
       success: false,
@@ -186,9 +186,9 @@ export async function deleteSalesForecast(
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
-    .from('weekly_sales_forecasts')
+    .from('sales_forecasts')
     .delete()
-    .eq('year_week', yearWeek)
+    .eq('week_iso', weekIso)
     .eq('sku', sku)
     .eq('channel_code', channelCode)
 
@@ -205,7 +205,7 @@ export async function deleteSalesForecast(
  * Delete sales actual
  */
 export async function deleteSalesActual(
-  yearWeek: string,
+  weekIso: string,
   sku: string,
   channelCode: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -215,7 +215,7 @@ export async function deleteSalesActual(
   }
 
   // Validate input
-  const validation = deleteSalesForecastSchema.safeParse({ yearWeek, sku, channelCode })
+  const validation = deleteSalesForecastSchema.safeParse({ weekIso, sku, channelCode })
   if (!validation.success) {
     return {
       success: false,
@@ -226,9 +226,9 @@ export async function deleteSalesActual(
   const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
-    .from('weekly_sales_actuals')
+    .from('sales_actuals')
     .delete()
-    .eq('year_week', yearWeek)
+    .eq('week_iso', weekIso)
     .eq('sku', sku)
     .eq('channel_code', channelCode)
 
@@ -266,9 +266,9 @@ export async function copyForecastsToWeek(
 
   // Fetch source forecasts
   const { data: sourceForecasts, error: fetchError } = await supabase
-    .from('weekly_sales_forecasts')
+    .from('sales_forecasts')
     .select('*')
-    .eq('year_week', fromWeek)
+    .eq('week_iso', fromWeek)
 
   if (fetchError) {
     return { success: false, error: fetchError.message }
@@ -280,17 +280,18 @@ export async function copyForecastsToWeek(
 
   // Create new forecasts for target week
   const newForecasts = sourceForecasts.map((f) => ({
-    year_week: toWeek,
+    week_iso: toWeek,
+    week_start_date: f.week_start_date,
+    week_end_date: f.week_end_date,
     sku: f.sku,
     channel_code: f.channel_code,
     forecast_qty: f.forecast_qty,
-    remarks: f.remarks,
   }))
 
   const { error: insertError } = await supabase
-    .from('weekly_sales_forecasts')
+    .from('sales_forecasts')
     .upsert(newForecasts, {
-      onConflict: 'year_week,sku,channel_code',
+      onConflict: 'week_iso,sku,channel_code',
     })
 
   if (insertError) {

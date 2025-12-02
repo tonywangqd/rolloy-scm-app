@@ -18,8 +18,9 @@ import {
 import { ArrowLeft, Save, Copy, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { Product, Channel, WeeklySalesForecast } from '@/lib/types/database'
-import { getCurrentWeek, addWeeksToWeekString } from '@/lib/utils/date'
+import type { Product, Channel, SalesForecast } from '@/lib/types/database'
+import { format } from 'date-fns'
+import { getCurrentWeek, addWeeksToWeekString, getWeekInfo } from '@/lib/utils/date'
 
 interface ForecastRow {
   id?: string
@@ -61,7 +62,7 @@ export default function ForecastsPage() {
       const [productsResult, channelsResult, forecastWeeksResult] = await Promise.all([
         supabase.from('products').select('*').eq('is_active', true).order('sku'),
         supabase.from('channels').select('*').eq('is_active', true).order('channel_code'),
-        supabase.from('weekly_sales_forecasts').select('year_week').order('year_week', { ascending: false }) as any,
+        supabase.from('sales_forecasts').select('week_iso').order('week_iso', { ascending: false }) as any,
       ])
 
       setProducts((productsResult.data || []) as Product[])
@@ -69,7 +70,7 @@ export default function ForecastsPage() {
 
       // Combine generated weeks with existing forecast weeks
       const generatedWeeks = generateWeekOptions()
-      const existingWeeks = [...new Set((forecastWeeksResult.data as any[] || []).map((f: any) => f.year_week))]
+      const existingWeeks = [...new Set((forecastWeeksResult.data as any[] || []).map((f: any) => f.week_iso))]
       const allWeeks = [...new Set([...generatedWeeks, ...existingWeeks])].sort((a, b) => b.localeCompare(a))
       setAvailableWeeks(allWeeks)
 
@@ -95,9 +96,9 @@ export default function ForecastsPage() {
     const supabase = createClient()
 
     const { data, error } = await supabase
-      .from('weekly_sales_forecasts')
+      .from('sales_forecasts')
       .select('*')
-      .eq('year_week', selectedWeek)
+      .eq('week_iso', selectedWeek)
       .order('sku')
       .order('channel_code') as any
 
@@ -154,18 +155,28 @@ export default function ForecastsPage() {
 
     const supabase = createClient()
 
+    // Get week dates
+    const weekInfo = getWeekInfo(selectedWeek)
+    if (!weekInfo) {
+      setMessage('Invalid week format')
+      setSaving(false)
+      return
+    }
+
     // Prepare data for upsert
     const dataToSave = forecasts.map((f) => ({
-      year_week: selectedWeek,
+      week_iso: selectedWeek,
+      week_start_date: format(weekInfo.startDate, 'yyyy-MM-dd'),
+      week_end_date: format(weekInfo.endDate, 'yyyy-MM-dd'),
       sku: f.sku,
       channel_code: f.channel_code,
       forecast_qty: f.forecast_qty,
     }))
 
     const { error } = await (supabase
-      .from('weekly_sales_forecasts') as any)
+      .from('sales_forecasts') as any)
       .upsert(dataToSave, {
-        onConflict: 'year_week,sku,channel_code',
+        onConflict: 'week_iso,sku,channel_code',
       })
 
     if (error) {
@@ -186,9 +197,9 @@ export default function ForecastsPage() {
     const supabase = createClient()
 
     const { data, error } = await supabase
-      .from('weekly_sales_forecasts')
+      .from('sales_forecasts')
       .select('*')
-      .eq('year_week', fromWeek) as any
+      .eq('week_iso', fromWeek) as any
 
     if (error) {
       setMessage('复制失败')

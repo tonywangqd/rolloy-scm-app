@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
-import type { WeeklySalesForecast, WeeklySalesActual, Product, Channel } from '@/lib/types/database'
+import type { SalesForecast, SalesActual, Product, Channel } from '@/lib/types/database'
 import {
   getCurrentWeek,
   compareWeeks,
@@ -8,26 +8,26 @@ import {
 } from '@/lib/utils/date'
 
 /**
- * Fetch weekly sales forecasts with product and channel info
+ * Fetch sales forecasts with product and channel info
  */
 export async function fetchSalesForecasts(options?: {
   yearWeekFrom?: string
   yearWeekTo?: string
   sku?: string
   channelCode?: string
-}): Promise<(WeeklySalesForecast & { product_name?: string; channel_name?: string })[]> {
+}): Promise<(SalesForecast & { product_name?: string; channel_name?: string })[]> {
   const supabase = await createServerSupabaseClient()
 
   let query = supabase
-    .from('weekly_sales_forecasts')
+    .from('sales_forecasts')
     .select('*')
-    .order('year_week', { ascending: false })
+    .order('week_iso', { ascending: false })
 
   if (options?.yearWeekFrom) {
-    query = query.gte('year_week', options.yearWeekFrom)
+    query = query.gte('week_iso', options.yearWeekFrom)
   }
   if (options?.yearWeekTo) {
-    query = query.lte('year_week', options.yearWeekTo)
+    query = query.lte('week_iso', options.yearWeekTo)
   }
   if (options?.sku) {
     query = query.eq('sku', options.sku)
@@ -63,26 +63,26 @@ export async function fetchSalesForecasts(options?: {
 }
 
 /**
- * Fetch weekly sales actuals with product and channel info
+ * Fetch sales actuals with product and channel info
  */
 export async function fetchSalesActuals(options?: {
   yearWeekFrom?: string
   yearWeekTo?: string
   sku?: string
   channelCode?: string
-}): Promise<(WeeklySalesActual & { product_name?: string; channel_name?: string })[]> {
+}): Promise<(SalesActual & { product_name?: string; channel_name?: string })[]> {
   const supabase = await createServerSupabaseClient()
 
   let query = supabase
-    .from('weekly_sales_actuals')
+    .from('sales_actuals')
     .select('*')
-    .order('year_week', { ascending: false })
+    .order('week_iso', { ascending: false })
 
   if (options?.yearWeekFrom) {
-    query = query.gte('year_week', options.yearWeekFrom)
+    query = query.gte('week_iso', options.yearWeekFrom)
   }
   if (options?.yearWeekTo) {
-    query = query.lte('year_week', options.yearWeekTo)
+    query = query.lte('week_iso', options.yearWeekTo)
   }
   if (options?.sku) {
     query = query.eq('sku', options.sku)
@@ -131,8 +131,8 @@ export async function fetchForecastVsActual(yearWeek: string): Promise<{
   const supabase = await createServerSupabaseClient()
 
   const [forecastsResult, actualsResult] = await Promise.all([
-    supabase.from('weekly_sales_forecasts').select('*').eq('year_week', yearWeek),
-    supabase.from('weekly_sales_actuals').select('*').eq('year_week', yearWeek),
+    supabase.from('sales_forecasts').select('*').eq('week_iso', yearWeek),
+    supabase.from('sales_actuals').select('*').eq('week_iso', yearWeek),
   ])
 
   const forecasts = forecastsResult.data || []
@@ -166,16 +166,16 @@ export async function fetchAvailableWeeks(): Promise<string[]> {
   const supabase = await createServerSupabaseClient()
 
   const { data, error } = await supabase
-    .from('weekly_sales_forecasts')
-    .select('year_week')
-    .order('year_week', { ascending: false })
+    .from('sales_forecasts')
+    .select('week_iso')
+    .order('week_iso', { ascending: false })
 
   if (error) {
     console.error('Error fetching weeks:', error)
     return []
   }
 
-  return [...new Set(data?.map((d) => d.year_week) || [])]
+  return [...new Set(data?.map((d) => d.week_iso) || [])]
 }
 
 // Week utility functions have been moved to @/lib/utils/date

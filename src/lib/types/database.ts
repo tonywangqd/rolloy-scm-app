@@ -42,16 +42,6 @@ export type Database = {
         Insert: SupplierInsert
         Update: SupplierUpdate
       }
-      weekly_sales_forecasts: {
-        Row: WeeklySalesForecast
-        Insert: WeeklySalesForecastInsert
-        Update: WeeklySalesForecastUpdate
-      }
-      weekly_sales_actuals: {
-        Row: WeeklySalesActual
-        Insert: WeeklySalesActualInsert
-        Update: WeeklySalesActualUpdate
-      }
       sales_forecasts: {
         Row: SalesForecast
         Insert: SalesForecastInsert
@@ -345,61 +335,7 @@ export interface SupplierUpdate {
 }
 
 // ================================================================
-// WEEKLY SALES DATA TYPES
-// ================================================================
-
-export interface WeeklySalesForecast {
-  id: string
-  year_week: string
-  sku: string
-  channel_code: string
-  forecast_qty: number
-  remarks: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface WeeklySalesForecastInsert {
-  id?: string
-  year_week: string
-  sku: string
-  channel_code: string
-  forecast_qty: number
-  remarks?: string | null
-}
-
-export interface WeeklySalesForecastUpdate {
-  forecast_qty?: number
-  remarks?: string | null
-}
-
-export interface WeeklySalesActual {
-  id: string
-  year_week: string
-  sku: string
-  channel_code: string
-  actual_qty: number
-  remarks: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface WeeklySalesActualInsert {
-  id?: string
-  year_week: string
-  sku: string
-  channel_code: string
-  actual_qty: number
-  remarks?: string | null
-}
-
-export interface WeeklySalesActualUpdate {
-  actual_qty?: number
-  remarks?: string | null
-}
-
-// ================================================================
-// TRANSACTIONAL DATA TYPES
+// SALES DATA TYPES
 // ================================================================
 
 export interface SalesForecast {

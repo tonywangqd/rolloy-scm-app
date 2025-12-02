@@ -132,42 +132,42 @@ export const supplierUpdateSchema = supplierInsertSchema.partial().omit({ id: tr
 // SALES PLANNING VALIDATION
 // ================================================================
 
-export const weeklySalesForecastInsertSchema = z.object({
+export const salesForecastInsertSchema = z.object({
   id: uuidSchema.optional(),
-  year_week: yearWeekSchema,
   sku: skuSchema,
   channel_code: z.string().min(1, 'Channel code is required'),
+  week_iso: yearWeekSchema,
+  week_start_date: isoDateSchema,
+  week_end_date: isoDateSchema,
   forecast_qty: nonNegativeInt,
-  remarks: z.string().max(500).nullable().optional(),
 })
 
-export const weeklySalesForecastUpdateSchema = z.object({
+export const salesForecastUpdateSchema = z.object({
   forecast_qty: nonNegativeInt.optional(),
-  remarks: z.string().max(500).nullable().optional(),
 })
 
-export const weeklySalesActualInsertSchema = z.object({
+export const salesActualInsertSchema = z.object({
   id: uuidSchema.optional(),
-  year_week: yearWeekSchema,
   sku: skuSchema,
   channel_code: z.string().min(1, 'Channel code is required'),
+  week_iso: yearWeekSchema,
+  week_start_date: isoDateSchema,
+  week_end_date: isoDateSchema,
   actual_qty: nonNegativeInt,
-  remarks: z.string().max(500).nullable().optional(),
 })
 
-export const weeklySalesActualUpdateSchema = z.object({
+export const salesActualUpdateSchema = z.object({
   actual_qty: nonNegativeInt.optional(),
-  remarks: z.string().max(500).nullable().optional(),
 })
 
 // Batch validation
 export const batchSalesForecastsSchema = z
-  .array(weeklySalesForecastInsertSchema)
+  .array(salesForecastInsertSchema)
   .min(1, 'At least one forecast is required')
   .max(1000, 'Cannot process more than 1000 forecasts at once')
 
 export const batchSalesActualsSchema = z
-  .array(weeklySalesActualInsertSchema)
+  .array(salesActualInsertSchema)
   .min(1, 'At least one actual is required')
   .max(1000, 'Cannot process more than 1000 actuals at once')
 
@@ -330,7 +330,7 @@ export const deleteByCodeSchema = z.object({
 })
 
 export const deleteSalesForecastSchema = z.object({
-  yearWeek: yearWeekSchema,
+  weekIso: yearWeekSchema,
   sku: skuSchema,
   channelCode: z.string().min(1, 'Channel code is required'),
 })
@@ -352,8 +352,8 @@ export type WarehouseInsertInput = z.infer<typeof warehouseInsertSchema>
 export type WarehouseUpdateInput = z.infer<typeof warehouseUpdateSchema>
 export type SupplierInsertInput = z.infer<typeof supplierInsertSchema>
 export type SupplierUpdateInput = z.infer<typeof supplierUpdateSchema>
-export type WeeklySalesForecastInsertInput = z.infer<typeof weeklySalesForecastInsertSchema>
-export type WeeklySalesActualInsertInput = z.infer<typeof weeklySalesActualInsertSchema>
+export type SalesForecastInsertInput = z.infer<typeof salesForecastInsertSchema>
+export type SalesActualInsertInput = z.infer<typeof salesActualInsertSchema>
 export type PurchaseOrderInsertInput = z.infer<typeof purchaseOrderInsertSchema>
 export type PurchaseOrderItemInsertInput = z.infer<typeof purchaseOrderItemInsertSchema>
 export type ProductionDeliveryInsertInput = z.infer<typeof productionDeliveryInsertSchema>

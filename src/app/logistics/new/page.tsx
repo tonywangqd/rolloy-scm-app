@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+// Note: Using native select element with manual styling instead of Select component
 import { Textarea } from '@/components/ui/textarea'
 import { createShipment } from '@/lib/actions/logistics'
 import { Plus, Trash2, ArrowLeft } from 'lucide-react'
@@ -208,13 +208,14 @@ export default function NewShipmentPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="destination_warehouse_id">目的仓库 *</Label>
-                  <Select
+                  <select
                     id="destination_warehouse_id"
                     value={formData.destination_warehouse_id}
                     onChange={(e) =>
                       setFormData({ ...formData, destination_warehouse_id: e.target.value })
                     }
                     required
+                    className="flex h-10 w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">选择仓库</option>
                     {warehouses.map((w) => (
@@ -222,16 +223,17 @@ export default function NewShipmentPage() {
                         {w.warehouse_code} - {w.warehouse_name}
                       </option>
                     ))}
-                  </Select>
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="logistics_plan">物流方案</Label>
-                  <Select
+                  <select
                     id="logistics_plan"
                     value={formData.logistics_plan}
                     onChange={(e) =>
                       setFormData({ ...formData, logistics_plan: e.target.value })
                     }
+                    className="flex h-10 w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">选择方案</option>
                     {LOGISTICS_PLANS.map((plan) => (
@@ -239,16 +241,17 @@ export default function NewShipmentPage() {
                         {plan}
                       </option>
                     ))}
-                  </Select>
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="logistics_region">区域</Label>
-                  <Select
+                  <select
                     id="logistics_region"
                     value={formData.logistics_region}
                     onChange={(e) =>
                       setFormData({ ...formData, logistics_region: e.target.value as 'East' | 'Central' | 'West' | '' })
                     }
+                    className="flex h-10 w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">选择区域</option>
                     {REGIONS.map((region) => (
@@ -256,7 +259,7 @@ export default function NewShipmentPage() {
                         {region === 'East' ? '东部' : region === 'Central' ? '中部' : '西部'}
                       </option>
                     ))}
-                  </Select>
+                  </select>
                 </div>
               </div>
             </CardContent>
@@ -400,16 +403,17 @@ export default function NewShipmentPage() {
                   >
                     <div className="space-y-2">
                       <Label>SKU</Label>
-                      <Select
+                      <select
                         value={item.sku}
                         onChange={(e) => updateItem(index, 'sku', e.target.value)}
+                        className="flex h-10 w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {SKUS.map((sku) => (
                           <option key={sku} value={sku}>
                             {sku}
                           </option>
                         ))}
-                      </Select>
+                      </select>
                     </div>
                     <div className="space-y-2">
                       <Label>数量</Label>
