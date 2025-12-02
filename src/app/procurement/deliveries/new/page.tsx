@@ -51,13 +51,24 @@ export default function NewDeliveryPage() {
   useEffect(() => {
     const fetchPOs = async () => {
       const supabase = createClient()
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('purchase_orders')
-        .select('id, po_number, batch_code')
+        .select('id, po_number, batch_code, po_status')
         .in('po_status', ['Confirmed', 'In Production'])
-        .order('actual_order_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
 
+      if (error) {
+        console.error('Error fetching POs:', error)
+        setError(`加载采购订单失败: ${error.message}`)
+        return
+      }
+
+      console.log('Fetched POs:', data)
       setPoOptions(data || [])
+
+      if (!data || data.length === 0) {
+        console.warn('No POs found with status Confirmed or In Production')
+      }
     }
     fetchPOs()
   }, [])
@@ -75,18 +86,21 @@ export default function NewDeliveryPage() {
 
       const { data, error } = await supabase
         .from('purchase_order_items')
-        .select('*')
+        .select('id, po_id, sku, channel_code, ordered_qty, delivered_qty, unit_price_usd')
         .eq('po_id', selectedPO)
         .order('sku')
 
       if (error) {
-        setError(`Failed to load PO items: ${error.message}`)
+        console.error('Error fetching PO items:', error)
+        setError(`加载采购订单明细失败: ${error.message}`)
         setLoadingPO(false)
         return
       }
 
+      console.log('Fetched PO items:', data)
+
       if (data) {
-        const items: DeliveryItemForm[] = data.map((item: PurchaseOrderItem) => ({
+        const items: DeliveryItemForm[] = data.map((item: any) => ({
           po_item_id: item.id,
           sku: item.sku,
           channel_code: item.channel_code,
@@ -123,7 +137,7 @@ export default function NewDeliveryPage() {
     setError('')
 
     if (!selectedPO) {
-      setError('Please select a purchase order')
+      setError('请选择采购订单')
       setLoading(false)
       return
     }
@@ -131,7 +145,7 @@ export default function NewDeliveryPage() {
     // Validate at least one item has delivery quantity
     const itemsToDeliver = deliveryItems.filter((item) => item.delivery_qty > 0)
     if (itemsToDeliver.length === 0) {
-      setError('Please enter delivery quantity for at least one item')
+      setError('请至少为一个SKU输入交付数量')
       setLoading(false)
       return
     }
@@ -142,7 +156,7 @@ export default function NewDeliveryPage() {
     )
     if (invalidItems.length > 0) {
       setError(
-        `Delivery quantity exceeds remaining quantity for: ${invalidItems.map((i) => i.sku).join(', ')}`
+        `交付数量超过剩余数量: ${invalidItems.map((i) => i.sku).join(', ')}`
       )
       setLoading(false)
       return
@@ -170,13 +184,13 @@ export default function NewDeliveryPage() {
       // Check if all succeeded
       const failures = results.filter((r) => !r.success)
       if (failures.length > 0) {
-        setError(`Some deliveries failed: ${failures.map((f) => f.error).join(', ')}`)
+        setError(`部分交货记录创建失败: ${failures.map((f) => f.error).join(', ')}`)
       } else {
         // Success - redirect back to procurement list
         router.push('/procurement')
       }
     } catch {
-      setError('Failed to create deliveries, please retry')
+      setError('创建交货记录失败，请重试')
     } finally {
       setLoading(false)
     }
@@ -184,7 +198,7 @@ export default function NewDeliveryPage() {
 
   return (
     <div className="flex flex-col">
-      <Header title="Record Production Delivery" description="Create new delivery record" />
+      <Header title="新增交货记录" description="记录工厂生产交货" />
 
       <div className="flex-1 p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -192,7 +206,7 @@ export default function NewDeliveryPage() {
           <Link href="/procurement">
             <Button variant="ghost" type="button">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to List
+              返回列表
             </Button>
           </Link>
 
@@ -205,28 +219,33 @@ export default function NewDeliveryPage() {
           {/* Delivery Info */}
           <Card>
             <CardHeader>
-              <CardTitle>Delivery Information</CardTitle>
+              <CardTitle>交货信息</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="po_id">Select Purchase Order *</Label>
+                  <Label htmlFor="po_id">选择采购订单 *</Label>
                   <Select
                     id="po_id"
                     value={selectedPO}
                     onChange={(e) => setSelectedPO(e.target.value)}
                     required
                   >
-                    <option value="">-- Select PO --</option>
+                    <option value="">-- 请选择 --</option>
                     {poOptions.map((po) => (
                       <option key={po.id} value={po.id}>
                         {po.po_number} - {po.batch_code}
                       </option>
                     ))}
                   </Select>
+                  {poOptions.length === 0 && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      暂无可用的采购订单。请先在采购管理中创建新订单并确认。
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="delivery_date">Delivery Date</Label>
+                  <Label htmlFor="delivery_date">交货日期 *</Label>
                   <Input
                     id="delivery_date"
                     type="date"
@@ -234,17 +253,18 @@ export default function NewDeliveryPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, delivery_date: e.target.value })
                     }
+                    required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="delivery_number">Delivery Number (Optional)</Label>
+                  <Label htmlFor="delivery_number">交货单号 (可选)</Label>
                   <Input
                     id="delivery_number"
                     value={formData.delivery_number}
                     onChange={(e) =>
                       setFormData({ ...formData, delivery_number: e.target.value })
                     }
-                    placeholder="e.g., DLV-2025-0001"
+                    placeholder="例如: DLV-2025-0001"
                   />
                 </div>
               </div>
@@ -257,15 +277,15 @@ export default function NewDeliveryPage() {
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <PackageCheck className="mr-2 h-5 w-5" />
-                  SKU Details
+                  SKU明细
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {loadingPO ? (
-                  <div className="py-8 text-center text-gray-500">Loading PO items...</div>
+                  <div className="py-8 text-center text-gray-500">加载中...</div>
                 ) : deliveryItems.length === 0 ? (
                   <div className="py-8 text-center text-gray-500">
-                    No items found for this PO
+                    该采购订单没有SKU明细
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -276,22 +296,22 @@ export default function NewDeliveryPage() {
                             SKU
                           </th>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                            Channel
+                            渠道
                           </th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
-                            Ordered
+                            订单数量
                           </th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
-                            Delivered
+                            已交付
                           </th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
-                            Remaining
+                            剩余
                           </th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
-                            This Delivery *
+                            本次交付 *
                           </th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
-                            Unit Cost
+                            单价
                           </th>
                         </tr>
                       </thead>
@@ -339,11 +359,11 @@ export default function NewDeliveryPage() {
                     {/* Summary */}
                     <div className="mt-6 flex justify-end space-x-8 border-t border-gray-200 pt-4">
                       <div className="text-right">
-                        <p className="text-sm text-gray-500">Total Quantity</p>
+                        <p className="text-sm text-gray-500">总数量</p>
                         <p className="text-xl font-semibold">{totalDeliveryQty}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-500">Total Value</p>
+                        <p className="text-sm text-gray-500">总货值</p>
                         <p className="text-xl font-semibold text-green-600">
                           ${totalDeliveryValue.toLocaleString()}
                         </p>
@@ -359,14 +379,14 @@ export default function NewDeliveryPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="space-y-2">
-                <Label htmlFor="remarks">Remarks (Optional)</Label>
+                <Label htmlFor="remarks">备注 (可选)</Label>
                 <Textarea
                   id="remarks"
                   value={formData.remarks}
                   onChange={(e) =>
                     setFormData({ ...formData, remarks: e.target.value })
                   }
-                  placeholder="Add any notes about this delivery..."
+                  placeholder="可以添加关于本次交货的备注信息..."
                   rows={3}
                 />
               </div>
@@ -377,7 +397,7 @@ export default function NewDeliveryPage() {
           <div className="flex justify-end space-x-4">
             <Link href="/procurement">
               <Button type="button" variant="outline">
-                Cancel
+                取消
               </Button>
             </Link>
             <Button
@@ -385,7 +405,7 @@ export default function NewDeliveryPage() {
               variant="primary"
               disabled={loading || !selectedPO || deliveryItems.length === 0}
             >
-              {loading ? 'Recording Delivery...' : 'Record Delivery'}
+              {loading ? '提交中...' : '确认交货'}
             </Button>
           </div>
         </form>

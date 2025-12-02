@@ -15,7 +15,7 @@ import { fetchShipments } from '@/lib/queries/logistics'
 import { formatDate, formatCurrencyCNY, getWarehouseTypeVariant } from '@/lib/utils'
 import { PaymentStatusToggle } from '@/components/logistics/payment-status-toggle'
 import { ArrivalConfirmButton } from '@/components/logistics/arrival-confirm-button'
-import { Plus, Eye, Truck, Package } from 'lucide-react'
+import { Plus, Eye, Truck, Package, Pencil, Trash2 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -221,11 +221,26 @@ export default async function LogisticsPage() {
                         />
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/logistics/${shipment.id}`}>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4" />
+                        <div className="flex items-center justify-end gap-1">
+                          <Link href={`/logistics/${shipment.id}`}>
+                            <Button variant="ghost" size="sm" title="查看详情">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Link href={`/logistics/${shipment.id}/edit`}>
+                            <Button variant="ghost" size="sm" title="编辑">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                            title="删除"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                        </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

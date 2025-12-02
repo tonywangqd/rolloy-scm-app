@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { format, startOfWeek, endOfWeek, getISOWeek, getISOWeekYear, addWeeks } from 'date-fns'
+import { format, startOfWeek, endOfWeek, getISOWeek, getISOWeekYear, addWeeks, addMonths, lastDayOfMonth, isWeekend, subDays } from 'date-fns'
 
 // ================================================================
 // CSS Utils
@@ -67,6 +67,48 @@ export function generateWeekRange(startWeek: string, numWeeks: number): string[]
  */
 export function getCurrentWeek(): string {
   return getISOWeekString(new Date())
+}
+
+/**
+ * Get last business day of a month (excluding Saturday and Sunday)
+ */
+export function getLastBusinessDay(date: Date): Date {
+  let lastDay = lastDayOfMonth(date)
+
+  // Move backward until we find a business day
+  while (isWeekend(lastDay)) {
+    lastDay = subDays(lastDay, 1)
+  }
+
+  return lastDay
+}
+
+/**
+ * Calculate procurement payment date (60 days after delivery, on last business day of payment month)
+ * Formula: payment_month = delivery_month + 2, payment_date = last business day of payment_month
+ */
+export function getProcurementPaymentDate(deliveryDate: Date): Date {
+  const paymentMonth = addMonths(deliveryDate, 2)
+  return getLastBusinessDay(paymentMonth)
+}
+
+/**
+ * Calculate logistics payment date based on arrival date
+ * Rules:
+ * - If arrival day <= 15: payment on 15th of next month
+ * - If arrival day > 15: payment on last business day of next month
+ */
+export function getLogisticsPaymentDate(arrivalDate: Date): Date {
+  const dayOfMonth = arrivalDate.getDate()
+  const nextMonth = addMonths(arrivalDate, 1)
+
+  if (dayOfMonth <= 15) {
+    // Payment on 15th of next month
+    return new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 15)
+  } else {
+    // Payment on last business day of next month
+    return getLastBusinessDay(nextMonth)
+  }
 }
 
 // ================================================================

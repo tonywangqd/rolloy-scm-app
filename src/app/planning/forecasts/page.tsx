@@ -15,20 +15,28 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowLeft, Save, Copy, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Copy, Plus, Trash2, Download, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Product, Channel, SalesForecast } from '@/lib/types/database'
-import { format } from 'date-fns'
-import { getCurrentWeek, addWeeksToWeekString, getWeekInfo } from '@/lib/utils/date'
+import { format, endOfISOWeek } from 'date-fns'
+import { getCurrentWeek, addWeeksToWeekString, getWeekInfo, parseWeekString } from '@/lib/utils/date'
 
 interface ForecastRow {
   id?: string
   sku: string
-  channel_code: string
-  forecast_qty: number
+  channelForecasts: { [channelCode: string]: number }
   isNew?: boolean
   isModified?: boolean
+}
+
+// Helper function to format week with date range
+function getWeekDateRange(weekIso: string): string {
+  const weekStart = parseWeekString(weekIso)
+  if (!weekStart) return weekIso
+
+  const weekEnd = endOfISOWeek(weekStart)
+  return `${weekIso} (${format(weekStart, 'M.d')}-${format(weekEnd, 'M.d')})`
 }
 
 export default function ForecastsPage() {
@@ -106,14 +114,23 @@ export default function ForecastsPage() {
       console.error('Error loading forecasts:', error)
       setMessage('加载失败')
     } else {
-      setForecasts(
-        ((data || []) as any[]).map((f: any) => ({
-          id: f.id,
-          sku: f.sku,
-          channel_code: f.channel_code,
-          forecast_qty: f.forecast_qty,
-        }))
-      )
+      // Group by SKU with all channels
+      const forecastMap = new Map<string, { [channelCode: string]: number }>()
+
+      ;((data || []) as any[]).forEach((f: any) => {
+        if (!forecastMap.has(f.sku)) {
+          forecastMap.set(f.sku, {})
+        }
+        forecastMap.get(f.sku)![f.channel_code] = f.forecast_qty
+      })
+
+      // Convert to rows
+      const rows: ForecastRow[] = Array.from(forecastMap.entries()).map(([sku, channelForecasts]) => ({
+        sku,
+        channelForecasts,
+      }))
+
+      setForecasts(rows)
     }
 
     setLoading(false)
@@ -122,12 +139,16 @@ export default function ForecastsPage() {
   const addRow = () => {
     if (products.length === 0 || channels.length === 0) return
 
+    const channelForecasts: { [channelCode: string]: number } = {}
+    channels.forEach((c) => {
+      channelForecasts[c.channel_code] = 0
+    })
+
     setForecasts([
       ...forecasts,
       {
         sku: products[0].sku,
-        channel_code: channels[0].channel_code,
-        forecast_qty: 0,
+        channelForecasts,
         isNew: true,
       },
     ])
@@ -137,13 +158,14 @@ export default function ForecastsPage() {
     setForecasts(forecasts.filter((_, i) => i !== index))
   }
 
-  const updateRow = (index: number, field: keyof ForecastRow, value: string | number) => {
+  const updateRow = (index: number, field: 'sku' | 'channel', value: string, channelCode?: string) => {
     const newForecasts = [...forecasts]
-    newForecasts[index] = {
-      ...newForecasts[index],
-      [field]: value,
-      isModified: true,
+    if (field === 'sku') {
+      newForecasts[index].sku = value
+    } else if (field === 'channel' && channelCode) {
+      newForecasts[index].channelForecasts[channelCode] = parseInt(value) || 0
     }
+    newForecasts[index].isModified = true
     setForecasts(newForecasts)
   }
 
@@ -163,15 +185,20 @@ export default function ForecastsPage() {
       return
     }
 
-    // Prepare data for upsert
-    const dataToSave = forecasts.map((f) => ({
-      week_iso: selectedWeek,
-      week_start_date: format(weekInfo.startDate, 'yyyy-MM-dd'),
-      week_end_date: format(weekInfo.endDate, 'yyyy-MM-dd'),
-      sku: f.sku,
-      channel_code: f.channel_code,
-      forecast_qty: f.forecast_qty,
-    }))
+    // Prepare data for upsert - flatten to individual channel records
+    const dataToSave: any[] = []
+    forecasts.forEach((row) => {
+      Object.entries(row.channelForecasts).forEach(([channelCode, qty]) => {
+        dataToSave.push({
+          week_iso: selectedWeek,
+          week_start_date: format(weekInfo.startDate, 'yyyy-MM-dd'),
+          week_end_date: format(weekInfo.endDate, 'yyyy-MM-dd'),
+          sku: row.sku,
+          channel_code: channelCode,
+          forecast_qty: qty,
+        })
+      })
+    })
 
     const { error } = await (supabase
       .from('sales_forecasts') as any)
@@ -204,15 +231,24 @@ export default function ForecastsPage() {
     if (error) {
       setMessage('复制失败')
     } else if (data && data.length > 0) {
-      setForecasts(
-        (data as any[]).map((f: any) => ({
-          sku: f.sku,
-          channel_code: f.channel_code,
-          forecast_qty: f.forecast_qty,
-          isNew: true,
-        }))
-      )
-      setMessage(`已从 ${fromWeek} 复制 ${data.length} 条记录`)
+      // Group by SKU
+      const forecastMap = new Map<string, { [channelCode: string]: number }>()
+
+      ;((data || []) as any[]).forEach((f: any) => {
+        if (!forecastMap.has(f.sku)) {
+          forecastMap.set(f.sku, {})
+        }
+        forecastMap.get(f.sku)![f.channel_code] = f.forecast_qty
+      })
+
+      const rows: ForecastRow[] = Array.from(forecastMap.entries()).map(([sku, channelForecasts]) => ({
+        sku,
+        channelForecasts,
+        isNew: true,
+      }))
+
+      setForecasts(rows)
+      setMessage(`已从 ${getWeekDateRange(fromWeek)} 复制 ${data.length} 条记录`)
     } else {
       setMessage('源周没有数据')
     }
@@ -220,7 +256,69 @@ export default function ForecastsPage() {
     setLoading(false)
   }
 
-  const totalQty = forecasts.reduce((sum, f) => sum + f.forecast_qty, 0)
+  const downloadTemplate = () => {
+    const rows = ['SKU\tChannel\tForecast Qty']
+
+    // Add example rows
+    if (products.length > 0 && channels.length > 0) {
+      const exampleSku = products[0].sku
+      channels.forEach((channel) => {
+        rows.push(`${exampleSku}\t${channel.channel_code}\t0`)
+      })
+    }
+
+    const template = rows.join('\n')
+    const blob = new Blob([template], { type: 'text/tab-separated-values' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `forecast_template_${selectedWeek || 'template'}.tsv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const text = await file.text()
+    const lines = text.split('\n').filter((line) => line.trim())
+
+    // Skip header
+    const dataLines = lines.slice(1)
+
+    // Parse TSV
+    const forecastMap = new Map<string, { [channelCode: string]: number }>()
+
+    dataLines.forEach((line) => {
+      const [sku, channelCode, qtyStr] = line.split('\t').map((s) => s.trim())
+      if (!sku || !channelCode) return
+
+      const qty = parseInt(qtyStr) || 0
+
+      if (!forecastMap.has(sku)) {
+        forecastMap.set(sku, {})
+      }
+      forecastMap.get(sku)![channelCode] = qty
+    })
+
+    // Convert to rows
+    const rows: ForecastRow[] = Array.from(forecastMap.entries()).map(([sku, channelForecasts]) => ({
+      sku,
+      channelForecasts,
+      isNew: true,
+    }))
+
+    setForecasts(rows)
+    setMessage(`已导入 ${rows.length} 个SKU的预测数据`)
+
+    // Reset file input
+    event.target.value = ''
+  }
+
+  const totalQty = forecasts.reduce((sum, f) => {
+    return sum + Object.values(f.channelForecasts).reduce((a, b) => a + b, 0)
+  }, 0)
 
   return (
     <div className="flex flex-col">
@@ -258,7 +356,7 @@ export default function ForecastsPage() {
                   <option value="">选择周次</option>
                   {availableWeeks.map((week) => (
                     <option key={week} value={week}>
-                      {week}
+                      {getWeekDateRange(week)}
                     </option>
                   ))}
                 </Select>
@@ -278,12 +376,48 @@ export default function ForecastsPage() {
                     .filter((w) => w !== selectedWeek)
                     .map((week) => (
                       <option key={week} value={week}>
-                        {week}
+                        {getWeekDateRange(week)}
                       </option>
                     ))}
                 </Select>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Excel Upload Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>从Excel导入</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={downloadTemplate}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                下载模板
+              </Button>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="file-upload"
+                  type="file"
+                  accept=".tsv,.txt,.csv"
+                  onChange={handleFileUpload}
+                  className="max-w-xs"
+                />
+                <Label htmlFor="file-upload" className="text-sm text-gray-500">
+                  <Upload className="inline h-4 w-4 mr-1" />
+                  选择文件上传
+                </Label>
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-gray-500">
+              模板格式: SKU | 渠道 | 预测数量 (制表符分隔)
+            </p>
           </CardContent>
         </Card>
 
@@ -322,59 +456,62 @@ export default function ForecastsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>SKU</TableHead>
-                    <TableHead>渠道</TableHead>
-                    <TableHead className="text-right">预测数量</TableHead>
+                    {channels.map((channel) => (
+                      <TableHead key={channel.channel_code} className="text-right">
+                        {channel.channel_name}
+                      </TableHead>
+                    ))}
+                    <TableHead className="text-right font-semibold">合计</TableHead>
                     <TableHead className="w-16">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {forecasts.map((row, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        <Select
-                          value={row.sku}
-                          onChange={(e) => updateRow(index, 'sku', e.target.value)}
-                        >
-                          {products.map((p) => (
-                            <option key={p.sku} value={p.sku}>
-                              {p.sku} - {p.product_name}
-                            </option>
-                          ))}
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={row.channel_code}
-                          onChange={(e) => updateRow(index, 'channel_code', e.target.value)}
-                        >
-                          {channels.map((c) => (
-                            <option key={c.channel_code} value={c.channel_code}>
-                              {c.channel_name}
-                            </option>
-                          ))}
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={row.forecast_qty}
-                          onChange={(e) => updateRow(index, 'forecast_qty', parseInt(e.target.value) || 0)}
-                          className="text-right"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeRow(index)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {forecasts.map((row, index) => {
+                    const rowTotal = Object.values(row.channelForecasts).reduce((a, b) => a + b, 0)
+
+                    return (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <Select
+                            value={row.sku}
+                            onChange={(e) => updateRow(index, 'sku', e.target.value)}
+                          >
+                            {products.map((p) => (
+                              <option key={p.sku} value={p.sku}>
+                                {p.sku} - {p.product_name}
+                              </option>
+                            ))}
+                          </Select>
+                        </TableCell>
+                        {channels.map((channel) => (
+                          <TableCell key={channel.channel_code}>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={row.channelForecasts[channel.channel_code] || 0}
+                              onChange={(e) =>
+                                updateRow(index, 'channel', e.target.value, channel.channel_code)
+                              }
+                              className="text-right"
+                            />
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right font-semibold">
+                          {rowTotal.toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeRow(index)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             )}

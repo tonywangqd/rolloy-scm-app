@@ -155,6 +155,12 @@ export default async function PlanningPage() {
             </span>
           </div>
           <div className="flex space-x-2">
+            <Link href="/planning/calculation-audit">
+              <Button variant="outline">
+                <BarChart3 className="mr-2 h-4 w-4" />
+                计算验证
+              </Button>
+            </Link>
             <Link href="/planning/forecasts">
               <Button variant="outline">
                 <FileEdit className="mr-2 h-4 w-4" />

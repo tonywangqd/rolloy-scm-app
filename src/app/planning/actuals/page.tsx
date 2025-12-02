@@ -15,21 +15,29 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowLeft, Save, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Download, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Product, Channel } from '@/lib/types/database'
-import { getCurrentWeek, addWeeksToWeekString, getWeekInfo } from '@/lib/utils/date'
-import { format } from 'date-fns'
+import { getCurrentWeek, addWeeksToWeekString, getWeekInfo, parseWeekString } from '@/lib/utils/date'
+import { format, endOfISOWeek } from 'date-fns'
 
 interface ActualRow {
   id?: string
   sku: string
-  channel_code: string
-  actual_qty: number
-  forecast_qty?: number
+  channelActuals: { [channelCode: string]: number }
+  channelForecasts?: { [channelCode: string]: number }
   isNew?: boolean
   isModified?: boolean
+}
+
+// Helper function to format week with date range
+function getWeekDateRange(weekIso: string): string {
+  const weekStart = parseWeekString(weekIso)
+  if (!weekStart) return weekIso
+
+  const weekEnd = endOfISOWeek(weekStart)
+  return `${weekIso} (${format(weekStart, 'M.d')}-${format(weekEnd, 'M.d')})`
 }
 
 export default function ActualsPage() {
@@ -123,49 +131,51 @@ export default function ActualsPage() {
       return
     }
 
-    // Create forecast map
-    const forecastMap = new Map(
-      ((forecastsResult.data || []) as any[]).map((f: any) => [`${f.sku}-${f.channel_code}`, f.forecast_qty])
-    )
+    // Group forecasts by SKU and channel
+    const forecastsBySku = new Map<string, { [channelCode: string]: number }>()
+    ;((forecastsResult.data || []) as any[]).forEach((f: any) => {
+      if (!forecastsBySku.has(f.sku)) {
+        forecastsBySku.set(f.sku, {})
+      }
+      forecastsBySku.get(f.sku)![f.channel_code] = f.forecast_qty
+    })
 
-    // If we have actuals, use them
-    if (actualsResult.data && actualsResult.data.length > 0) {
-      setActuals(
-        (actualsResult.data as any[]).map((a: any) => ({
-          id: a.id,
-          sku: a.sku,
-          channel_code: a.channel_code,
-          actual_qty: a.actual_qty,
-          forecast_qty: forecastMap.get(`${a.sku}-${a.channel_code}`),
-        }))
-      )
-    } else if (forecastsResult.data && forecastsResult.data.length > 0) {
-      // If no actuals but we have forecasts, pre-populate with forecast structure
-      setActuals(
-        (forecastsResult.data as any[]).map((f: any) => ({
-          sku: f.sku,
-          channel_code: f.channel_code,
-          actual_qty: 0,
-          forecast_qty: f.forecast_qty,
-          isNew: true,
-        }))
-      )
-    } else {
-      setActuals([])
-    }
+    // Group actuals by SKU and channel
+    const actualsBySku = new Map<string, { [channelCode: string]: number }>()
+    ;((actualsResult.data || []) as any[]).forEach((a: any) => {
+      if (!actualsBySku.has(a.sku)) {
+        actualsBySku.set(a.sku, {})
+      }
+      actualsBySku.get(a.sku)![a.channel_code] = a.actual_qty
+    })
 
+    // Combine all SKUs from both actuals and forecasts
+    const allSkus = new Set([...actualsBySku.keys(), ...forecastsBySku.keys()])
+
+    const rows: ActualRow[] = Array.from(allSkus).map((sku) => ({
+      sku,
+      channelActuals: actualsBySku.get(sku) || {},
+      channelForecasts: forecastsBySku.get(sku),
+      isNew: !actualsBySku.has(sku),
+    }))
+
+    setActuals(rows)
     setLoading(false)
   }
 
   const addRow = () => {
     if (products.length === 0 || channels.length === 0) return
 
+    const channelActuals: { [channelCode: string]: number } = {}
+    channels.forEach((c) => {
+      channelActuals[c.channel_code] = 0
+    })
+
     setActuals([
       ...actuals,
       {
         sku: products[0].sku,
-        channel_code: channels[0].channel_code,
-        actual_qty: 0,
+        channelActuals,
         isNew: true,
       },
     ])
@@ -175,13 +185,14 @@ export default function ActualsPage() {
     setActuals(actuals.filter((_, i) => i !== index))
   }
 
-  const updateRow = (index: number, field: keyof ActualRow, value: string | number) => {
+  const updateRow = (index: number, field: 'sku' | 'channel', value: string, channelCode?: string) => {
     const newActuals = [...actuals]
-    newActuals[index] = {
-      ...newActuals[index],
-      [field]: value,
-      isModified: true,
+    if (field === 'sku') {
+      newActuals[index].sku = value
+    } else if (field === 'channel' && channelCode) {
+      newActuals[index].channelActuals[channelCode] = parseInt(value) || 0
     }
+    newActuals[index].isModified = true
     setActuals(newActuals)
   }
 
@@ -201,15 +212,20 @@ export default function ActualsPage() {
       return
     }
 
-    // Prepare data for upsert
-    const dataToSave = actuals.map((a) => ({
-      week_iso: selectedWeek,
-      week_start_date: format(weekInfo.startDate, 'yyyy-MM-dd'),
-      week_end_date: format(weekInfo.endDate, 'yyyy-MM-dd'),
-      sku: a.sku,
-      channel_code: a.channel_code,
-      actual_qty: a.actual_qty,
-    }))
+    // Prepare data for upsert - flatten to individual channel records
+    const dataToSave: any[] = []
+    actuals.forEach((row) => {
+      Object.entries(row.channelActuals).forEach(([channelCode, qty]) => {
+        dataToSave.push({
+          week_iso: selectedWeek,
+          week_start_date: format(weekInfo.startDate, 'yyyy-MM-dd'),
+          week_end_date: format(weekInfo.endDate, 'yyyy-MM-dd'),
+          sku: row.sku,
+          channel_code: channelCode,
+          actual_qty: qty,
+        })
+      })
+    })
 
     const { error } = await (supabase
       .from('sales_actuals') as any)
@@ -228,8 +244,73 @@ export default function ActualsPage() {
     setSaving(false)
   }
 
-  const totalActual = actuals.reduce((sum, a) => sum + a.actual_qty, 0)
-  const totalForecast = actuals.reduce((sum, a) => sum + (a.forecast_qty || 0), 0)
+  const downloadTemplate = () => {
+    const rows = ['SKU\tChannel\tActual Qty']
+
+    // Add example rows
+    if (products.length > 0 && channels.length > 0) {
+      const exampleSku = products[0].sku
+      channels.forEach((channel) => {
+        rows.push(`${exampleSku}\t${channel.channel_code}\t0`)
+      })
+    }
+
+    const template = rows.join('\n')
+    const blob = new Blob([template], { type: 'text/tab-separated-values' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `actuals_template_${selectedWeek || 'template'}.tsv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const text = await file.text()
+    const lines = text.split('\n').filter((line) => line.trim())
+
+    // Skip header
+    const dataLines = lines.slice(1)
+
+    // Parse TSV
+    const actualsMap = new Map<string, { [channelCode: string]: number }>()
+
+    dataLines.forEach((line) => {
+      const [sku, channelCode, qtyStr] = line.split('\t').map((s) => s.trim())
+      if (!sku || !channelCode) return
+
+      const qty = parseInt(qtyStr) || 0
+
+      if (!actualsMap.has(sku)) {
+        actualsMap.set(sku, {})
+      }
+      actualsMap.get(sku)![channelCode] = qty
+    })
+
+    // Convert to rows
+    const rows: ActualRow[] = Array.from(actualsMap.entries()).map(([sku, channelActuals]) => ({
+      sku,
+      channelActuals,
+      isNew: true,
+    }))
+
+    setActuals(rows)
+    setMessage(`已导入 ${rows.length} 个SKU的实际销量数据`)
+
+    // Reset file input
+    event.target.value = ''
+  }
+
+  const totalActual = actuals.reduce((sum, a) => {
+    return sum + Object.values(a.channelActuals).reduce((x, y) => x + y, 0)
+  }, 0)
+  const totalForecast = actuals.reduce((sum, a) => {
+    if (!a.channelForecasts) return sum
+    return sum + Object.values(a.channelForecasts).reduce((x, y) => x + y, 0)
+  }, 0)
   const variance = totalActual - totalForecast
   const variancePct = totalForecast > 0 ? (variance / totalForecast) * 100 : 0
 
@@ -269,11 +350,47 @@ export default function ActualsPage() {
                 <option value="">选择周次</option>
                 {availableWeeks.map((week) => (
                   <option key={week} value={week}>
-                    {week}
+                    {getWeekDateRange(week)}
                   </option>
                 ))}
               </Select>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Excel Upload Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>从Excel导入</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={downloadTemplate}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                下载模板
+              </Button>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="file-upload-actuals"
+                  type="file"
+                  accept=".tsv,.txt,.csv"
+                  onChange={handleFileUpload}
+                  className="max-w-xs"
+                />
+                <Label htmlFor="file-upload-actuals" className="text-sm text-gray-500">
+                  <Upload className="inline h-4 w-4 mr-1" />
+                  选择文件上传
+                </Label>
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-gray-500">
+              模板格式: SKU | 渠道 | 实际数量 (制表符分隔)
+            </p>
           </CardContent>
         </Card>
 
@@ -308,87 +425,109 @@ export default function ActualsPage() {
                 暂无数据，点击"添加行"开始录入
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>渠道</TableHead>
-                    <TableHead className="text-right">预测数量</TableHead>
-                    <TableHead className="text-right">实际数量</TableHead>
-                    <TableHead className="text-right">偏差</TableHead>
-                    <TableHead className="w-16">操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {actuals.map((row, index) => {
-                    const rowVariance = row.actual_qty - (row.forecast_qty || 0)
-                    const rowVariancePct = row.forecast_qty ? (rowVariance / row.forecast_qty) * 100 : 0
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>SKU</TableHead>
+                      {channels.map((channel) => (
+                        <TableHead key={`forecast-${channel.channel_code}`} className="text-right text-gray-500 text-xs">
+                          {channel.channel_name}
+                          <br />
+                          <span className="font-normal">(预测)</span>
+                        </TableHead>
+                      ))}
+                      {channels.map((channel) => (
+                        <TableHead key={`actual-${channel.channel_code}`} className="text-right">
+                          {channel.channel_name}
+                          <br />
+                          <span className="font-semibold">(实际)</span>
+                        </TableHead>
+                      ))}
+                      <TableHead className="text-right font-semibold">合计</TableHead>
+                      <TableHead className="text-right font-semibold">偏差</TableHead>
+                      <TableHead className="w-16">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {actuals.map((row, index) => {
+                      const rowActual = Object.values(row.channelActuals).reduce((a, b) => a + b, 0)
+                      const rowForecast = row.channelForecasts
+                        ? Object.values(row.channelForecasts).reduce((a, b) => a + b, 0)
+                        : 0
+                      const rowVariance = rowActual - rowForecast
+                      const rowVariancePct = rowForecast > 0 ? (rowVariance / rowForecast) * 100 : 0
 
-                    return (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <Select
-                            value={row.sku}
-                            onChange={(e) => updateRow(index, 'sku', e.target.value)}
-                          >
-                            {products.map((p) => (
-                              <option key={p.sku} value={p.sku}>
-                                {p.sku} - {p.product_name}
-                              </option>
-                            ))}
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={row.channel_code}
-                            onChange={(e) => updateRow(index, 'channel_code', e.target.value)}
-                          >
-                            {channels.map((c) => (
-                              <option key={c.channel_code} value={c.channel_code}>
-                                {c.channel_name}
-                              </option>
-                            ))}
-                          </Select>
-                        </TableCell>
-                        <TableCell className="text-right text-gray-500">
-                          {row.forecast_qty?.toLocaleString() || '-'}
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            value={row.actual_qty}
-                            onChange={(e) => updateRow(index, 'actual_qty', parseInt(e.target.value) || 0)}
-                            className="text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {row.forecast_qty !== undefined ? (
-                            <span className={rowVariance >= 0 ? 'text-green-600' : 'text-red-600'}>
-                              {rowVariance >= 0 ? '+' : ''}{rowVariance.toLocaleString()}
-                              <span className="ml-1 text-xs">
-                                ({rowVariancePct >= 0 ? '+' : ''}{rowVariancePct.toFixed(0)}%)
+                      return (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <Select
+                              value={row.sku}
+                              onChange={(e) => updateRow(index, 'sku', e.target.value)}
+                            >
+                              {products.map((p) => (
+                                <option key={p.sku} value={p.sku}>
+                                  {p.sku} - {p.product_name}
+                                </option>
+                              ))}
+                            </Select>
+                          </TableCell>
+                          {/* Forecast columns */}
+                          {channels.map((channel) => (
+                            <TableCell
+                              key={`forecast-${channel.channel_code}`}
+                              className="text-right text-gray-400 text-sm"
+                            >
+                              {row.channelForecasts?.[channel.channel_code]?.toLocaleString() || '-'}
+                            </TableCell>
+                          ))}
+                          {/* Actual columns (editable) */}
+                          {channels.map((channel) => (
+                            <TableCell key={`actual-${channel.channel_code}`}>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={row.channelActuals[channel.channel_code] || 0}
+                                onChange={(e) =>
+                                  updateRow(index, 'channel', e.target.value, channel.channel_code)
+                                }
+                                className="text-right"
+                              />
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-right font-semibold">
+                            {rowActual.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {rowForecast > 0 ? (
+                              <span className={rowVariance >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                {rowVariance >= 0 ? '+' : ''}
+                                {rowVariance.toLocaleString()}
+                                <span className="ml-1 text-xs">
+                                  ({rowVariancePct >= 0 ? '+' : ''}
+                                  {rowVariancePct.toFixed(0)}%)
+                                </span>
                               </span>
-                            </span>
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeRow(index)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeRow(index)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             )}
 
             {actuals.length > 0 && (
