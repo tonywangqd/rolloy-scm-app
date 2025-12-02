@@ -19,13 +19,13 @@ TRUNCATE TABLE inventory_snapshots CASCADE;
 -- ================================================================
 
 -- Products (5 SKUs for testing)
-INSERT INTO products (sku, product_name, unit_cost_usd, safety_stock_weeks, is_active)
+INSERT INTO products (sku, spu, color_code, product_name, unit_cost_usd, safety_stock_weeks, is_active)
 VALUES
-  ('SKU-001', 'Product A - Black', 25.00, 2, true),
-  ('SKU-002', 'Product A - White', 25.00, 2, true),
-  ('SKU-003', 'Product B - Black', 35.00, 3, true),
-  ('SKU-004', 'Product C - Red', 45.00, 2, true),
-  ('SKU-005', 'Product D - Blue', 30.00, 2, true)
+  ('SKU-001', 'SPU-A', 'BLK', 'Product A - Black', 25.00, 2, true),
+  ('SKU-002', 'SPU-A', 'WHT', 'Product A - White', 25.00, 2, true),
+  ('SKU-003', 'SPU-B', 'BLK', 'Product B - Black', 35.00, 3, true),
+  ('SKU-004', 'SPU-C', 'RED', 'Product C - Red', 45.00, 2, true),
+  ('SKU-005', 'SPU-D', 'BLU', 'Product D - Blue', 30.00, 2, true)
 ON CONFLICT (sku) DO UPDATE SET
   product_name = EXCLUDED.product_name,
   unit_cost_usd = EXCLUDED.unit_cost_usd;
