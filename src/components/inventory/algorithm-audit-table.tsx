@@ -1,8 +1,9 @@
 'use client'
 
 /**
- * Algorithm Audit Table - Client Component
- * Interactive 16-week inventory calculation table with expandable shipment details
+ * Algorithm Audit Table V2.0 - Client Component
+ * Enhanced 21-column table with full supply chain timeline
+ * Groups: Basic Info, Sales, Arrival, Ship, Factory Ship, Order, Inventory
  */
 
 import { useState } from 'react'
@@ -103,46 +104,110 @@ export function AlgorithmAuditTable({
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead className="bg-gray-100 sticky top-0 z-10">
-                <tr>
-                  <th className="sticky left-0 z-20 bg-gray-100 border-b border-r-2 border-gray-300 px-3 py-3 text-left font-semibold whitespace-nowrap">
+            <table className="w-full text-xs border-collapse">
+              {/* Double-layer header with grouped columns */}
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                {/* Layer 1: Group Headers */}
+                <tr className="border-b-2 border-gray-300">
+                  <th colSpan={2} className="border-r-2 border-gray-300 px-2 py-2 text-center font-bold bg-white text-gray-700">
+                    基础信息<br />Basic Info
+                  </th>
+                  <th colSpan={3} className="border-r-2 border-gray-300 px-2 py-2 text-center font-bold bg-yellow-50 text-gray-700">
+                    销售数据<br />Sales Data
+                  </th>
+                  <th colSpan={5} className="border-r-2 border-gray-300 px-2 py-2 text-center font-bold bg-blue-50 text-gray-700">
+                    到仓数据<br />Arrival Data
+                  </th>
+                  <th colSpan={2} className="border-r-2 border-gray-300 px-2 py-2 text-center font-bold bg-purple-50 text-gray-700">
+                    发货数据<br />Ship Data
+                  </th>
+                  <th colSpan={2} className="border-r-2 border-gray-300 px-2 py-2 text-center font-bold bg-orange-50 text-gray-700">
+                    出货数据<br />Factory Ship
+                  </th>
+                  <th colSpan={2} className="border-r-2 border-gray-300 px-2 py-2 text-center font-bold bg-green-50 text-gray-700">
+                    下单数据<br />Order Data
+                  </th>
+                  <th colSpan={5} className="px-2 py-2 text-center font-bold bg-gray-100 text-gray-700">
+                    库存计算<br />Inventory
+                  </th>
+                </tr>
+
+                {/* Layer 2: Column Headers */}
+                <tr className="bg-gray-100 border-b border-gray-300">
+                  {/* Basic Info (2) */}
+                  <th className="sticky left-0 z-20 bg-gray-100 border-r border-gray-300 px-2 py-2 text-left font-semibold whitespace-nowrap text-xs">
                     周次<br />Week
                   </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-left font-semibold whitespace-nowrap">
-                    周起始日<br />Week Start
+                  <th className="border-r-2 border-gray-300 px-2 py-2 text-left font-semibold whitespace-nowrap">
+                    周起始日<br />Start Date
                   </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
+
+                  {/* Sales Data (3) */}
+                  <th className="bg-yellow-50 border-r border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
+                    预计销量<br />Forecast
+                  </th>
+                  <th className="bg-yellow-50 border-r border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
+                    实际销量<br />Actual
+                  </th>
+                  <th className="bg-yellow-50 border-r-2 border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
+                    销量取值<br />Effective
+                  </th>
+
+                  {/* Arrival Data (5) */}
+                  <th className="bg-blue-50 border-r border-gray-300 px-2 py-2 text-center font-semibold whitespace-nowrap">
+                    预计到仓周<br />Plan Week
+                  </th>
+                  <th className="bg-blue-50 border-r border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
+                    预计到仓量<br />Plan Qty
+                  </th>
+                  <th className="bg-blue-50 border-r border-gray-300 px-2 py-2 text-center font-semibold whitespace-nowrap">
+                    实际到仓周<br />Actual Week
+                  </th>
+                  <th className="bg-blue-50 border-r border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
+                    实际到仓量<br />Actual Qty
+                  </th>
+                  <th className="bg-blue-50 border-r-2 border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
+                    到仓取值<br />Effective
+                  </th>
+
+                  {/* Ship Data (2) */}
+                  <th className="bg-purple-50 border-r border-gray-300 px-2 py-2 text-center font-semibold whitespace-nowrap">
+                    预计发货周<br />Plan Week
+                  </th>
+                  <th className="bg-purple-50 border-r-2 border-gray-300 px-2 py-2 text-center font-semibold whitespace-nowrap">
+                    实际发货周<br />Actual Week
+                  </th>
+
+                  {/* Factory Ship Data (2) */}
+                  <th className="bg-orange-50 border-r border-gray-300 px-2 py-2 text-center font-semibold whitespace-nowrap">
+                    预计出货周<br />Plan Week
+                  </th>
+                  <th className="bg-orange-50 border-r-2 border-gray-300 px-2 py-2 text-center font-semibold whitespace-nowrap">
+                    实际出货周<br />Actual Week
+                  </th>
+
+                  {/* Order Data (2) */}
+                  <th className="bg-green-50 border-r border-gray-300 px-2 py-2 text-center font-semibold whitespace-nowrap">
+                    预计下单周<br />Plan Week
+                  </th>
+                  <th className="bg-green-50 border-r-2 border-gray-300 px-2 py-2 text-center font-semibold whitespace-nowrap">
+                    实际下单周<br />Actual Week
+                  </th>
+
+                  {/* Inventory Calculation (5) */}
+                  <th className="bg-gray-100 border-r border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
                     期初库存<br />Opening
                   </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
-                    预估下单<br />Forecast
-                  </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
-                    实际下单<br />Actual
-                  </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
-                    下单取值<br />Effective
-                  </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
-                    出货预估<br />Ship Plan
-                  </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
-                    出货实际<br />Ship Actual
-                  </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap cursor-pointer hover:bg-gray-200">
-                    到仓数量<br />Incoming
-                  </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
-                    本周变化<br />Net Change
-                  </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
+                  <th className="bg-gray-100 border-r border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
                     期末库存<br />Closing
                   </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-right font-semibold whitespace-nowrap">
+                  <th className="bg-gray-100 border-r border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
                     安全库存<br />Safety
                   </th>
-                  <th className="border-b border-gray-300 px-3 py-3 text-center font-semibold whitespace-nowrap">
+                  <th className="bg-gray-100 border-r border-gray-300 px-2 py-2 text-right font-semibold whitespace-nowrap">
+                    周转率<br />Turnover
+                  </th>
+                  <th className="bg-gray-100 px-2 py-2 text-center font-semibold whitespace-nowrap">
                     状态<br />Status
                   </th>
                 </tr>
@@ -151,7 +216,18 @@ export function AlgorithmAuditTable({
                 {rows.map((row) => {
                   const isExpanded = expandedWeeks.has(row.week_iso)
                   const hasShipments = row.shipments.length > 0
-                  const borderClass = row.is_current ? 'border-l-4 border-l-blue-400' : ''
+                  const borderClass = row.is_current ? 'border-l-4 border-l-blue-500' : ''
+
+                  // Calculate turnover ratio (weeks of inventory coverage)
+                  const turnoverRatio = row.sales_effective > 0
+                    ? row.closing_stock / row.sales_effective
+                    : null
+
+                  // Placeholder data for V2 columns (to be implemented by backend)
+                  const plannedArrivalWeek = '-' // Backend will implement backtracking algorithm
+                  const plannedArrivalQty = 0
+                  const actualArrivalWeek = row.shipments.length > 0 ? row.week_iso : null
+                  const actualArrivalQty = row.shipment_actual_qty
 
                   return (
                     <>
@@ -163,10 +239,12 @@ export function AlgorithmAuditTable({
                           borderClass
                         )}
                       >
+                        {/* ===== Basic Info (2) ===== */}
+
                         {/* Week (Fixed Column) */}
                         <td className={cn(
-                          'sticky left-0 z-10 bg-white border-r-2 border-gray-300 px-3 py-2 font-mono text-sm font-semibold',
-                          row.is_current && 'bg-blue-50 border-l-4 border-l-blue-400'
+                          'sticky left-0 z-10 bg-white border-r border-gray-300 px-2 py-2 font-mono text-xs font-bold',
+                          row.is_current && 'bg-blue-50 border-l-4 border-l-blue-500'
                         )}>
                           {row.week_iso}
                           {row.is_current && (
@@ -175,28 +253,22 @@ export function AlgorithmAuditTable({
                         </td>
 
                         {/* Week Start Date */}
-                        <td className="px-3 py-2 text-gray-600">
+                        <td className="border-r-2 border-gray-300 px-2 py-2 text-xs text-gray-600">
                           {row.week_start_date}
                         </td>
 
-                        {/* Opening Stock */}
-                        <td className={cn(
-                          'px-3 py-2 text-right font-medium border border-transparent',
-                          row.is_past ? 'bg-green-50 border-green-200' : ''
-                        )}>
-                          {formatNumber(row.opening_stock)}
-                        </td>
+                        {/* ===== Sales Data (3) ===== */}
 
                         {/* Sales Forecast */}
-                        <td className="px-3 py-2 text-right bg-yellow-50 border border-yellow-200">
+                        <td className="bg-yellow-50 border-r border-gray-300 px-2 py-2 text-right text-xs">
                           {formatNumber(row.sales_forecast)}
                         </td>
 
                         {/* Sales Actual */}
                         <td className={cn(
-                          'px-3 py-2 text-right border border-transparent',
+                          'border-r border-gray-300 px-2 py-2 text-right text-xs',
                           row.sales_actual !== null
-                            ? 'bg-green-50 border-green-200 font-medium'
+                            ? 'bg-green-50 font-medium'
                             : 'bg-gray-50 text-gray-400'
                         )}>
                           {row.sales_actual !== null ? formatNumber(row.sales_actual) : '-'}
@@ -204,34 +276,47 @@ export function AlgorithmAuditTable({
 
                         {/* Sales Effective */}
                         <td className={cn(
-                          'px-3 py-2 text-right font-semibold border border-transparent',
+                          'border-r-2 border-gray-300 px-2 py-2 text-right text-xs font-semibold',
                           row.sales_source === 'actual'
-                            ? 'bg-green-50 border-green-200'
-                            : 'bg-yellow-50 border-yellow-200'
+                            ? 'bg-green-100'
+                            : 'bg-yellow-100'
                         )}>
                           {formatNumber(row.sales_effective)}
                         </td>
 
-                        {/* Shipment Planned */}
-                        <td className="px-3 py-2 text-right bg-yellow-50 border border-yellow-200">
-                          {row.shipment_planned_qty > 0 ? formatNumber(row.shipment_planned_qty) : '-'}
+                        {/* ===== Arrival Data (5) ===== */}
+
+                        {/* Planned Arrival Week */}
+                        <td className="bg-sky-50 border-r border-gray-300 px-2 py-2 text-center text-xs text-gray-600">
+                          {plannedArrivalWeek}
                         </td>
 
-                        {/* Shipment Actual */}
+                        {/* Planned Arrival Qty */}
+                        <td className="bg-sky-50 border-r border-gray-300 px-2 py-2 text-right text-xs text-gray-600">
+                          {plannedArrivalQty > 0 ? formatNumber(plannedArrivalQty) : '-'}
+                        </td>
+
+                        {/* Actual Arrival Week */}
                         <td className={cn(
-                          'px-3 py-2 text-right border border-transparent',
-                          row.shipment_actual_qty > 0
-                            ? 'bg-green-50 border-green-200 font-medium'
-                            : 'bg-gray-50 text-gray-400'
+                          'border-r border-gray-300 px-2 py-2 text-center text-xs',
+                          actualArrivalWeek ? 'bg-green-50 font-medium' : 'bg-gray-50 text-gray-400'
                         )}>
-                          {row.shipment_actual_qty > 0 ? formatNumber(row.shipment_actual_qty) : '-'}
+                          {actualArrivalWeek || '-'}
                         </td>
 
-                        {/* Incoming (Clickable) */}
+                        {/* Actual Arrival Qty */}
+                        <td className={cn(
+                          'border-r border-gray-300 px-2 py-2 text-right text-xs',
+                          actualArrivalQty > 0 ? 'bg-green-50 font-medium' : 'bg-gray-50 text-gray-400'
+                        )}>
+                          {actualArrivalQty > 0 ? formatNumber(actualArrivalQty) : '-'}
+                        </td>
+
+                        {/* Arrival Effective (Clickable) */}
                         <td
                           className={cn(
-                            'px-3 py-2 text-right font-semibold border border-transparent',
-                            hasShipments && 'cursor-pointer hover:bg-blue-50',
+                            'border-r-2 border-gray-300 px-2 py-2 text-right text-xs font-semibold',
+                            hasShipments && 'cursor-pointer hover:bg-blue-100',
                             row.incoming_qty > 0 && 'text-blue-600'
                           )}
                           onClick={() => hasShipments && toggleWeek(row.week_iso)}
@@ -240,34 +325,92 @@ export function AlgorithmAuditTable({
                             {hasShipments && (
                               isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
                             )}
-                            <span>{row.incoming_qty > 0 ? formatNumber(row.incoming_qty) : '-'}</span>
+                            <span className={cn(
+                              actualArrivalQty > 0 ? 'bg-green-100' : 'bg-sky-100',
+                              'px-1 rounded'
+                            )}>
+                              {row.incoming_qty > 0 ? formatNumber(row.incoming_qty) : '-'}
+                            </span>
                           </div>
                         </td>
 
-                        {/* Net Change */}
+                        {/* ===== Ship Data (2) ===== */}
+
+                        {/* Planned Ship Week */}
+                        <td className="bg-purple-50 border-r border-gray-300 px-2 py-2 text-center text-xs text-gray-600">
+                          -
+                        </td>
+
+                        {/* Actual Ship Week */}
+                        <td className="bg-purple-50 border-r-2 border-gray-300 px-2 py-2 text-center text-xs text-gray-400">
+                          -
+                        </td>
+
+                        {/* ===== Factory Ship Data (2) ===== */}
+
+                        {/* Planned Factory Ship Week */}
+                        <td className="bg-orange-50 border-r border-gray-300 px-2 py-2 text-center text-xs text-gray-600">
+                          -
+                        </td>
+
+                        {/* Actual Factory Ship Week */}
+                        <td className="bg-orange-50 border-r-2 border-gray-300 px-2 py-2 text-center text-xs text-gray-400">
+                          -
+                        </td>
+
+                        {/* ===== Order Data (2) ===== */}
+
+                        {/* Planned Order Week */}
+                        <td className="bg-green-50 border-r border-gray-300 px-2 py-2 text-center text-xs text-gray-600">
+                          -
+                        </td>
+
+                        {/* Actual Order Week */}
+                        <td className="bg-green-50 border-r-2 border-gray-300 px-2 py-2 text-center text-xs text-gray-400">
+                          -
+                        </td>
+
+                        {/* ===== Inventory Calculation (5) ===== */}
+
+                        {/* Opening Stock */}
                         <td className={cn(
-                          'px-3 py-2 text-right font-semibold',
-                          row.incoming_qty - row.outgoing_qty > 0 ? 'text-green-600' : 'text-red-600'
+                          'bg-gray-50 border-r border-gray-300 px-2 py-2 text-right text-xs font-medium'
                         )}>
-                          {row.incoming_qty - row.outgoing_qty > 0 ? '+' : ''}
-                          {formatNumber(row.incoming_qty - row.outgoing_qty)}
+                          {formatNumber(row.opening_stock)}
                         </td>
 
                         {/* Closing Stock */}
                         <td className={cn(
-                          'px-3 py-2 text-right font-bold border border-transparent',
+                          'border-r border-gray-300 px-2 py-2 text-right text-xs font-bold',
                           getStockCellClass(row.closing_stock, row.safety_threshold)
                         )}>
                           {formatNumber(row.closing_stock)}
                         </td>
 
                         {/* Safety Threshold */}
-                        <td className="px-3 py-2 text-right text-gray-500">
+                        <td className="bg-gray-50 border-r border-gray-300 px-2 py-2 text-right text-xs text-gray-500">
                           {formatNumber(Math.round(row.safety_threshold))}
                         </td>
 
+                        {/* Turnover Ratio */}
+                        <td className={cn(
+                          'border-r border-gray-300 px-2 py-2 text-right text-xs font-medium',
+                          turnoverRatio !== null && turnoverRatio < 0.5
+                            ? 'bg-red-100 text-red-900'
+                            : turnoverRatio !== null && turnoverRatio < 1
+                            ? 'bg-yellow-100 text-yellow-900'
+                            : turnoverRatio !== null
+                            ? 'bg-green-50 text-green-900'
+                            : 'bg-gray-50 text-gray-400'
+                        )}>
+                          {turnoverRatio !== null
+                            ? `${turnoverRatio.toFixed(1)}x`
+                            : '-'
+                          }
+                        </td>
+
                         {/* Status */}
-                        <td className="px-3 py-2 text-center">
+                        <td className="bg-gray-50 px-2 py-2 text-center">
                           {getStockStatusBadge(row.stock_status)}
                         </td>
                       </tr>
@@ -275,7 +418,7 @@ export function AlgorithmAuditTable({
                       {/* Expanded Shipment Details */}
                       {isExpanded && hasShipments && (
                         <tr className="bg-blue-50/30">
-                          <td colSpan={13} className="px-6 py-4 border-b border-gray-200">
+                          <td colSpan={21} className="px-6 py-4 border-b border-gray-200">
                             <div className="text-sm">
                               <div className="font-semibold mb-3 text-gray-700">
                                 物流明细 Shipment Details ({row.shipments.length}):
@@ -364,6 +507,89 @@ export function AlgorithmAuditTable({
             <div>
               <div className="text-gray-500">安全库存周数 Safety Weeks</div>
               <div className="font-semibold mt-1">{metadata.safety_stock_weeks}周</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Legend Card */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="space-y-3">
+            <div className="font-semibold text-sm text-gray-700">
+              图例说明 Legend
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+              {/* Data Source Colors */}
+              <div>
+                <div className="font-medium text-gray-600 mb-2">数据来源 Data Source:</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-green-50 border border-green-200 rounded"></span>
+                    <span>实际值 Actual</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-yellow-50 border border-yellow-200 rounded"></span>
+                    <span>预计值 Forecast</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-sky-50 border border-sky-200 rounded"></span>
+                    <span>计划值 Planned (反推算法)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Turnover Ratio Colors */}
+              <div>
+                <div className="font-medium text-gray-600 mb-2">周转率 Turnover Ratio:</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-green-50 border border-green-200 rounded"></span>
+                    <span>正常 (≥1x)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-yellow-100 border border-yellow-300 rounded"></span>
+                    <span>偏低 (0.5-1x)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-red-100 border border-red-300 rounded"></span>
+                    <span>危险 (&lt;0.5x)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Column Groups */}
+              <div>
+                <div className="font-medium text-gray-600 mb-2">列分组 Column Groups:</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-yellow-50 border border-yellow-200 rounded"></span>
+                    <span>销售数据</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-blue-50 border border-blue-200 rounded"></span>
+                    <span>到仓数据</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-purple-50 border border-purple-200 rounded"></span>
+                    <span>发货数据</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-orange-50 border border-orange-200 rounded"></span>
+                    <span>出货数据</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-green-50 border border-green-200 rounded"></span>
+                    <span>下单数据</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-gray-200 text-xs text-gray-500">
+              <strong>注意 Note:</strong> 预计到仓周、发货周、出货周、下单周列目前显示为"-"，等待后端反推算法实现。
+              <br />
+              Planned arrival/ship/factory/order weeks show "-" pending backend backtracking algorithm implementation.
             </div>
           </div>
         </CardContent>

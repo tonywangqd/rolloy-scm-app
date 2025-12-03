@@ -1,999 +1,1041 @@
-# Business Requirements: Algorithm Audit Page
+# 算法验证页面重设计 - 需求文档 V2.0
+## Algorithm Audit Page Redesign - Requirements Document V2.0
 
-**Document Version:** 1.0
-**Date:** 2025-12-03
-**Author:** Product Director
-**Status:** Final Specification
-**Feature Type:** Analytics & Transparency Tool
-
----
-
-## Executive Summary
-
-This document defines the requirements for an **Algorithm Audit Page** that provides full transparency into the inventory projection algorithm. The page allows users to trace every calculation step, verify data sources, and understand how the system arrives at inventory forecasts.
-
-### Core Value Proposition
-
-```
-Enable users to AUDIT and VALIDATE the inventory projection algorithm by:
-- Exposing every calculation step in a human-readable format
-- Clearly identifying data sources (actual vs forecast/planned)
-- Showing week-by-week inventory flow for individual SKUs
-- Providing visual distinction for data quality (actual vs estimated)
-```
-
-**Business Impact:**
-- Build trust in automated inventory projections
-- Enable rapid troubleshooting when forecasts appear incorrect
-- Support compliance and audit requirements
-- Empower operations teams to understand "why" the system suggests certain actions
+**版本 Version:** 2.0
+**创建日期 Created:** 2025-12-03
+**产品负责人 Product Director:** Rolloy SCM Team
+**优先级 Priority:** High
+**变更原因 Change Reason:** 用户反馈现有格式不够清晰,需要展示供应链全流程的预计与实际对比
 
 ---
 
-## 1. Context & Business Goals
+## 1. 功能概述 Feature Overview
 
-### 1.1 Problem Statement
+### 1.1 业务价值 Business Value
 
-Currently, the system calculates inventory projections using the `v_inventory_projection_12weeks` materialized view. While this provides accurate results, users have expressed concerns:
+算法验证页面是供应链计划透明度的核心工具,用于逐周展示库存预测的完整计算过程。该页面帮助业务团队:
 
-1. **Black Box Problem:** "I see the final number, but I don't know HOW it was calculated"
-2. **Data Quality Uncertainty:** "Is this number based on actual data or estimates?"
-3. **Debugging Difficulty:** "Why does SKU X show stockout in Week 10? What inputs changed?"
-4. **Trust Deficit:** "I need to verify the algorithm before making a $50K replenishment decision"
+1. **验证算法准确性**: 对比预计值与实际值,验证供应链预测模型的可靠性
+2. **追溯决策依据**: 清晰展示每一周的库存变化来源(销量消耗 vs 到仓补充)
+3. **发现异常问题**: 快速识别预测偏差、延迟到仓、库存风险等问题
+4. **优化计划流程**: 通过历史数据对比,改进未来的采购和物流计划
+5. **完整流程可视化**: 展示供应链全流程(下单→出货→发货→到仓→销售)的时间节点
 
-### 1.2 User Personas & Pain Points
+### 1.2 核心改进点 Core Improvements (V2.0)
 
-**Persona 1: Inventory Planner (Primary User)**
-- **Pain:** Cannot easily verify if projection is using latest shipment arrival dates
-- **Need:** See the raw data behind each week's incoming quantity
-- **Goal:** Validate that urgent airfreight shipment (arriving 2 weeks early) is reflected in projections
+**V1.0 当前问题 Current Issues:**
+- 数据展示不够完整,缺少供应链全流程的时间节点
+- 仅显示"到仓"环节,无法追溯上游的下单、出货、发货环节
+- 预计值与实际值的对比逻辑不清晰
+- 无法清晰看到"预计→实际"的数据取值优先级
+- 缺少周转率等关键库存指标
 
-**Persona 2: Finance Manager (Secondary User)**
-- **Pain:** Needs to explain inventory writedown risk to CFO
-- **Need:** Show week-by-week stock depletion with supporting data
-- **Goal:** Present audit-ready documentation of inventory calculation methodology
+**V2.0 改进目标 Improvement Goals:**
+- **完整性 Completeness**: 展示供应链全流程(下单→出货→发货→到仓→销售)
+- **双轨对比 Dual-Track Comparison**: 每个阶段都显示"预计 + 实际"双轨数据
+- **取值逻辑透明 Value Selection Logic**: 明确显示系统使用哪个值(实际优先,预计兜底)
+- **周次关联 Week Association**: 反推各阶段应该发生的周次(基于提前期参数)
+- **周转率计算 Turnover Ratio**: 展示库存周转率,帮助评估库存健康度
 
-**Persona 3: Operations Manager (Secondary User)**
-- **Pain:** Suppliers claim they delivered on time, but system shows delays
-- **Need:** Compare planned vs actual dates side-by-side for specific SKUs
-- **Goal:** Identify whether delays are in production, shipping, or data entry
+### 1.3 供应链流程时间线 Supply Chain Timeline
 
-### 1.3 Business Objectives
+```
+┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
+│  下单    │→ │  出货    │→ │  发货    │→ │  到仓    │→ │  销售    │
+│ Order   │   │ Factory  │   │  Ship   │   │ Arrive  │   │  Sell   │
+│         │   │  Ship    │   │         │   │         │   │         │
+└─────────┘   └─────────┘   └─────────┘   └─────────┘   └─────────┘
+    ↓             ↓             ↓             ↓             ↓
+PO表          Delivery表     Shipment表    Shipment表    Sales表
+planned_      planned_       planned_      planned_      forecast_qty
+order_date    delivery_date  departure_    arrival_date  / actual_qty
+/actual_      /actual_       date/actual_  /actual_
+order_date    delivery_date  departure_    arrival_date
+                             date
 
-**Primary Goal:** Increase user confidence in automated inventory decisions by 80% (measured via survey)
-
-**Secondary Goals:**
-- Reduce time spent manually recalculating inventory in Excel (from 4 hours/week to 0)
-- Enable self-service troubleshooting (reduce support tickets by 60%)
-- Support SOC 2 compliance requirements for algorithm transparency
+提前期参数 Lead Time Parameters:
+← 生产周期 8周 →← 装运 1周 →← 运输 4周 →← 安全库存 2周 →
+```
 
 ---
 
-## 2. User Stories
+## 2. 用户故事 User Stories
 
-### US-1: Single-SKU Drill-Down
+### US-1: 查看完整供应链时间线
 
-**As an** Inventory Planner
-**I want to** select a specific SKU and see its full inventory calculation breakdown
-**So that** I can verify the algorithm is using the correct data
+**As a** 供应链计划员 Supply Chain Planner
+**I want to** 看到某SKU在某一周的完整供应链流程时间线
+**So that** 我可以理解库存来源和去向,验证计划是否合理
 
-**Acceptance Criteria:**
-- GIVEN I am on the Algorithm Audit page
-- WHEN I select SKU "SKU-12345" from a dropdown
-- THEN I see a table showing 16 weeks of data (4 past weeks + 12 future weeks)
-- AND each row represents one ISO week (format: YYYY-WNN)
-- AND the table displays all calculation components (see Section 5)
+**验收标准 Acceptance Criteria:**
+```gherkin
+Given 选择了SKU "TEST-SKU-001"
+And 该产品的安全库存周数为 2周
+And 系统提前期参数: 生产8周, 装运1周, 运输4周
+When 查看周次 "2025-W45" 的行数据
+And 该周预计销量为 50台
+Then 我能看到以下计算结果:
+  | 列名           | 预期值      | 计算逻辑          |
+  | 预计销量       | 50台        | sales_forecasts   |
+  | 预计到仓周     | 2025-W47    | W45 + 2周         |
+  | 预计到仓量     | 100台       | 50 × 2周          |
+  | 预计发货周     | 2025-W43    | W47 - 4周         |
+  | 预计出货周     | 2025-W42    | W43 - 1周         |
+  | 预计下单周     | 2025-W34    | W42 - 8周         |
+```
 
-### US-2: Data Source Transparency
+### US-2: 对比预计与实际数据
 
-**As an** Operations Manager
-**I want to** visually distinguish between actual data and forecast/planned data
-**So that** I can assess the reliability of projections
+**As a** 业务分析师 Business Analyst
+**I want to** 并排对比每个阶段的预计值和实际值
+**So that** 我可以发现预测偏差和执行延迟
 
-**Acceptance Criteria:**
-- GIVEN I am viewing the audit table for any SKU
-- WHEN a cell contains ACTUAL data (e.g., actual_sales, actual_arrival_date)
-  - THEN the cell background is GREEN
-- WHEN a cell contains FORECAST/PLANNED data (e.g., forecast_sales, planned_arrival_date)
-  - THEN the cell background is YELLOW
-- WHEN closing_stock is NEGATIVE (stockout)
-  - THEN the cell background is RED with white text
-- WHEN closing_stock is below safety threshold (risk)
-  - THEN the cell background is ORANGE
-- AND a legend is displayed explaining the color coding
+**验收标准 Acceptance Criteria:**
+```gherkin
+Given 某一周的行数据
+When 查看各阶段列
+Then 我能看到:
+  - 预计销量 vs 实际销量
+  - 预计到仓周/量 vs 实际到仓周/量
+  - 预计发货周 vs 实际发货周
+  - 预计出货周 vs 实际出货周
+  - 预计下单周 vs 实际下单周
+And 实际值存在时高亮显示(绿色背景)
+And 实际值缺失时显示"-"(灰色)
+And "取值"列根据数据源着色(绿=实际, 黄=预计)
+```
 
-### US-3: Calculation Trace
+### US-3: 理解库存计算逻辑
 
-**As a** Finance Manager
-**I want to** see the formula for each calculated field
-**So that** I can audit the methodology for compliance purposes
+**As a** 库存经理 Inventory Manager
+**I want to** 看到每周库存的详细计算步骤
+**So that** 我可以验证期末库存数字的准确性
 
-**Acceptance Criteria:**
-- GIVEN I am viewing the audit table
-- WHEN I hover over a calculated field (e.g., "Closing Stock")
-- THEN I see a tooltip showing the formula: "Opening Stock + Incoming - Sales Outflow"
-- AND the tooltip shows the specific values: "1200 + 500 - 300 = 1400"
-- WHEN I hover over "Sales Outflow"
-- THEN I see: "COALESCE(Actual Sales, Forecast Sales) = COALESCE(NULL, 300) = 300"
+**验收标准 Acceptance Criteria:**
+```gherkin
+Given 某一周的行数据
+When 查看库存相关列
+Then 我能看到:
+  - 期初库存 = 上周期末库存
+  - 到仓取值 = COALESCE(实际到仓, 预计到仓)
+  - 销量取值 = COALESCE(实际销量, 预计销量)
+  - 期末库存 = 期初库存 + 到仓取值 - 销量取值
+  - 周转率 = 期末库存 / 销量取值 (保留2位小数)
+And 计算公式在UI Tooltip中可查看
+```
 
-### US-4: Past Data Verification
+### US-4: 识别库存风险
 
-**As an** Inventory Planner
-**I want to** see the past 4 weeks of actual performance
-**So that** I can validate the algorithm against known results
+**As a** 运营经理 Operations Manager
+**I want to** 快速识别哪些周存在库存风险
+**So that** 我可以提前采取补货措施
 
-**Acceptance Criteria:**
-- GIVEN today is in ISO week "2025-W10"
-- WHEN I view the audit table
-- THEN I see rows for weeks W06, W07, W08, W09 (past) AND W10 through W21 (current + future)
-- AND past weeks show ONLY actual data (no forecasts)
-- AND the transition point (current week) is visually highlighted
-
-### US-5: Shipment Traceability
-
-**As an** Operations Manager
-**I want to** see which shipments contribute to each week's incoming quantity
-**So that** I can verify logistics data accuracy
-
-**Acceptance Criteria:**
-- GIVEN I am viewing the audit table for SKU "SKU-12345"
-- WHEN I click on an "Incoming Qty" cell (e.g., Week W12 shows 500 units)
-- THEN I see an expandable section listing:
-  - Shipment tracking number (e.g., "TRK-20250305-001")
-  - Planned arrival date (e.g., "2025-03-12")
-  - Actual arrival date (e.g., "2025-03-10" - highlighted in green)
-  - Quantity from this shipment (e.g., 500 units)
-- AND if multiple shipments arrive in the same week, all are listed
-- AND each shipment row links to the full shipment detail page
+**验收标准 Acceptance Criteria:**
+```gherkin
+Given 12周预测数据
+When 查看表格
+Then 期末库存列根据风险状态着色:
+  - 红色底 + 白字: 期末库存 <= 0 (缺货 Stockout)
+  - 橙色底 + 深橙字: 0 < 期末库存 < 安全库存 (风险 Risk)
+  - 无特殊颜色: 期末库存 >= 安全库存 (正常 OK)
+And 状态列显示徽章(Badge)
+And 周转率 < 1 时显示警告图标
+```
 
 ---
 
-## 3. Data Requirements
+## 3. 数据来源与表结构 Data Sources & Schema
 
-### 3.1 Data Sources (Read-Only)
+### 3.1 核心数据表
 
-**Primary Tables:**
-- `products` - SKU metadata, safety stock configuration
-- `sales_forecasts` - Planned sales by SKU, channel, week
-- `sales_actuals` - Actual sales by SKU, channel, week
-- `shipments` - Planned and actual arrival dates
-- `shipment_items` - Quantity per SKU per shipment
-- `inventory_snapshots` - Opening stock for Week 0
+| 表名 Table | 用途 Purpose | 关键字段 Key Fields |
+|-----------|-------------|-------------------|
+| `sales_forecasts` | 销量预测 | `sku`, `week_iso`, `forecast_qty` |
+| `sales_actuals` | 实际销量 | `sku`, `week_iso`, `actual_qty` |
+| `purchase_orders` | 采购订单(下单) | `po_number`, `planned_order_date`, `actual_order_date` |
+| `purchase_order_items` | 采购明细 | `po_id`, `sku`, `ordered_qty` |
+| `production_deliveries` | 生产交付(出货) | `po_item_id`, `planned_delivery_date`, `actual_delivery_date`, `delivered_qty` |
+| `shipments` | 发运单(发货+到仓) | `tracking_number`, `planned_departure_date`, `actual_departure_date`, `planned_arrival_date`, `actual_arrival_date` |
+| `shipment_items` | 发运明细 | `shipment_id`, `sku`, `shipped_qty` |
+| `inventory_snapshots` | 当前库存快照 | `sku`, `warehouse_id`, `qty_on_hand` |
+| `products` | 产品主数据 | `sku`, `safety_stock_weeks` |
 
-**Derived Data:**
-- `v_inventory_projection_12weeks` - Reference for validation (optional)
+### 3.2 数据关联逻辑
 
-### 3.2 Data Transformation Logic
-
-The page will re-implement the projection algorithm from `v_inventory_projection_12weeks` in a step-by-step format:
-
+**关联链路 Relationship Chain:**
 ```
-FOR each SKU:
-  opening_stock[W0] = SUM(inventory_snapshots.qty_on_hand WHERE sku = SKU)
-
-  FOR each week W in [W-3 to W+11]:
-    // Step 1: Calculate Sales Outflow
-    sales_forecast[W] = SUM(sales_forecasts.forecast_qty WHERE week_iso = W AND sku = SKU)
-    sales_actual[W] = SUM(sales_actuals.actual_qty WHERE week_iso = W AND sku = SKU)
-    sales_outflow[W] = COALESCE(sales_actual[W], sales_forecast[W])
-
-    // Step 2: Calculate Incoming Qty
-    incoming_forecast[W] = SUM(shipment_items.shipped_qty
-                               WHERE sku = SKU
-                               AND get_week_iso(planned_arrival_date) = W
-                               AND actual_arrival_date IS NULL)
-    incoming_actual[W] = SUM(shipment_items.shipped_qty
-                             WHERE sku = SKU
-                             AND get_week_iso(actual_arrival_date) = W)
-    incoming_qty[W] = incoming_actual[W] + incoming_forecast[W]
-
-    // Step 3: Calculate Closing Stock
-    closing_stock[W] = opening_stock[W] + incoming_qty[W] - sales_outflow[W]
-
-    // Step 4: Set next week's opening stock
-    opening_stock[W+1] = closing_stock[W]
-
-    // Step 5: Determine Status
-    safety_threshold = avg_weekly_sales * safety_stock_weeks
-    stock_status[W] = CASE
-      WHEN closing_stock[W] < 0 THEN 'Stockout'
-      WHEN closing_stock[W] < safety_threshold THEN 'Risk'
-      ELSE 'OK'
-    END
+purchase_orders (1) ←→ (N) purchase_order_items
+purchase_order_items (1) ←→ (N) production_deliveries
+production_deliveries (1) ←→ (1) shipments (可选关联)
+shipments (1) ←→ (N) shipment_items
 ```
 
-### 3.3 Data Granularity
+**关键业务规则 Key Business Rules:**
+1. 一个PO可以有多个PO Item(不同SKU)
+2. 一个PO Item可以分多次交付(production_deliveries)
+3. 一次交付可以对应一个发运单(shipment)
+4. 一个发运单可以包含多个SKU(shipment_items)
+5. **销售数据独立**: 不直接关联采购/物流数据,仅通过 `sku` + `week_iso` 匹配
 
-**Time Dimension:**
-- ISO Week format: `YYYY-WNN` (e.g., "2025-W49")
-- Range: 4 past weeks + 1 current week + 11 future weeks = 16 weeks total
-- Week boundaries: Monday 00:00 to Sunday 23:59
+### 3.3 数据聚合粒度
 
-**SKU Dimension:**
-- Single SKU selection (no multi-SKU view on this page)
-- SKU selector includes search by SKU code and product name
+**周级聚合 Weekly Aggregation:**
+所有数据按 ISO周 聚合,通过 `week_iso` 字段匹配。对于有日期字段的表,使用 `get_week_from_date()` 函数转换。
+
+**示例查询 Sample Query:**
+```sql
+-- 查询某SKU在某周的实际下单量
+SELECT
+  get_week_from_date(po.actual_order_date) AS order_week,
+  SUM(poi.ordered_qty) AS actual_order_qty
+FROM purchase_orders po
+JOIN purchase_order_items poi ON po.id = poi.po_id
+WHERE poi.sku = 'SKU123'
+  AND get_week_from_date(po.actual_order_date) = '2025-W34'
+GROUP BY order_week;
+
+-- 查询某SKU在某周的实际到仓量
+SELECT
+  get_week_from_date(s.actual_arrival_date) AS arrival_week,
+  SUM(si.shipped_qty) AS actual_arrival_qty
+FROM shipments s
+JOIN shipment_items si ON s.id = si.shipment_id
+WHERE si.sku = 'SKU123'
+  AND get_week_from_date(s.actual_arrival_date) = '2025-W47'
+GROUP BY arrival_week;
+```
 
 ---
 
-## 4. Functional Requirements
+## 4. 新表格列设计 New Table Column Design
 
-### 4.1 Page Layout
+### 4.1 列结构 (从左到右 21列)
 
-**Navigation Path:**
-- Main Menu → "Inventory" → "Algorithm Audit" (库存管理 → 算法验证)
+| 列序号 | 列名(中文) | 列名(英文) | 数据类型 | 数据来源 | 计算逻辑 | 视觉提示 |
+|-------|-----------|-----------|---------|---------|---------|---------|
+| **基础信息 (2列)** |
+| 1 | 周次 | Week ISO | `string` | 生成(当前周±N) | ISO格式: `2025-W45` | 固定列,当前周蓝色标记 |
+| 2 | 周起始日 | Week Start Date | `date` | 计算 | 周一日期: `parseWeekString()` | 灰色字体 |
+| **销售数据 (3列)** |
+| 3 | 预计销量 | Forecast Sales | `number` | `sales_forecasts.forecast_qty` | SUM by week_iso + sku | 黄色背景 |
+| 4 | 实际销量 | Actual Sales | `number \| null` | `sales_actuals.actual_qty` | SUM by week_iso + sku | 绿色背景(有值),灰色"-"(无值) |
+| 5 | **销量取值** | **Effective Sales** | `number` | 计算 | `COALESCE(实际, 预计)` | **绿底=实际,黄底=预计** |
+| **到仓数据 (5列)** |
+| 6 | 预计到仓周 | Planned Arrival Week | `string` | 反推计算 | 当前周 + 安全库存周数 | 淡蓝色背景 |
+| 7 | 预计到仓量 | Planned Arrival Qty | `number` | 反推计算 | 基于销量×安全库存周数 | 黄色背景 |
+| 8 | 实际到仓周 | Actual Arrival Week | `string \| null` | `shipments.actual_arrival_date` | 转为week_iso | 绿色背景(有值) |
+| 9 | 实际到仓量 | Actual Arrival Qty | `number` | `shipment_items.shipped_qty` | SUM where arrival week = current | 绿色背景(有值) |
+| 10 | **到仓取值** | **Effective Arrival** | `number` | 计算 | `COALESCE(实际, 预计)` | **绿底=实际,黄底=预计** |
+| **发货数据 (2列)** |
+| 11 | 预计发货周 | Planned Ship Week | `string` | 反推计算 | 到仓周 - 运输周数 | 淡蓝色背景 |
+| 12 | 实际发货周 | Actual Ship Week | `string \| null` | `shipments.actual_departure_date` | 转为week_iso | 绿色背景(有值) |
+| **出货数据 (2列)** |
+| 13 | 预计出货周 | Planned Factory Ship Week | `string` | 反推计算 | 发货周 - 装运准备周数 | 淡蓝色背景 |
+| 14 | 实际出货周 | Actual Factory Ship Week | `string \| null` | `production_deliveries.actual_delivery_date` | 转为week_iso | 绿色背景(有值) |
+| **下单数据 (2列)** |
+| 15 | 预计下单周 | Planned Order Week | `string` | 反推计算 | 出货周 - 生产周期 | 淡蓝色背景 |
+| 16 | 实际下单周 | Actual Order Week | `string \| null` | `purchase_orders.actual_order_date` | 转为week_iso | 绿色背景(有值) |
+| **库存计算 (5列)** |
+| 17 | **期初库存** | **Opening Stock** | `number` | 滚动计算 | 上周期末库存(第一周=快照值) | 白色背景 |
+| 18 | **期末库存** | **Closing Stock** | `number` | 计算 | 期初 + 到仓取值 - 销量取值 | **红底=缺货,橙底=风险,白底=正常** |
+| 19 | 安全库存 | Safety Threshold | `number` | 计算 | 平均周销 × 安全库存周数 | 灰色字体 |
+| 20 | **周转率** | **Turnover Ratio** | `number` | 计算 | 期末库存 / 销量取值 | 2位小数 |
+| 21 | 库存状态 | Stock Status | `Badge` | 判断 | 基于期末库存 vs 安全库存 | 徽章:红色"缺货"/橙色"风险"/绿色"正常" |
 
-**Page Structure:**
+### 4.2 列分组 (视觉分隔)
+
+为提高可读性,表格应使用**竖线分隔**将列分组:
+
 ```
-┌─────────────────────────────────────────────────────┐
-│ Header: "Algorithm Audit (算法验证)"                  │
-├─────────────────────────────────────────────────────┤
-│ SKU Selector: [Dropdown: Search SKU...]   [Refresh] │
-├─────────────────────────────────────────────────────┤
-│ Product Info Card:                                  │
-│   SKU: SKU-12345                                    │
-│   Name: Premium Widget (CN: 高级小部件)              │
-│   Safety Stock: 3 weeks                             │
-│   Avg Weekly Sales: 250 units                       │
-│   Current On Hand: 1,200 units (as of 2025-12-01)   │
-├─────────────────────────────────────────────────────┤
-│ Legend:                                             │
-│   [Green] Actual Data  [Yellow] Forecast/Planned    │
-│   [Red] Stockout  [Orange] Risk                     │
-├─────────────────────────────────────────────────────┤
-│ Calculation Table (scrollable, 16 weeks × 13 cols)  │
-│ [See Section 5 for column definitions]             │
-├─────────────────────────────────────────────────────┤
-│ Footer: Last Updated: 2025-12-03 14:30 UTC         │
-│         Data Source: v_inventory_projection_12weeks │
-└─────────────────────────────────────────────────────┘
+┃ 基础信息 ┃ 销售数据 ┃ 到仓数据 ┃ 发货数据 ┃ 出货数据 ┃ 下单数据 ┃ 库存计算 ┃
+┃ Week Info ┃ Sales    ┃ Arrival  ┃ Ship     ┃ Factory  ┃ Order    ┃ Stock    ┃
+│  2列      │  3列     │  5列     │  2列     │  2列     │  2列     │  5列     │
 ```
 
-### 4.2 SKU Selection
+### 4.3 简化版 (MVP阶段可选)
 
-**Behavior:**
-- Dropdown with typeahead search (search by SKU code OR product name)
-- Shows only active SKUs (`products.is_active = true`)
-- Default selection: First SKU alphabetically (or last viewed SKU if stored in user preferences)
-- On selection, table auto-refreshes
+如果21列过多,可以先实现14列简化版:
 
-**UI Component:** ShadCN Combobox (from `@/components/ui/combobox`)
-
-### 4.3 Data Refresh
-
-**Manual Refresh:**
-- Refresh button next to SKU selector
-- On click: Re-fetch data from database, re-render table
-- Loading state: Show spinner overlay on table
-
-**Auto-Refresh:**
-- NOT implemented (page is for audit, not real-time monitoring)
-- Data freshness indicator: "Last updated: [timestamp]"
-
-### 4.4 Table Interactivity
-
-**Sticky Headers:**
-- First column ("Week ISO") is sticky (horizontal scroll)
-- Header row is sticky (vertical scroll)
-
-**Tooltips:**
-- Hover over column headers: Show formula/definition
-- Hover over calculated cells: Show detailed calculation breakdown
-
-**Expandable Rows (for Incoming Qty):**
-- Click on "Incoming Qty" cell → Expand to show shipment details
-- Collapse by clicking again
-
-**Export (Future Enhancement - not in MVP):**
-- Export table to CSV/Excel
-- Include both displayed values and metadata (data source type)
+```
+保留列: 1-5 (基础+销售), 8-10 (实际到仓+取值), 17-21 (库存计算)
+隐藏列: 6-7 (预计到仓周), 11-16 (发货/出货/下单反推)
+后续Phase 2再添加完整供应链时间线
+```
 
 ---
 
-## 5. Table Structure
+## 5. 关键计算逻辑 Calculation Logic
 
-### 5.1 Column Definitions (13 Columns)
+### 5.1 反推周次算法 (核心新增功能)
 
-| Column # | Column Name (EN) | Column Name (CN) | Data Type | Formula/Source | Color Logic |
-|----------|-----------------|-----------------|-----------|----------------|-------------|
-| 1 | Week ISO | 周次 | TEXT | ISO week (YYYY-WNN) | Header: Gray background |
-| 2 | Week Start | 周起始日 | DATE | Monday of ISO week | N/A |
-| 3 | Opening Stock | 期初库存 | INTEGER | Closing Stock[W-1] | Green if W≤0 (actual snapshot), White if W>0 (calculated) |
-| 4 | Sales - Forecast | 预估下单 | INTEGER | SUM(sales_forecasts.forecast_qty) | Yellow always |
-| 5 | Sales - Actual | 实际下单 | INTEGER | SUM(sales_actuals.actual_qty) | Green if not NULL, Gray if NULL |
-| 6 | Sales - Outflow | 下单取值 | INTEGER | COALESCE(Actual, Forecast) | Green if Actual used, Yellow if Forecast used |
-| 7 | Shipment - Planned | 出货预估 | INTEGER | SUM(shipment_items WHERE actual_arrival = NULL AND planned_week = W) | Yellow always |
-| 8 | Shipment - Actual | 出货实际 | INTEGER | SUM(shipment_items WHERE actual_week = W) | Green if not NULL, Gray if NULL |
-| 9 | Incoming Qty | 到仓数量 | INTEGER | Actual + Planned (see note below) | Green if any actual, Yellow if all planned |
-| 10 | Net Change | 本周变化 | INTEGER | Incoming - Outflow | Green if positive, Red if negative, Gray if zero |
-| 11 | Closing Stock | 期末库存 | INTEGER | Opening + Net Change | RED if <0, ORANGE if <safety threshold, White if OK |
-| 12 | Safety Threshold | 安全库存 | INTEGER | avg_weekly_sales × safety_stock_weeks | Gray (constant) |
-| 13 | Stock Status | 库存状态 | TEXT | 'Stockout' / 'Risk' / 'OK' | RED / ORANGE / GREEN badge |
+**业务背景 Business Context:**
+用户希望看到"如果W45周销售50台,那么应该在哪一周到仓?哪一周发货?哪一周下单?"
 
-**Note on Column 9 (Incoming Qty):**
-- This column aggregates both actual and planned shipments in the same week
-- Split into two sub-rows when expanded (see Section 5.2)
+**计算步骤 Calculation Steps:**
 
-### 5.2 Expandable Incoming Qty Details
-
-When user clicks on "Incoming Qty" cell, expand to show:
-
-```
-Week W12 - Incoming Qty: 1,500 units [Click to collapse]
-├─ Shipment TRK-20250310-001
-│  ├─ Planned Arrival: 2025-03-15 (Yellow)
-│  ├─ Actual Arrival: 2025-03-12 (Green)
-│  ├─ Quantity: 1,000 units
-│  └─ [View Shipment Details] (link)
-└─ Shipment TRK-20250305-002
-   ├─ Planned Arrival: 2025-03-14 (Yellow)
-   ├─ Actual Arrival: — (Gray)
-   ├─ Quantity: 500 units
-   └─ [View Shipment Details] (link)
+**1. 输入参数 Input Parameters:**
+```typescript
+const params = {
+  current_week: '2025-W45',
+  forecast_sales: 50,
+  safety_stock_weeks: 2,    // 来自 products.safety_stock_weeks
+  transit_weeks: 4,         // 常量: 运输周数 (发货→到仓)
+  loading_weeks: 1,         // 常量: 装运准备周数 (出货→发货)
+  production_weeks: 8,      // 常量: 生产周期 (下单→出货)
+}
 ```
 
-**Implementation Detail:**
-- Expandable section is a nested table (or card list) below the main row
-- Max height: 300px with scroll if many shipments
-- Each shipment row links to `/logistics?tracking_number={value}`
+**2. 反推流程 Backward Calculation:**
+```typescript
+// 步骤1: 计算预计到仓周
+planned_arrival_week = addWeeksToWeekString(current_week, safety_stock_weeks)
+// 例如: 2025-W45 + 2 = 2025-W47
 
-### 5.3 Week Offset Indicator
+// 步骤2: 计算预计到仓量
+planned_arrival_qty = forecast_sales * safety_stock_weeks
+// 例如: 50 × 2 = 100台
 
-Add a visual separator between past and future weeks:
+// 步骤3: 计算预计发货周
+planned_ship_week = addWeeksToWeekString(planned_arrival_week, -transit_weeks)
+// 例如: 2025-W47 - 4 = 2025-W43
 
-| Week ISO | Opening Stock | ... | Stock Status |
-|----------|---------------|-----|--------------|
-| 2025-W06 | 1,200 | ... | OK (past) |
-| 2025-W07 | 1,150 | ... | OK (past) |
-| 2025-W08 | 1,100 | ... | OK (past) |
-| 2025-W09 | 1,050 | ... | OK (past) |
-| **↓ CURRENT WEEK ↓** | **—** | **—** | **—** |
-| 2025-W10 | 1,000 | ... | Risk (current) |
-| 2025-W11 | 950 | ... | Risk (future) |
-| ... | ... | ... | ... |
+// 步骤4: 计算预计出货周 (工厂交付)
+planned_factory_ship_week = addWeeksToWeekString(planned_ship_week, -loading_weeks)
+// 例如: 2025-W43 - 1 = 2025-W42
+
+// 步骤5: 计算预计下单周
+planned_order_week = addWeeksToWeekString(planned_factory_ship_week, -production_weeks)
+// 例如: 2025-W42 - 8 = 2025-W34
+```
+
+**3. 周次加减工具函数 Week Arithmetic Utility:**
+```typescript
+// 已有工具 (在 lib/utils/date.ts)
+addWeeksToWeekString(weekIso: string, offset: number): string
+// 例如: addWeeksToWeekString('2025-W45', -8) => '2025-W37'
+
+// 新增工具 (需要实现)
+getWeekFromDate(date: Date | string): string
+// 例如: getWeekFromDate('2025-11-17') => '2025-W47'
+```
+
+### 5.2 实际值匹配逻辑
+
+**问题 Challenge:**
+如何将数据库中的"某个PO"、"某个Shipment"与"某一周"关联起来?
+
+**解决方案 Solution:**
+通过 `sku` + `week_iso` 匹配,而不是精确的订单编号匹配。
+
+**示例查询 Sample Queries:**
+```sql
+-- 查询某SKU在某周的实际下单量
+SELECT
+  get_week_from_date(po.actual_order_date) AS order_week,
+  SUM(poi.ordered_qty) AS actual_order_qty,
+  COUNT(DISTINCT po.id) AS order_count
+FROM purchase_orders po
+JOIN purchase_order_items poi ON po.id = poi.po_id
+WHERE poi.sku = 'SKU123'
+  AND get_week_from_date(po.actual_order_date) = '2025-W34'
+GROUP BY order_week;
+
+-- 查询某SKU在某周的实际出货量
+SELECT
+  get_week_from_date(pd.actual_delivery_date) AS delivery_week,
+  SUM(pd.delivered_qty) AS actual_delivery_qty,
+  COUNT(DISTINCT pd.id) AS delivery_count
+FROM production_deliveries pd
+JOIN purchase_order_items poi ON pd.po_item_id = poi.id
+WHERE poi.sku = 'SKU123'
+  AND get_week_from_date(pd.actual_delivery_date) = '2025-W42'
+GROUP BY delivery_week;
+
+-- 查询某SKU在某周的实际发货周
+SELECT DISTINCT
+  get_week_from_date(s.actual_departure_date) AS ship_week
+FROM shipments s
+JOIN shipment_items si ON s.id = si.shipment_id
+WHERE si.sku = 'SKU123'
+  AND get_week_from_date(s.actual_departure_date) = '2025-W43'
+LIMIT 1; -- 只需要周次,不需要数量
+
+-- 查询某SKU在某周的实际到仓量
+SELECT
+  get_week_from_date(s.actual_arrival_date) AS arrival_week,
+  SUM(si.shipped_qty) AS actual_arrival_qty,
+  COUNT(DISTINCT s.id) AS shipment_count
+FROM shipments s
+JOIN shipment_items si ON s.id = si.shipment_id
+WHERE si.sku = 'SKU123'
+  AND get_week_from_date(s.actual_arrival_date) = '2025-W47'
+GROUP BY arrival_week;
+```
+
+**取值优先级 Value Priority:**
+```typescript
+// 销量取值
+effective_sales = sales_actual ?? sales_forecast
+sales_source = sales_actual !== null ? 'actual' : 'forecast'
+
+// 到仓取值
+effective_arrival = actual_arrival_qty > 0 ? actual_arrival_qty : planned_arrival_qty
+arrival_source = actual_arrival_qty > 0 ? 'actual' : 'planned'
+```
+
+### 5.3 库存滚动计算
+
+**逻辑 Logic:**
+```typescript
+let running_stock = initial_stock // 从 inventory_snapshots 获取
+
+weeks.forEach((week, index) => {
+  // 期初库存
+  opening_stock = running_stock
+
+  // 本周到仓
+  incoming_qty = effective_arrival // COALESCE(actual, planned)
+
+  // 本周销售
+  outgoing_qty = effective_sales // COALESCE(actual, forecast)
+
+  // 期末库存
+  closing_stock = opening_stock + incoming_qty - outgoing_qty
+
+  // 更新滚动值 (用于下一周)
+  running_stock = closing_stock
+
+  // 周转率
+  turnover_ratio = outgoing_qty > 0 ? closing_stock / outgoing_qty : null
+
+  // 安全库存阈值
+  safety_threshold = avg_weekly_sales * safety_stock_weeks
+
+  // 库存状态
+  if (closing_stock <= 0) {
+    stock_status = 'Stockout'
+  } else if (closing_stock < safety_threshold) {
+    stock_status = 'Risk'
+  } else {
+    stock_status = 'OK'
+  }
+})
+```
+
+### 5.4 提前期参数配置
+
+**当前阶段 Current Phase:**
+在需求阶段,我们定义**硬编码常量**作为初始实现:
+
+```typescript
+// lib/constants/supply-chain-params.ts
+export const SUPPLY_CHAIN_LEAD_TIMES = {
+  PRODUCTION_WEEKS: 8,        // 下单 → 出货
+  LOADING_PREP_WEEKS: 1,      // 出货 → 发货
+  TRANSIT_WEEKS: 4,           // 发货 → 到仓
+  SAFETY_BUFFER_WEEKS: 2,     // 默认安全库存周数 (可被产品主数据覆盖)
+} as const
+```
+
+**未来扩展 Future Enhancement:**
+- [ ] 在设置页面添加"供应链参数配置"模块
+- [ ] 支持按产品类别/供应商设置不同提前期
+- [ ] 支持按季节调整 (如旺季延长提前期)
 
 ---
 
-## 6. Business Rules
+## 6. 数据窗口与查询范围 Data Window & Query Scope
 
-### 6.1 Data Source Priority Rules
+### 6.1 时间窗口
 
-**Rule 1: Sales Data (Dual-Track)**
-```
-IF sales_actuals.actual_qty IS NOT NULL
-  THEN use sales_actuals.actual_qty (mark GREEN)
-  ELSE use sales_forecasts.forecast_qty (mark YELLOW)
-```
+**当前实现 Current (V1.0):**
+- 16周窗口: 当前周 - 4周 (历史) + 当前周 + 11周 (未来)
 
-**Rule 2: Incoming Shipments (Dual-Track)**
-```
-FOR each shipment_item WHERE sku = selected_sku:
-  effective_arrival_date = COALESCE(actual_arrival_date, planned_arrival_date)
-  arrival_week = get_week_iso(effective_arrival_date)
+**V2.0 保持一致 New Design Keeps Same:**
+- 16周窗口不变
+- 历史4周用于验证过去的预测准确性
+- 未来12周用于库存风险预警
 
-  IF actual_arrival_date IS NOT NULL
-    THEN mark as ACTUAL (GREEN)
-    ELSE mark as PLANNED (YELLOW)
-```
+### 6.2 数据聚合粒度
 
-**Rule 3: Opening Stock (Week 0)**
-```
-opening_stock[W0] = SUM(inventory_snapshots.qty_on_hand
-                        WHERE sku = selected_sku
-                        AND snapshot_date = MAX(snapshot_date))
-```
-
-### 6.2 Stock Status Classification
-
-```
-stock_status = CASE
-  WHEN closing_stock < 0 THEN 'Stockout'
-  WHEN closing_stock < safety_threshold THEN 'Risk'
-  ELSE 'OK'
-END
-
-safety_threshold = avg_weekly_sales × products.safety_stock_weeks
-
-avg_weekly_sales = AVG(sales_outflow[W-3 to W+11])
-```
-
-**Visual Representation:**
-- Stockout: RED badge with icon "⚠️"
-- Risk: ORANGE badge with icon "⚡"
-- OK: GREEN badge with icon "✓"
-
-### 6.3 Week Range Logic
-
-**Past Weeks (Historical View):**
-- Show 4 completed weeks before current week
-- Use ONLY actual data (no forecasts)
-- Purpose: Validate algorithm accuracy against known results
-
-**Current Week:**
-- May have partial actual data
-- If week is incomplete, use forecast for remaining days
-
-**Future Weeks:**
-- Show 11 weeks after current week
-- Mix of actual shipment dates (if already updated) and planned dates
+**周级聚合 Weekly Aggregation:**
+所有数据按 ISO周 聚合,通过 `week_iso` 字段或 `get_week_from_date()` 函数匹配。
 
 ---
 
-## 7. UI/UX Specifications
+## 7. 验收标准 (Gherkin格式) Acceptance Criteria
 
-### 7.1 Color Palette (Strict)
-
-| Element | Background Color | Text Color | Border |
-|---------|-----------------|-----------|--------|
-| Actual Data (Green) | `bg-green-50` (#F0FDF4) | `text-green-900` | `border-green-200` |
-| Forecast/Planned (Yellow) | `bg-yellow-50` (#FEFCE8) | `text-yellow-900` | `border-yellow-200` |
-| Stockout (Red) | `bg-red-600` (#DC2626) | `text-white` | `border-red-700` |
-| Risk (Orange) | `bg-orange-100` (#FFEDD5) | `text-orange-900` | `border-orange-300` |
-| OK Status | `bg-white` | `text-gray-900` | `border-gray-200` |
-| Header (Gray) | `bg-gray-100` | `text-gray-700` | `border-gray-300` |
-| Current Week Separator | `bg-blue-100` | `text-blue-900` | `border-blue-400` (3px) |
-
-**Tailwind Classes (from v4):**
-- Use Tailwind utility classes directly
-- ShadCN Table component base styles
-
-### 7.2 Typography
-
-| Element | Font Size | Font Weight | Line Height |
-|---------|-----------|-------------|-------------|
-| Page Title | `text-2xl` (24px) | `font-bold` | `leading-8` |
-| Column Headers | `text-sm` (14px) | `font-semibold` | `leading-5` |
-| Table Cells (Numbers) | `text-sm` (14px) | `font-mono` | `leading-5` |
-| Table Cells (Text) | `text-sm` (14px) | `font-normal` | `leading-5` |
-| Tooltips | `text-xs` (12px) | `font-normal` | `leading-4` |
-| Legend | `text-xs` (12px) | `font-medium` | `leading-4` |
-
-**Font Family:**
-- Numbers: `font-mono` (tabular-nums for alignment)
-- Text: System default (Inter)
-
-### 7.3 Responsive Behavior
-
-**Desktop (≥1024px):**
-- Table width: 100% of content area
-- Horizontal scroll if columns exceed viewport width
-- Sticky first column and header row
-
-**Tablet (768px - 1023px):**
-- Reduce padding in cells
-- Hide "Safety Threshold" column (can show in tooltip)
-- Horizontal scroll required
-
-**Mobile (<768px):**
-- NOT OPTIMIZED (show "Please use desktop" message)
-- This page is not intended for mobile due to data density
-
-### 7.4 Loading States
-
-**Initial Page Load:**
-- Show skeleton table (ShadCN Skeleton component)
-- Shimmer effect on 16 rows
-
-**SKU Change:**
-- Fade out old table data
-- Show loading spinner overlay
-- Fade in new data
-
-**Shipment Expansion:**
-- Instant expand/collapse (data pre-loaded)
-- If shipment details not loaded, show inline spinner
-
----
-
-## 8. Interaction Flows
-
-### 8.1 Happy Path: Verify Weekly Projection
-
-1. User navigates to "Algorithm Audit" page
-2. Page loads with default SKU (e.g., "SKU-10001")
-3. User sees 16-week table with color-coded cells
-4. User identifies Week W14 showing "Risk" status
-5. User hovers over "Closing Stock" cell → Sees tooltip: "950 = 1000 + 200 - 250"
-6. User clicks on "Incoming Qty" cell in W14 → Expands to show 2 shipments
-7. User sees one shipment has actual arrival date (green), one is planned (yellow)
-8. User clicks "View Shipment Details" → Opens logistics page in new tab
-9. User returns to audit page, confident in projection accuracy
-
-### 8.2 Edge Case: SKU with No Future Shipments
-
-**Scenario:** SKU has zero incoming shipments in next 12 weeks
-
-**System Behavior:**
-- "Shipment - Planned" column shows 0 for all future weeks (no yellow highlighting)
-- "Shipment - Actual" column shows 0 or NULL (gray)
-- "Incoming Qty" column shows 0
-- "Closing Stock" decreases every week (based on sales outflow)
-- Multiple weeks likely show "Stockout" status (RED)
-- User sees clear visual indicator of replenishment urgency
-
-**UI Note:** Consider adding an alert banner at top: "⚠️ No incoming shipments scheduled for this SKU in next 12 weeks"
-
-### 8.3 Edge Case: Past Week with Missing Actual Sales
-
-**Scenario:** Week W07 (past) has forecast but no actual sales recorded
-
-**System Behavior:**
-- "Sales - Actual" cell shows NULL or 0 (gray background)
-- "Sales - Outflow" cell uses forecast data (YELLOW background)
-- Add warning icon in "Sales - Outflow" cell with tooltip: "Using forecast for past week - actual data missing"
-
-**Business Implication:** Data quality issue - flag for operations team to backfill
-
----
-
-## 9. Non-Functional Requirements
-
-### 9.1 Performance
-
-| Metric | Target | Measurement Method |
-|--------|--------|-------------------|
-| Page Load Time | <2 seconds | Time to interactive (TTI) |
-| SKU Switch Time | <500ms | From selection to table render |
-| Table Render Time | <1 second | For 16 weeks × 13 columns |
-| Database Query Time | <300ms | Server-side data fetch |
-| Tooltip Display Latency | <50ms | Hover to tooltip visible |
-
-**Optimization Strategies:**
-- Pre-calculate all 16 weeks of data in single query (no lazy loading per week)
-- Use indexed columns for WHERE clauses (sku, week_iso, actual_arrival_date)
-- Cache product metadata (SKU list, safety stock) in client state
-- Virtualize table rows if expanding to >50 weeks in future
-
-### 9.2 Data Accuracy
-
-**Requirement:** Algorithm results MUST match `v_inventory_projection_12weeks` exactly
-
-**Validation Method:**
-- System Architect will create automated test comparing:
-  - Audit page calculation for SKU X, Week W
-  - vs. Corresponding row in `v_inventory_projection_12weeks` view
-- Tolerance: 0 units difference (exact match required)
-- Test frequency: Run on every deployment
-
-### 9.3 Security
-
-**Access Control:**
-- Page requires authenticated user (Supabase Auth)
-- RLS policies apply to all data fetches (user can only see their tenant's data)
-- No mutation operations (read-only page)
-
-**Data Privacy:**
-- No PII displayed
-- SKU codes and product names only (no customer data)
-
-### 9.4 Accessibility (WCAG 2.1 Level AA)
-
-**Color Contrast:**
-- Green/Yellow/Orange backgrounds with dark text: Contrast ratio ≥4.5:1
-- Red background with white text: Contrast ratio ≥4.5:1
-- Use color + icon combination (not color alone) for stock status
-
-**Keyboard Navigation:**
-- All interactive elements (SKU dropdown, expandable rows) are keyboard-accessible
-- Tab order: SKU selector → Refresh button → Table → Expandable shipments
-- Enter key to expand/collapse shipment details
-
-**Screen Reader Support:**
-- Table has proper `<thead>`, `<tbody>` semantic structure
-- Column headers use `scope="col"`
-- ARIA labels for color-coded cells: `aria-label="Actual sales: 300 units"`
-
----
-
-## 10. Data Visualization Requirements
-
-### 10.1 Table as Primary Visualization
-
-**Rationale:** Tables are optimal for detailed audit/traceability use cases
-
-**Alternative Considered (Rejected for MVP):**
-- Line chart of closing stock over 16 weeks
-  - **Reason for rejection:** Chart hides intermediate calculation steps
-  - **Future enhancement:** Add chart above table as summary view
-
-### 10.2 Future Enhancements (Out of Scope)
-
-**Enhancement 1: Sparkline in Table**
-- Add mini line chart in "Closing Stock" column header
-- Shows trend across all 16 weeks at a glance
-
-**Enhancement 2: Heatmap View**
-- Multi-SKU comparison (rows = SKUs, columns = weeks)
-- Cell color = stock status
-- Use case: Identify which SKUs have concurrent stockout risks
-
-**Enhancement 3: Side-by-Side Comparison**
-- Compare two SKUs simultaneously
-- Use case: Analyze substitution options when primary SKU is stocked out
-
----
-
-## 11. Integration Points
-
-### 11.1 Data Dependencies
-
-**Upstream Systems (Read):**
-- `products` table → Product metadata
-- `sales_forecasts` → Planning module input
-- `sales_actuals` → Channel integration (e.g., Shopify, Amazon APIs)
-- `shipments` → Logistics module
-- `shipment_items` → Logistics module
-- `inventory_snapshots` → Manual entry or warehouse API
-
-**Downstream Systems (None):**
-- This page is read-only
-- No data writes to database
-
-### 11.2 Cross-Module Navigation
-
-**Link to Algorithm Audit FROM:**
-- Inventory Projection page (`/inventory`) → "View Calculation Details" button per SKU
-- Replenishment Action Center → "Audit Suggestion" link
-
-**Link FROM Algorithm Audit TO:**
-- Logistics page (`/logistics?tracking_number={id}`) → From expanded shipment rows
-- Product detail page (`/settings/products/{sku}`) → From SKU header
-
----
-
-## 12. Acceptance Criteria (Gherkin)
-
-### AC-1: Display 16-Week Calculation Table
+### Scenario 1: 查看完整供应链时间线
 
 ```gherkin
-Feature: Algorithm Audit Page - Basic Display
+Feature: 算法验证页面 - 供应链时间线展示
 
-  Scenario: View audit table for active SKU
-    Given I am an authenticated user
-    And SKU "SKU-12345" is active in the database
-    And I navigate to "/inventory/algorithm-audit"
-    When I select SKU "SKU-12345" from the dropdown
-    Then I see a table with 16 rows (4 past weeks + 12 future weeks)
-    And I see 13 columns as defined in Section 5.1
-    And the first row shows week ISO "2025-W06" (assuming today is 2025-W10)
-    And the last row shows week ISO "2025-W21"
-    And column headers are sticky when scrolling vertically
-    And the "Week ISO" column is sticky when scrolling horizontally
+Scenario: 查看某SKU某周的完整供应链反推
+  Given 我选择了SKU "TEST-SKU-001"
+  And 该产品的安全库存周数为 2
+  And 系统提前期参数: 生产8周, 装运1周, 运输4周
+  When 我查看周次 "2025-W45" 的行数据
+  And 该周预计销量为 50台
+  Then 我应该看到以下计算结果:
+    | 列名         | 预期值          | 计算逻辑                |
+    | 预计销量     | 50台           | sales_forecasts         |
+    | 预计到仓周   | 2025-W47       | W45 + 2周              |
+    | 预计到仓量   | 100台          | 50 × 2周               |
+    | 预计发货周   | 2025-W43       | W47 - 4周              |
+    | 预计出货周   | 2025-W42       | W43 - 1周              |
+    | 预计下单周   | 2025-W34       | W42 - 8周              |
 ```
 
-### AC-2: Color-Code Data Sources
+### Scenario 2: 对比预计与实际数据
 
 ```gherkin
-Feature: Data Source Visual Distinction
-
-  Scenario: Actual sales data is highlighted green
-    Given I am viewing the audit table for SKU "SKU-12345"
-    And sales_actuals has a record for week "2025-W10" with qty 300
-    When I look at the "Sales - Actual" cell for week "2025-W10"
-    Then the cell background is green (bg-green-50)
-    And the cell text is "300"
-    And the cell has green border (border-green-200)
-
-  Scenario: Forecast sales data is highlighted yellow
-    Given I am viewing the audit table for SKU "SKU-12345"
-    And sales_forecasts has a record for week "2025-W15" with qty 250
-    And sales_actuals has NO record for week "2025-W15"
-    When I look at the "Sales - Forecast" cell for week "2025-W15"
-    Then the cell background is yellow (bg-yellow-50)
-    And the "Sales - Outflow" cell also has yellow background
-    And the "Sales - Actual" cell is gray (NULL)
-
-  Scenario: Stockout status is highlighted red
-    Given I am viewing the audit table for SKU "SKU-12345"
-    And the calculated closing stock for week "2025-W18" is -50
-    When I look at the "Closing Stock" cell for week "2025-W18"
-    Then the cell background is red (bg-red-600)
-    And the cell text is white (text-white)
-    And the "Stock Status" cell shows a red badge with "Stockout"
+Scenario: 显示实际数据覆盖预计数据
+  Given SKU "TEST-SKU-001" 在 "2025-W45"
+  And 预计销量为 50台
+  And 实际销量为 48台
+  And 预计到仓100台
+  And 实际到仓105台
+  When 我查看表格
+  Then "实际销量" 列应该显示 48, 背景为绿色
+  And "销量取值" 列应该显示 48, 背景为绿色
+  And "实际到仓量" 列应该显示 105, 背景为绿色
+  And "到仓取值" 列应该显示 105, 背景为绿色
+  And "到仓取值" 列的Tooltip显示: "使用实际到仓数据"
 ```
 
-### AC-3: Expandable Shipment Details
+### Scenario 3: 库存滚动计算
 
 ```gherkin
-Feature: Incoming Quantity Drill-Down
-
-  Scenario: Expand to show shipment details
-    Given I am viewing the audit table for SKU "SKU-12345"
-    And week "2025-W12" has 2 shipments arriving with total qty 1500
-    And shipment "TRK-001" has actual_arrival_date "2025-03-12" with qty 1000
-    And shipment "TRK-002" has only planned_arrival_date "2025-03-14" with qty 500
-    When I click on the "Incoming Qty" cell for week "2025-W12"
-    Then the cell expands to show 2 shipment rows
-    And shipment "TRK-001" row shows actual arrival date in green
-    And shipment "TRK-002" row shows planned arrival date in yellow
-    And each shipment row has a "View Shipment Details" link
-    When I click "View Shipment Details" for "TRK-001"
-    Then I am navigated to "/logistics?tracking_number=TRK-001" in a new tab
+Scenario: 验证期末库存计算准确性
+  Given SKU "TEST-SKU-001" 的期初库存为 200台
+  And 本周到仓取值为 100台
+  And 本周销量取值为 50台
+  When 系统计算期末库存
+  Then 期末库存应该为 250台 (200 + 100 - 50)
+  And 周转率应该为 5.00 (250 / 50)
+  And Tooltip显示: "期末库存 = 200 + 100 - 50 = 250"
 ```
 
-### AC-4: Calculation Tooltip
+### Scenario 4: 库存状态判断
 
 ```gherkin
-Feature: Calculation Transparency
+Scenario: 根据安全库存判断库存状态
+  Given 平均周销为 50台
+  And 安全库存周数为 2周
+  And 安全库存阈值为 100台 (50 × 2)
+  When 期末库存为 80台
+  Then 库存状态应该为 "Risk" (风险)
+  And 期末库存单元格背景应该为橙色
+  And 状态列应该显示橙色徽章 "风险"
 
-  Scenario: Hover over closing stock to see formula
-    Given I am viewing the audit table for SKU "SKU-12345"
-    And week "2025-W10" has:
-      | Opening Stock | Incoming Qty | Sales Outflow | Closing Stock |
-      | 1000          | 200          | 250           | 950           |
-    When I hover over the "Closing Stock" cell for week "2025-W10"
-    Then I see a tooltip displaying:
-      """
-      Formula: Opening Stock + Incoming Qty - Sales Outflow
-      Calculation: 1000 + 200 - 250 = 950
-      """
-    And the tooltip appears within 50ms of hover
+  When 期末库存为 0台
+  Then 库存状态应该为 "Stockout" (缺货)
+  And 期末库存单元格背景应该为红色, 文字为白色
+
+  When 期末库存为 120台
+  Then 库存状态应该为 "OK" (正常)
+  And 期末库存单元格无特殊背景色
 ```
 
-### AC-5: Past vs Future Week Separator
+### Scenario 5: 处理缺失数据
 
 ```gherkin
-Feature: Week Offset Visual Indicator
-
-  Scenario: Current week is visually distinguished
-    Given today is 2025-03-10 (week "2025-W10")
-    And I am viewing the audit table for any SKU
-    When I scroll to the row for week "2025-W10"
-    Then I see a blue border above this row (border-blue-400)
-    And I see a label "↓ CURRENT WEEK ↓" in the row
-    And rows above (W06-W09) have gray background (past weeks)
-    And rows below (W11-W21) have white background (future weeks)
-```
-
-### AC-6: Stock Status Classification
-
-```gherkin
-Feature: Stock Status Logic
-
-  Scenario: OK status when stock above safety threshold
-    Given SKU "SKU-12345" has safety_stock_weeks = 3
-    And avg_weekly_sales = 250 units
-    And safety_threshold = 3 × 250 = 750 units
-    And week "2025-W12" has closing_stock = 1000
-    When I view the "Stock Status" cell for week "2025-W12"
-    Then I see a green badge with text "OK"
-    And the "Closing Stock" cell has white background
-
-  Scenario: Risk status when stock below safety threshold
-    Given the same SKU setup as above
-    And week "2025-W15" has closing_stock = 600 (below 750 threshold)
-    When I view the "Stock Status" cell for week "2025-W15"
-    Then I see an orange badge with text "Risk"
-    And the "Closing Stock" cell has orange background (bg-orange-100)
-
-  Scenario: Stockout status when stock negative
-    Given the same SKU setup as above
-    And week "2025-W18" has closing_stock = -100
-    When I view the "Stock Status" cell for week "2025-W18"
-    Then I see a red badge with text "Stockout"
-    And the "Closing Stock" cell has red background (bg-red-600)
-    And the cell text is white (text-white)
+Scenario: 实际数据缺失时使用预计数据
+  Given SKU "TEST-SKU-001" 在 "2025-W50" (未来周)
+  And 预计销量为 60台
+  And 实际销量为 NULL (未发生)
+  When 我查看表格
+  Then "实际销量" 列应该显示 "-", 背景为灰色
+  And "销量取值" 列应该显示 60, 背景为黄色
+  And Tooltip显示: "使用预计销量 (实际数据未录入)"
 ```
 
 ---
 
-## 13. Open Questions & Decisions Required
+## 8. 非功能性需求 Non-Functional Requirements
 
-### 13.1 Resolved Questions
+### 8.1 性能要求 Performance
 
-**Q1: Should we show production delivery dates in addition to shipment arrivals?**
-**Decision:** NO. Focus on warehouse arrival dates only (what matters for inventory).
-**Rationale:** Production deliveries are intermediate events. Incoming qty is triggered by warehouse arrival.
+| 指标 Metric | 目标 Target | 测量方法 Measurement |
+|------------|------------|---------------------|
+| 首次加载时间 | < 2秒 | Time to Interactive (TTI) |
+| SKU切换响应 | < 1秒 | 选择到渲染完成 |
+| 表格滚动流畅度 | 60 FPS | Chrome DevTools Performance |
+| 数据库查询时间 | < 500ms | Server-side logging |
 
-**Q2: Should we aggregate sales by channel or show per-channel breakdown?**
-**Decision:** Aggregate by SKU. Show per-channel breakdown in a future enhancement.
-**Rationale:** Algorithm uses aggregated sales. Channel breakdown adds complexity without immediate value.
+**优化策略 Optimization Strategies:**
+- 使用并行查询 (Promise.all) 获取多表数据
+- 前端缓存已加载的SKU数据 (React Query, TTL=5分钟)
+- 数据库索引优化 (`sku`, `week_iso`, `actual_arrival_date`)
 
-**Q3: Should users be able to edit data from this page (e.g., fix missing actual dates)?**
-**Decision:** NO. This is a READ-ONLY audit page. Editing happens in source modules (Logistics, Planning).
-**Rationale:** Separation of concerns. Audit ≠ Data Entry.
+### 8.2 可用性要求 Usability
 
-### 13.2 Open Questions (Deferred to Design Phase)
+**横向滚动 Horizontal Scroll:**
+- 固定周次列 (sticky left column)
+- 固定表头 (sticky header row)
 
-**Q4: How to handle SKUs with >50 shipments in a single week?**
-**Proposed Answer:** Paginate expandable shipment list (show first 10, "View All" button)
-**Assigned To:** System Architect (design.md)
+**色盲友好 Color Blind Friendly:**
+- 不仅依赖颜色,还使用图标/文字标识
+- 实际值: 绿色 + "✓" 图标
+- 预计值: 黄色 + "~" 图标
 
-**Q5: Should we cache calculation results on client side?**
-**Proposed Answer:** Use React Query with 5-minute cache TTL
-**Assigned To:** Frontend Artisan (implementation)
+**移动端支持 Mobile Support:**
+- 响应式设计,小屏幕下隐藏部分中间列
+- 提供"详情模态框"查看完整数据
 
-**Q6: Should we log when users access this page for compliance audits?**
-**Proposed Answer:** YES, log to `audit_logs` table (user_id, sku, timestamp)
-**Assigned To:** Backend Specialist (Server Action)
+### 8.3 数据完整性 Data Integrity
 
----
+**缺失值处理 Missing Values:**
+- 实际值为NULL时,显示"-",不使用0
+- 预计值缺失时,使用0作为兜底
 
-## 14. Success Metrics
-
-### 14.1 Adoption Metrics (30 days post-launch)
-
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Weekly Active Users | ≥80% of inventory planners | Google Analytics |
-| Avg Session Duration | ≥3 minutes | GA (indicates deep engagement) |
-| SKU Audits per User | ≥5 per week | Database query count |
-| Bounce Rate | <20% | GA (low bounce = page is useful) |
-
-### 14.2 Business Impact Metrics (90 days post-launch)
-
-| Metric | Target | Baseline | Measurement Method |
-|--------|--------|----------|-------------------|
-| User Trust Score | ≥4.5/5 | 3.2/5 (from recent survey) | Quarterly survey question: "I trust the inventory projections" |
-| Manual Excel Calculations | <1 hour/week per planner | 4 hours/week | Self-reported time log |
-| Projection Accuracy | ≥90% | 85% | Compare projected stock vs actual stock (4 weeks later) |
-| Support Tickets (Inventory) | Reduce by 60% | 10 tickets/month | Zendesk tag analysis |
-
-### 14.3 Technical Quality Metrics
-
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Page Load Speed (P95) | <2 seconds | Vercel Analytics |
-| Error Rate | <0.1% | Sentry error tracking |
-| Data Accuracy Test Pass Rate | 100% | Automated test suite |
-| Accessibility Score | ≥95/100 | Lighthouse audit |
+**异常值警告 Anomaly Warning:**
+- 实际销量 > 预计销量 × 2: 显示⚠️警告图标
+- 实际到仓 < 预计到仓 × 0.5: 显示⚠️警告图标
+- 周转率 < 1: 显示警告 "库存不足1周销量"
 
 ---
 
-## 15. Risks & Mitigation
+## 9. UI/UX设计指导原则 UI/UX Design Guidelines
 
-### 15.1 Risk Matrix
+### 9.1 视觉层次 Visual Hierarchy
 
-| Risk | Probability | Impact | Severity | Mitigation Strategy |
-|------|------------|--------|----------|---------------------|
-| **Algorithm mismatch** (page calc ≠ view) | Medium | High | **CRITICAL** | Automated testing, QA review before launch |
-| **Performance degradation** (SKUs with 100+ shipments/week) | Low | Medium | MEDIUM | Query optimization, pagination for expandable rows |
-| **User confusion** (too many columns) | Medium | Low | LOW | User training video, in-app tooltips, legend |
-| **Data quality issues** (missing actual dates) | High | Medium | MEDIUM | Add data validation alerts, backfill process for ops team |
-| **Mobile access attempts** | Low | Low | LOW | Show responsive message: "Use desktop for best experience" |
+**优先级1 (最重要) - 粗体高亮:**
+- 销量取值 Effective Sales
+- 到仓取值 Effective Arrival
+- 期末库存 Closing Stock
+- 周转率 Turnover Ratio
 
-### 15.2 Rollback Plan
+**优先级2 (次要) - 常规字体:**
+- 预计值列 (黄色背景)
+- 实际值列 (绿色背景)
 
-**Trigger:** >5% error rate OR algorithm mismatch detected in production
+**优先级3 (辅助) - 灰色小字:**
+- 周起始日
+- 安全库存阈值
+- 反推周次 (淡蓝色背景)
 
-**Rollback Steps:**
-1. Hide "Algorithm Audit" link from navigation menu (feature flag)
-2. Redirect `/inventory/algorithm-audit` to `/inventory` with notice: "Page under maintenance"
-3. Investigate root cause in staging environment
-4. Fix and re-deploy after QA validation
-5. Re-enable feature flag
+### 9.2 颜色编码 Color Coding
 
-**Rollback Time:** <15 minutes
+**数据类型着色 Data Type Colors:**
+```css
+/* 实际值 (已发生) */
+--color-actual: #dcfce7; /* green-100 */
+--color-actual-border: #86efac; /* green-300 */
 
----
+/* 预计值 (计划/预测) */
+--color-forecast: #fef9c3; /* yellow-100 */
+--color-forecast-border: #fde047; /* yellow-300 */
 
-## 16. Dependencies & Constraints
+/* 计算值 (取值结果) */
+--color-effective-actual: #bbf7d0; /* green-200 */
+--color-effective-forecast: #fef08a; /* yellow-200 */
 
-### 16.1 Technical Dependencies
+/* 反推值 (推算周次) */
+--color-backtrack: #e0f2fe; /* sky-100 */
+--color-backtrack-border: #bae6fd; /* sky-200 */
+```
 
-| Dependency | Version | Purpose | Risk if Unavailable |
-|-----------|---------|---------|---------------------|
-| `date-fns` | ≥3.0 | ISO week calculations | Cannot calculate week boundaries |
-| ShadCN Table | Latest | Table UI component | Must use native HTML table (ugly) |
-| Supabase client | ≥2.0 | Data fetching | Page non-functional |
-| `v_inventory_projection_12weeks` view | Existing | Reference for validation | Cannot validate accuracy |
+**风险状态着色 Risk Status Colors:**
+```css
+/* 缺货 Stockout */
+--color-stockout-bg: #dc2626; /* red-600 */
+--color-stockout-text: #ffffff;
 
-### 16.2 Data Constraints
+/* 风险 Risk */
+--color-risk-bg: #fed7aa; /* orange-200 */
+--color-risk-text: #c2410c; /* orange-800 */
 
-**Minimum Data Requirements:**
-- At least 1 active SKU in `products` table
-- At least 1 inventory snapshot (for opening stock)
-- Sales forecasts for next 12 weeks (else projections are zero)
+/* 正常 OK */
+--color-ok-bg: #ffffff;
+--color-ok-text: #000000;
+```
 
-**Data Quality Assumptions:**
-- Inventory snapshots are updated weekly (manual or automated)
-- Shipment arrival dates are entered within 48 hours of actual arrival
-- Sales actuals are backfilled within 1 week of order date
+### 9.3 表格布局 Table Layout
 
-**What Happens if Constraints Violated:**
-- If SKU has no inventory snapshot → Opening stock defaults to 0 (show warning)
-- If shipment has no planned arrival date → Excluded from calculations (show error)
-- If sales forecast missing → Effective sales = 0 (acceptable for new products)
+**固定列 Fixed Columns:**
+- 周次 (Week ISO) - 左侧固定
+- 库存状态 (Stock Status) - 右侧固定 (可选)
 
-### 16.3 Timeline Constraints
-
-**Must Launch By:** 2025-12-31 (end of Q4)
-**Reason:** Q1 2026 is peak replenishment planning season
-
-**Critical Path:**
-1. Product spec finalization: 2025-12-05 (THIS DOCUMENT)
-2. System architecture design: 2025-12-08
-3. Frontend implementation: 2025-12-15
-4. Backend implementation: 2025-12-15 (parallel with frontend)
-5. QA testing: 2025-12-20
-6. User acceptance testing: 2025-12-23
-7. Production deployment: 2025-12-27
-8. Buffer for holidays: 2025-12-28 to 2025-12-31
-
----
-
-## 17. Glossary
-
-| Term | Definition |
-|------|------------|
-| **Algorithm Audit** | Process of verifying inventory projection calculations by examining each step |
-| **Dual-Track Data** | System design where both planned and actual values coexist; actual overrides planned when available |
-| **Effective Value** | The authoritative value chosen by COALESCE(actual, planned) logic |
-| **ISO Week** | ISO 8601 week numbering (YYYY-WNN), weeks start Monday, W01 contains first Thursday of year |
-| **Opening Stock** | Inventory quantity at the START of a week (= closing stock of previous week) |
-| **Closing Stock** | Inventory quantity at the END of a week (= opening + incoming - outflow) |
-| **Incoming Qty** | Units arriving at warehouse during a week (from shipments) |
-| **Sales Outflow** | Units sold during a week (effective sales = COALESCE(actual, forecast)) |
-| **Safety Threshold** | Minimum stock level = avg_weekly_sales × safety_stock_weeks |
-| **Stock Status** | Classification: Stockout (stock <0), Risk (stock < safety threshold), OK (stock ≥ threshold) |
-| **Materialized View** | Pre-calculated database view stored as table for performance |
+**列宽分配 Column Width:**
+```typescript
+const COLUMN_WIDTHS = {
+  week_iso: '100px',          // 固定宽度
+  week_start_date: '120px',
+  forecast_sales: '100px',
+  actual_sales: '100px',
+  effective_sales: '120px',   // 稍宽 (重要)
+  // ... 其他列类似
+  closing_stock: '140px',     // 最宽 (最重要)
+  turnover_ratio: '100px',
+  stock_status: '100px',
+}
+```
 
 ---
 
-## 18. Related Documents
+## 10. 数据查询接口设计 Query Interface Design
 
-**This Document Depends On:**
-- `/Users/tony/Desktop/rolloy-scm/specs/dual-track-logic/requirements.md` (Business logic foundation)
-- `/Users/tony/Desktop/rolloy-scm/supabase/migrations/20250130_create_inventory_projection_12weeks_view.sql` (Algorithm implementation)
+### 10.1 主查询函数签名
 
-**Next Documents to Create:**
-- `/Users/tony/Desktop/rolloy-scm/specs/algorithm-audit/design.md` (System Architect - database queries, API contracts)
-- `/Users/tony/Desktop/rolloy-scm/specs/algorithm-audit/test-plan.md` (QA Director - test scenarios)
+```typescript
+/**
+ * 获取算法验证数据 (V2.0)
+ * @param sku - 产品SKU
+ * @returns 16周完整供应链数据
+ */
+export async function fetchAlgorithmAuditV2(
+  sku: string
+): Promise<AlgorithmAuditResultV2>
 
-**Cross-References:**
-- Inventory Projection Dashboard: `/Users/tony/Desktop/rolloy-scm/specs/replenishment-action-center/requirements.md`
-- RLS Security Policies: `/Users/tony/Desktop/rolloy-scm/specs/security/*`
+interface AlgorithmAuditResultV2 {
+  product: Product | null
+  rows: AlgorithmAuditRowV2[]
+  metadata: {
+    current_week: string
+    start_week: string
+    end_week: string
+    total_weeks: number
+    avg_weekly_sales: number
+    safety_stock_weeks: number
+    // 新增: 提前期参数
+    lead_times: {
+      production_weeks: number
+      loading_weeks: number
+      transit_weeks: number
+    }
+  }
+}
+```
+
+### 10.2 行数据结构 (扩展版)
+
+```typescript
+interface AlgorithmAuditRowV2 {
+  // 基础信息
+  week_iso: string
+  week_start_date: string
+  week_offset: number
+  is_past: boolean
+  is_current: boolean
+
+  // ===== 销售数据 =====
+  sales_forecast: number
+  sales_actual: number | null
+  sales_effective: number
+  sales_source: 'actual' | 'forecast'
+
+  // ===== 到仓数据 =====
+  // 预计 (反推)
+  planned_arrival_week: string      // 新增
+  planned_arrival_qty: number       // 新增
+
+  // 实际 (数据库)
+  actual_arrival_week: string | null  // 新增
+  actual_arrival_qty: number          // 新增
+
+  // 取值
+  arrival_effective: number         // 新增
+  arrival_source: 'actual' | 'planned'  // 新增
+
+  // ===== 发货数据 =====
+  planned_ship_week: string         // 新增
+  actual_ship_week: string | null   // 新增
+
+  // ===== 出货数据 =====
+  planned_factory_ship_week: string     // 新增
+  actual_factory_ship_week: string | null  // 新增
+
+  // ===== 下单数据 =====
+  planned_order_week: string        // 新增
+  actual_order_week: string | null  // 新增
+  actual_order_qty: number          // 新增
+
+  // ===== 库存计算 =====
+  opening_stock: number
+  closing_stock: number
+  safety_threshold: number
+  turnover_ratio: number | null     // 新增
+  stock_status: StockStatus
+
+  // 明细列表 (可展开)
+  shipment_details: ShipmentDetail[]
+  order_details: OrderDetail[]      // 新增
+  delivery_details: DeliveryDetail[] // 新增
+}
+```
+
+### 10.3 辅助工具函数
+
+**周次转换 Week Conversion:**
+```typescript
+/**
+ * 将日期转换为周次
+ */
+function getWeekFromDate(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  const year = getISOWeekYear(d)
+  const week = getISOWeek(d)
+  return `${year}-W${String(week).padStart(2, '0')}`
+}
+
+/**
+ * 周次加减 (支持跨年)
+ */
+function addWeeksToWeekString(weekIso: string, offset: number): string {
+  // 已实现于 lib/utils/date.ts
+}
+```
+
+**反推计算 Backward Calculation:**
+```typescript
+/**
+ * 反推供应链各阶段周次
+ */
+function backtrackSupplyChainWeeks(params: {
+  current_week: string
+  safety_stock_weeks: number
+  transit_weeks: number
+  loading_weeks: number
+  production_weeks: number
+}): {
+  planned_arrival_week: string
+  planned_ship_week: string
+  planned_factory_ship_week: string
+  planned_order_week: string
+} {
+  const { current_week, safety_stock_weeks, transit_weeks, loading_weeks, production_weeks } = params
+
+  const planned_arrival_week = addWeeksToWeekString(current_week, safety_stock_weeks)
+  const planned_ship_week = addWeeksToWeekString(planned_arrival_week, -transit_weeks)
+  const planned_factory_ship_week = addWeeksToWeekString(planned_ship_week, -loading_weeks)
+  const planned_order_week = addWeeksToWeekString(planned_factory_ship_week, -production_weeks)
+
+  return {
+    planned_arrival_week,
+    planned_ship_week,
+    planned_factory_ship_week,
+    planned_order_week,
+  }
+}
+```
 
 ---
 
-## 19. Appendix: Example Data Scenario
+## 11. 边界情况处理 Edge Case Handling
 
-### 19.1 Sample SKU: SKU-WIDGET-001
+### 11.1 跨年周次
 
-**Product Details:**
-- SKU Code: SKU-WIDGET-001
-- Product Name: Premium Widget (高级小部件)
-- Safety Stock Weeks: 3
-- Current On Hand: 1,200 units (as of 2025-12-01)
+**问题 Problem:**
+`2025-W52` + 2周 = `2026-W02` (跨年)
 
-**Sales Data (Weeks W10-W13):**
+**解决方案 Solution:**
+使用 `date-fns` 的 ISO Week 函数,自动处理跨年:
+```typescript
+import { addWeeks, getISOWeek, getISOWeekYear } from 'date-fns'
 
-| Week | Channel | Forecast Qty | Actual Qty |
-|------|---------|-------------|-----------|
-| 2025-W10 | Amazon | 100 | 95 |
-| 2025-W10 | Shopify | 50 | 48 |
-| 2025-W11 | Amazon | 110 | NULL |
-| 2025-W11 | Shopify | 55 | NULL |
-| 2025-W12 | Amazon | 105 | NULL |
-| 2025-W12 | Shopify | 52 | NULL |
+// 已验证可跨年
+addWeeksToWeekString('2025-W52', 2) // => '2026-W02'
+```
 
-**Shipments (Incoming):**
+### 11.2 部分交付 (Split Deliveries)
 
-| Tracking Number | Planned Arrival | Actual Arrival | Qty |
-|----------------|----------------|----------------|-----|
-| TRK-20250310-001 | 2025-03-15 (W11) | 2025-03-12 (W11) | 1,000 |
-| TRK-20250320-002 | 2025-03-22 (W12) | NULL | 500 |
+**场景 Scenario:**
+一个PO下单100台,分2次交付 (60台 + 40台),分别在不同周到仓。
 
-### 19.2 Expected Audit Table Output (Excerpt)
+**处理方式 Handling:**
+- 按**实际到仓周**聚合数量
+- 不关心中间的分批逻辑
+- 在"到仓取值"列汇总该周所有到仓
 
-| Week ISO | Opening Stock | Sales-Forecast | Sales-Actual | Sales-Outflow | Shipment-Planned | Shipment-Actual | Incoming Qty | Net Change | Closing Stock | Status |
-|----------|--------------|---------------|-------------|---------------|-----------------|----------------|--------------|-----------|--------------|--------|
-| 2025-W10 | 1,200 | 150 | **143** (Green) | **143** (Green) | 0 | 0 | 0 | -143 (Red) | 1,057 | OK |
-| 2025-W11 | 1,057 | 165 (Yellow) | NULL (Gray) | 165 (Yellow) | 0 | **1,000** (Green) | **1,000** (Green) | +835 (Green) | 1,892 | OK |
-| 2025-W12 | 1,892 | 157 (Yellow) | NULL (Gray) | 157 (Yellow) | **500** (Yellow) | 0 | 500 (Yellow) | +343 (Green) | 2,235 | OK |
+### 11.3 无预测数据的未来周
 
-**Notes on This Example:**
-- Week W10: Uses actual sales (143 = 95 + 48), no incoming shipments
-- Week W11: Uses forecast sales (165 total), but incoming qty uses ACTUAL arrival date (W11 instead of planned W11)
-- Week W12: All forecast data, shipment still planned (yellow)
+**场景 Scenario:**
+`sales_forecasts` 表只有未来4周数据,但我们需要展示12周。
 
----
+**处理方式 Handling:**
+- 缺失周的 `forecast_qty` 默认为 0
+- UI提示: "该周暂无预测数据"
+- 不影响库存滚动计算 (0销量 = 库存不变)
 
-**Document Control:**
-- **Status:** FINAL - Ready for System Architect Review
-- **Next Action:** System Architect creates `/Users/tony/Desktop/rolloy-scm/specs/algorithm-audit/design.md`
-- **Approvers Required:** Engineering Lead, Product Manager, Head of Operations
-- **Review Cycle:** Bi-weekly until launch
+### 11.4 历史周的预计值已失效
+
+**场景 Scenario:**
+当前周是W45,查看W41 (过去4周) 的"预计到仓周"已经没有意义。
+
+**处理方式 Handling:**
+- 历史周仍显示"预计值"列,但**灰色淡化**
+- 重点高亮"实际值"列
+- Tooltip提示: "此为历史预测值,请参考实际值"
 
 ---
 
-**END OF DOCUMENT**
+## 12. 里程碑与优先级 Milestones & Priorities
+
+### Phase 1: MVP (P0 - 必须有)
+
+**目标: 保持V1.0功能,添加关键改进**
+- ✅ 基础16周表格
+- ✅ 销售双轨数据 (预计/实际/取值)
+- ✅ 到仓双轨数据 (预计/实际/取值)
+- ✅ 库存滚动计算 (期初/期末/周转率)
+- ✅ 库存状态判断 (缺货/风险/正常)
+- ✅ SKU选择器
+- 🆕 周转率计算与显示
+- 🆕 预计到仓周/量反推计算
+
+### Phase 2: 供应链反推 (P1 - 应该有)
+
+**目标: 完整供应链时间线展示**
+- 🔲 反推周次计算 (到仓/发货/出货/下单)
+- 🔲 实际周次匹配 (从PO/Delivery/Shipment提取)
+- 🔲 周次对比 (预计 vs 实际)
+- 🔲 延迟警告标识 (实际周次 > 预计周次)
+
+### Phase 3: 增强体验 (P2 - 可以有)
+
+- 🔲 明细可展开 (点击到仓数量→显示发运单列表)
+- 🔲 异常值警告 (实际与预计偏差>50%)
+- 🔲 导出Excel功能
+- 🔲 响应式移动端布局
+
+### Phase 4: 高级功能 (P3 - 未来)
+
+- 🔲 提前期参数可配置 (在设置页面)
+- 🔲 多SKU对比模式 (并排显示2个SKU)
+- 🔲 历史准确率分析 (预测偏差趋势图)
+- 🔲 实时数据刷新 (WebSocket)
+
+---
+
+## 13. 依赖与风险 Dependencies & Risks
+
+### 13.1 技术依赖
+
+| 依赖项 | 当前版本 | 用途 | 风险 |
+|-------|---------|------|------|
+| `date-fns` | ^2.30.0 | 周次计算 | 低 (已验证) |
+| `Supabase` | Latest | 数据查询 | 低 |
+| `ShadCN Table` | Latest | 表格组件 | 低 |
+| `Recharts` | Latest | 图表 (未来阶段) | 中 |
+
+### 13.2 数据质量风险
+
+**风险1: 历史数据不完整**
+- **描述 Description:** `purchase_orders.actual_order_date` 可能为空
+- **影响 Impact:** 无法展示"实际下单周"
+- **缓解措施 Mitigation:** 显示"-",不影响核心功能
+
+**风险2: 发运单与PO关联缺失**
+- **描述 Description:** `shipments.production_delivery_id` 可能为NULL
+- **影响 Impact:** 无法追溯发运单对应的PO
+- **缓解措施 Mitigation:** 通过 `sku` + `week_iso` 聚合匹配
+
+**风险3: 跨周分批到仓**
+- **描述 Description:** 一个PO的货分多周到仓
+- **影响 Impact:** 预计到仓周与实际不匹配
+- **缓解措施 Mitigation:** 按周聚合,不强制一对一匹配
+
+### 13.3 性能风险
+
+**风险: 16周 × 多表JOIN查询过慢**
+- **缓解措施 Mitigation:**
+  - 使用并行查询 (Promise.all)
+  - 添加数据库索引 (`sku`, `week_iso`)
+  - 前端缓存 (React Query TTL=5分钟)
+
+---
+
+## 14. 成功指标 Success Metrics
+
+### 14.1 功能完整性
+
+- [ ] 所有21列数据正确展示
+- [ ] 反推周次计算准确率 = 100%
+- [ ] 实际值匹配准确率 ≥ 95%
+- [ ] 库存计算误差 = 0
+
+### 14.2 用户体验
+
+- [ ] 首次加载时间 < 2秒
+- [ ] SKU切换响应 < 1秒
+- [ ] 无横向滚动卡顿 (60 FPS)
+- [ ] 色盲用户可正常使用 (WCAG AA标准)
+
+### 14.3 业务价值
+
+- [ ] 用户能在5分钟内理解算法逻辑
+- [ ] 库存风险识别率 ≥ 90%
+- [ ] 预测偏差分析效率提升 50%
+
+---
+
+## 15. 文档与培训 Documentation & Training
+
+### 15.1 用户手册
+
+**必须包含 Must Include:**
+- [ ] 页面功能说明 (中英文)
+- [ ] 列名含义解释
+- [ ] 颜色编码图例
+- [ ] 常见问题FAQ
+
+### 15.2 开发文档
+
+**必须包含 Must Include:**
+- [ ] 数据库Schema说明
+- [ ] 查询逻辑流程图
+- [ ] 反推算法伪代码
+- [ ] 测试用例清单
+
+---
+
+## 附录 Appendix
+
+### A. 术语表 Glossary
+
+| 中文 | 英文 | 定义 |
+|-----|------|------|
+| 周次 | Week ISO | ISO 8601格式: YYYY-Www (如2025-W45) |
+| 双轨数据 | Dual-Track Data | 预计值 + 实际值并存的数据模式 |
+| 取值 | Effective Value | COALESCE(实际, 预计) 的结果 |
+| 反推 | Backtrack | 从目标日期逆推各阶段应该发生的时间 |
+| 提前期 | Lead Time | 从下单到到仓的总时间 (周数) |
+| 安全库存 | Safety Stock | 用于应对需求波动的缓冲库存 |
+| 周转率 | Turnover Ratio | 库存/销量,表示库存可支撑的周数 |
+
+### B. 参考资料 References
+
+- **现有代码 Existing Code:**
+  - `/Users/tony/Desktop/rolloy-scm/src/lib/queries/algorithm-audit.ts`
+  - `/Users/tony/Desktop/rolloy-scm/src/components/inventory/algorithm-audit-table.tsx`
+
+- **相关文档 Related Docs:**
+  - `CLAUDE.md` - 项目技术栈说明
+  - `lib/types/database.ts` - 数据库类型定义
+
+- **外部参考 External References:**
+  - ISO 8601 Week Date: https://en.wikipedia.org/wiki/ISO_week_date
+  - date-fns Documentation: https://date-fns.org/
+
+---
+
+**文档结束 End of Document**
+
+---
+
+**审批签字 Approval Signatures:**
+
+| 角色 Role | 姓名 Name | 日期 Date | 签名 Signature |
+|----------|---------|----------|---------------|
+| Product Director | | 2025-12-03 | ✓ |
+| System Architect | | Pending | - |
+| Frontend Artisan | | Pending | - |
+| Backend Specialist | | Pending | - |
+
+**下一步 Next Steps:**
+1. System Architect 评审技术可行性
+2. 生成 `specs/algorithm-audit/design.md` 技术设计文档
+3. Frontend Artisan 实现UI组件
+4. Backend Specialist 实现数据查询逻辑
+5. QA Director 执行测试验收

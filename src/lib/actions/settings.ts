@@ -94,6 +94,80 @@ export async function updateProduct(
 
 export async function deleteProduct(
   sku: string
+): Promise<{ success: boolean; error?: string; canDeactivate?: boolean }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  // Validate SKU
+  const validation = deleteBySkuSchema.safeParse({ sku })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => e.message).join(', ')}`,
+    }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  try {
+    // Check for references in related tables
+    const [
+      poItems,
+      shipmentItems,
+      salesForecasts,
+      salesActuals,
+      inventorySnapshots,
+      productionDeliveries
+    ] = await Promise.all([
+      supabase.from('purchase_order_items').select('id').eq('sku', sku).limit(1),
+      supabase.from('shipment_items').select('id').eq('sku', sku).limit(1),
+      supabase.from('sales_forecasts').select('id').eq('sku', sku).limit(1),
+      supabase.from('sales_actuals').select('id').eq('sku', sku).limit(1),
+      supabase.from('inventory_snapshots').select('id').eq('sku', sku).limit(1),
+      supabase.from('production_deliveries').select('id').eq('sku', sku).limit(1),
+    ])
+
+    // Check if any references exist
+    const hasReferences = [
+      poItems,
+      shipmentItems,
+      salesForecasts,
+      salesActuals,
+      inventorySnapshots,
+      productionDeliveries
+    ].some(result => result.data && result.data.length > 0)
+
+    if (hasReferences) {
+      // Cannot physically delete - has historical data
+      return {
+        success: false,
+        error: '该产品已有关联数据（采购、发运、销售或库存记录），无法删除。建议使用"停用"功能将产品状态设为停用。',
+        canDeactivate: true
+      }
+    }
+
+    // No references - safe to physically delete
+    const { error } = await supabase.from('products').delete().eq('sku', sku)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/settings/products')
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '删除操作失败'
+    }
+  }
+}
+
+export async function deactivateProduct(
+  sku: string
 ): Promise<{ success: boolean; error?: string }> {
   const authResult = await requireAuth()
   if ('error' in authResult) {
@@ -111,15 +185,65 @@ export async function deleteProduct(
 
   const supabase = await createServerSupabaseClient()
 
-  const { error } = await supabase.from('products').delete().eq('sku', sku)
+  try {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active: false })
+      .eq('sku', sku)
 
-  if (error) {
-    return { success: false, error: error.message }
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/settings/products')
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '停用操作失败'
+    }
+  }
+}
+
+export async function activateProduct(
+  sku: string
+): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
   }
 
-  revalidatePath('/settings')
-  revalidatePath('/settings/products')
-  return { success: true }
+  // Validate SKU
+  const validation = deleteBySkuSchema.safeParse({ sku })
+  if (!validation.success) {
+    return {
+      success: false,
+      error: `Validation error: ${validation.error.issues.map((e) => e.message).join(', ')}`,
+    }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  try {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active: true })
+      .eq('sku', sku)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/settings/products')
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '启用操作失败'
+    }
+  }
 }
 
 // Channel Actions

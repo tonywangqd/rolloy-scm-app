@@ -14,6 +14,14 @@ export type PaymentStatus = 'Pending' | 'Scheduled' | 'Paid'
 export type StockStatus = 'Stockout' | 'Risk' | 'OK'
 export type SuggestionStatus = 'Active' | 'Planned' | 'Ordered' | 'Dismissed'
 export type Priority = 'Critical' | 'High' | 'Medium' | 'Low'
+export type FulfillmentStatus = 'pending' | 'partial' | 'fulfilled' | 'short_closed'
+
+// Balance Management Types
+export type BalanceResolutionStatus = 'pending' | 'deferred' | 'short_closed' | 'fulfilled' | 'cancelled'
+export type BalanceResolutionAction = 'defer' | 'create_carryover' | 'short_close' | 'auto_fulfilled'
+export type BalanceSourceType = 'po_item' | 'delivery' | 'shipment_item'
+export type InventoryAdjustmentType = 'cycle_count' | 'logistics_loss' | 'shipping_damage' | 'quality_hold' | 'theft' | 'found' | 'system_correction' | 'supplier_overage' | 'manual'
+export type ShipmentStatus = 'draft' | 'in_transit' | 'arrived' | 'finalized' | 'cancelled'
 
 // ================================================================
 // DATABASE TYPES (for Supabase client typing)
@@ -892,4 +900,297 @@ export interface SKURiskSummary {
   weeks_until_risk: number | null
   suggested_order_qty: number | null
   status: 'OK' | 'Risk' | 'Critical'
+}
+
+// ================================================================
+// ALGORITHM AUDIT V2 TYPES
+// ================================================================
+
+/**
+ * Supply chain lead time configuration
+ * Used for backtrack calculation in algorithm audit
+ */
+export interface SupplyChainLeadTimes {
+  production_weeks: number      // Production cycle (default: 8 weeks)
+  loading_weeks: number         // Loading preparation (default: 1 week)
+  shipping_weeks: number        // Shipping time (default: 4 weeks)
+  safety_stock_weeks: number    // Safety stock (from product.safety_stock_weeks)
+}
+
+/**
+ * Algorithm Audit Row V2.0
+ * Enhanced with procurement/logistics timeline tracking
+ */
+export interface AlgorithmAuditRowV2 {
+  // Basic week information
+  week_iso: string
+  week_start_date: string
+  week_offset: number
+  is_past: boolean
+  is_current: boolean
+
+  // Sales data (forecast vs actual)
+  sales_forecast: number
+  sales_actual: number | null
+  sales_effective: number
+  sales_source: 'actual' | 'forecast'
+
+  // Backtrack timeline (calculated from current week)
+  planned_arrival_week: string       // Planned arrival week = current week + safety_stock_weeks
+  planned_ship_week: string          // Planned ship week = arrival week - shipping_weeks
+  planned_factory_ship_week: string  // Planned factory ship week = ship week - loading_weeks
+  planned_order_week: string         // Planned order week = factory ship week - production_weeks
+  planned_arrival_qty: number        // Planned arrival qty = sales_effective * safety_stock_weeks
+
+  // Actual data (aggregated by week)
+  actual_order_week: string | null   // Week when PO was actually ordered
+  actual_order_qty: number           // Quantity ordered this week
+  actual_factory_ship_week: string | null  // Week when goods shipped from factory
+  actual_factory_ship_qty: number    // Quantity shipped from factory this week
+  actual_ship_week: string | null    // Week when shipment departed
+  actual_ship_qty: number            // Quantity shipped this week
+  actual_arrival_week: string | null // Week when shipment arrived
+  actual_arrival_qty: number         // Quantity arrived this week
+
+  // Inventory calculation
+  opening_stock: number
+  arrival_effective: number          // Effective arrival = COALESCE(actual_arrival_qty, 0)
+  closing_stock: number              // closing = opening + arrival_effective - sales_effective
+  safety_threshold: number
+  turnover_ratio: number | null      // Turnover = closing_stock / sales_effective
+  stock_status: StockStatus
+
+  // Shipment details (for expandable view)
+  shipments: ShipmentDetail[]
+}
+
+/**
+ * Shipment detail for V2 algorithm audit
+ */
+export interface ShipmentDetail {
+  tracking_number: string
+  planned_departure_date: string | null
+  actual_departure_date: string | null
+  planned_arrival_date: string | null
+  actual_arrival_date: string | null
+  shipped_qty: number
+  arrival_source: 'actual' | 'planned'
+}
+
+/**
+ * Complete V2 audit result for a SKU
+ */
+export interface AlgorithmAuditResultV2 {
+  product: Product | null
+  rows: AlgorithmAuditRowV2[]
+  leadTimes: SupplyChainLeadTimes
+  metadata: {
+    current_week: string
+    start_week: string
+    end_week: string
+    total_weeks: number
+    avg_weekly_sales: number
+    safety_stock_weeks: number
+  }
+}
+
+// ================================================================
+// BALANCE MANAGEMENT TYPES
+// ================================================================
+
+// Note: BalanceResolutionStatus, BalanceResolutionAction, BalanceSourceType,
+// and ShipmentStatus are now defined at the top of the file with other enums
+
+// Table row types
+export interface BalanceResolution {
+  id: string
+  source_type: BalanceSourceType
+  source_id: string
+  sku: string
+  planned_qty: number
+  actual_qty: number
+  variance_qty: number // Computed
+  open_balance: number // Computed
+  resolution_status: BalanceResolutionStatus
+  resolution_action: BalanceResolutionAction | null
+  original_planned_date: string // DATE
+  deferred_to_week: string | null // YYYY-WW
+  deferred_date: string | null // DATE
+  closed_at: string | null // TIMESTAMPTZ
+  closed_by: string | null // UUID
+  close_reason: string | null
+  created_at: string // TIMESTAMPTZ
+  updated_at: string // TIMESTAMPTZ
+  created_by: string | null // UUID
+}
+
+export interface BalanceResolutionInsert {
+  id?: string
+  source_type: BalanceSourceType
+  source_id: string
+  sku: string
+  planned_qty: number
+  actual_qty?: number
+  original_planned_date: string
+  resolution_status?: BalanceResolutionStatus
+  resolution_action?: BalanceResolutionAction | null
+  deferred_to_week?: string | null
+  deferred_date?: string | null
+  close_reason?: string | null
+  created_by?: string | null
+}
+
+export interface BalanceResolutionUpdate {
+  actual_qty?: number
+  resolution_status?: BalanceResolutionStatus
+  resolution_action?: BalanceResolutionAction | null
+  deferred_to_week?: string | null
+  deferred_date?: string | null
+  closed_at?: string | null
+  closed_by?: string | null
+  close_reason?: string | null
+}
+
+export interface InventoryAdjustment {
+  id: string
+  sku: string
+  warehouse_id: string
+  adjustment_type: InventoryAdjustmentType
+  qty_before: number
+  qty_change: number
+  qty_after: number
+  source_type: string | null
+  source_id: string | null
+  adjustment_date: string // DATE
+  reason: string
+  notes: string | null
+  adjusted_by: string // UUID
+  approved_by: string | null // UUID
+  approved_at: string | null // TIMESTAMPTZ
+  requires_approval: boolean
+  created_at: string // TIMESTAMPTZ
+}
+
+export interface InventoryAdjustmentInsert {
+  id?: string
+  sku: string
+  warehouse_id: string
+  adjustment_type: InventoryAdjustmentType
+  qty_before: number
+  qty_change: number
+  qty_after: number
+  reason: string
+  notes?: string | null
+  source_type?: string | null
+  source_id?: string | null
+  adjusted_by?: string
+  requires_approval?: boolean
+}
+
+export interface InventoryAdjustmentUpdate {
+  approved_by?: string
+  approved_at?: string
+}
+
+// Extended types for existing tables
+export interface PurchaseOrderItemExtended extends PurchaseOrderItem {
+  fulfilled_qty: number
+  open_balance: number // Computed
+  fulfillment_status: FulfillmentStatus
+  fulfillment_percentage: number // Computed
+}
+
+export interface ProductionDeliveryExtended extends ProductionDelivery {
+  expected_qty: number | null
+  variance_qty: number | null // Computed
+  variance_reason: string | null
+  has_variance: boolean // Computed
+}
+
+export interface ShipmentItemExtended extends ShipmentItem {
+  received_qty: number
+  variance_qty: number // Computed
+  receipt_status: FulfillmentStatus
+}
+
+export interface ShipmentExtended extends Shipment {
+  is_finalized: boolean
+  finalized_at: string | null
+  finalized_by: string | null
+  shipment_status: ShipmentStatus
+}
+
+// ================================================================
+// BALANCE MANAGEMENT API TYPES
+// ================================================================
+
+// Server Action request/response types
+export interface ResolveBalanceRequest {
+  balanceId: string
+  action: BalanceResolutionAction
+  deferredToWeek?: string | null
+  deferredDate?: string | null
+  reason?: string | null
+}
+
+export interface ResolveBalanceResponse {
+  success: boolean
+  action: string
+  message: string
+  impactedSku?: string
+}
+
+export interface CreateAdjustmentRequest {
+  sku: string
+  warehouseId: string
+  adjustmentType: InventoryAdjustmentType
+  qtyBefore: number
+  qtyChange: number
+  reason: string
+  notes?: string | null
+  sourceType?: string | null
+  sourceId?: string | null
+}
+
+export interface CreateAdjustmentResponse {
+  success: boolean
+  adjustmentId: string
+  requiresApproval: boolean
+  adjustmentValueUsd: number
+  qtyAfter: number
+}
+
+export interface FinalizeShipmentResponse {
+  success: boolean
+  shipmentId: string
+  adjustmentsCreated: number
+  finalizedAt: string
+}
+
+// Dashboard KPI types
+export interface BalanceSummaryKPIs {
+  totalOpenBalances: number
+  totalOpenQty: number
+  criticalCount: number    // Age > 45 days
+  highPriorityCount: number // Age 15-45 days
+  pendingCount: number
+  deferredCount: number
+  avgAgeDays: number
+  oldestBalanceDays: number
+}
+
+export interface BalanceListItem extends BalanceResolution {
+  productName: string
+  ageDays: number
+  priority: 'Critical' | 'High' | 'Medium' | 'Low'
+  parentReference: string // e.g., "PO#2025-001-A"
+}
+
+// Filters
+export interface BalanceFilters {
+  sku?: string
+  status?: BalanceResolutionStatus | 'all'
+  priority?: 'Critical' | 'High' | 'Medium' | 'Low'
+  minAgeDays?: number
+  maxAgeDays?: number
 }

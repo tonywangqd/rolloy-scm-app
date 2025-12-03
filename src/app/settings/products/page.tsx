@@ -15,10 +15,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowLeft, Plus, Pencil, Trash2, Save, X } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Power, PowerOff } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Product } from '@/lib/types/database'
+import { deleteProduct as deleteProductAction, deactivateProduct, activateProduct } from '@/lib/actions/settings'
 
 interface EditingProduct {
   sku: string
@@ -164,17 +165,56 @@ export default function ProductsPage() {
   }
 
   const deleteProduct = async (sku: string) => {
-    if (!confirm(`确定要删除产品 ${sku} 吗？`)) return
+    if (!confirm(`确定要删除产品 ${sku} 吗？此操作不可恢复。`)) return
 
-    const supabase = createClient()
+    setMessage('')
+    const result = await deleteProductAction(sku)
 
-    const { error } = await supabase.from('products').delete().eq('sku', sku)
-
-    if (error) {
-      setMessage(`删除失败: ${error.message}`)
-    } else {
+    if (result.success) {
       setMessage('删除成功')
       await loadProducts()
+    } else {
+      if (result.canDeactivate) {
+        // Has related data - suggest deactivation
+        const shouldDeactivate = confirm(
+          `${result.error}\n\n是否将该产品设为停用状态？`
+        )
+        if (shouldDeactivate) {
+          await handleDeactivate(sku)
+        } else {
+          setMessage(result.error || '删除失败')
+        }
+      } else {
+        setMessage(`删除失败: ${result.error}`)
+      }
+    }
+  }
+
+  const handleDeactivate = async (sku: string) => {
+    if (!confirm(`确定要停用产品 ${sku} 吗？停用后该产品将不可用于新的采购和销售计划。`)) return
+
+    setMessage('')
+    const result = await deactivateProduct(sku)
+
+    if (result.success) {
+      setMessage('产品已停用')
+      await loadProducts()
+    } else {
+      setMessage(`停用失败: ${result.error}`)
+    }
+  }
+
+  const handleActivate = async (sku: string) => {
+    if (!confirm(`确定要启用产品 ${sku} 吗？`)) return
+
+    setMessage('')
+    const result = await activateProduct(sku)
+
+    if (result.success) {
+      setMessage('产品已启用')
+      await loadProducts()
+    } else {
+      setMessage(`启用失败: ${result.error}`)
     }
   }
 
@@ -402,14 +442,37 @@ export default function ProductsPage() {
                             size="sm"
                             onClick={() => startEdit(product)}
                             disabled={!!editingProduct}
+                            title="编辑产品"
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
+                          {product.is_active ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeactivate(product.sku)}
+                              disabled={!!editingProduct}
+                              title="停用产品"
+                            >
+                              <PowerOff className="h-4 w-4 text-amber-600" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleActivate(product.sku)}
+                              disabled={!!editingProduct}
+                              title="启用产品"
+                            >
+                              <Power className="h-4 w-4 text-green-600" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => deleteProduct(product.sku)}
                             disabled={!!editingProduct}
+                            title="删除产品（无关联数据时可用）"
                           >
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>

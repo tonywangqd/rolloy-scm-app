@@ -8,8 +8,8 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { AlgorithmAuditTable } from '@/components/inventory/algorithm-audit-table'
-import { fetchAlgorithmAudit, fetchActiveProducts } from '@/lib/queries/algorithm-audit'
+import { AlgorithmAuditTableV2 } from '@/components/inventory/algorithm-audit-table-v2'
+import { fetchAlgorithmAuditV2, fetchActiveProducts } from '@/lib/queries/algorithm-audit'
 import { formatNumber } from '@/lib/utils'
 
 interface PageProps {
@@ -36,8 +36,8 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
     )
   }
 
-  // Fetch audit data for selected SKU
-  const auditData = await fetchAlgorithmAudit(selectedSku)
+  // Fetch audit data for selected SKU (using V2 with supply chain timeline)
+  const auditData = await fetchAlgorithmAuditV2(selectedSku)
 
   if (!auditData.product) {
     redirect('/inventory/algorithm-audit')
@@ -129,9 +129,9 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* Audit Table */}
+      {/* Audit Table V2 - Full Supply Chain Timeline */}
       <Suspense fallback={<div className="animate-pulse h-96 bg-gray-50 rounded-lg" />}>
-        <AlgorithmAuditTable
+        <AlgorithmAuditTableV2
           products={products}
           selectedSku={selectedSku}
           auditData={auditData}

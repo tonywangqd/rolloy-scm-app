@@ -7,7 +7,14 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { getWeekFromDate, addWeeksToWeekString, parseWeekString, getCurrentWeek } from '@/lib/utils/date'
 import { format } from 'date-fns'
-import type { Product, StockStatus } from '@/lib/types/database'
+import type {
+  Product,
+  StockStatus,
+  SupplyChainLeadTimes,
+  AlgorithmAuditRowV2,
+  AlgorithmAuditResultV2,
+  ShipmentDetail as ShipmentDetailV2
+} from '@/lib/types/database'
 
 // ================================================================
 // TYPE DEFINITIONS
@@ -334,4 +341,372 @@ export async function fetchActiveProducts(): Promise<Product[]> {
   }
 
   return data || []
+}
+
+// ================================================================
+// ALGORITHM AUDIT V2.0
+// ================================================================
+
+/**
+ * Calculate backtrack timeline from a given week
+ * Reverses the supply chain to determine when procurement/logistics should have occurred
+ */
+function calculateBacktrackTimeline(
+  currentWeek: string,
+  leadTimes: SupplyChainLeadTimes
+): {
+  planned_arrival_week: string
+  planned_ship_week: string
+  planned_factory_ship_week: string
+  planned_order_week: string
+} {
+  // Forward calculation: current week -> arrival week (add safety stock weeks)
+  const arrivalWeek = addWeeksToWeekString(currentWeek, leadTimes.safety_stock_weeks)
+
+  // Backward calculation from arrival week
+  const shipWeek = arrivalWeek ? addWeeksToWeekString(arrivalWeek, -leadTimes.shipping_weeks) : null
+  const factoryShipWeek = shipWeek ? addWeeksToWeekString(shipWeek, -leadTimes.loading_weeks) : null
+  const orderWeek = factoryShipWeek ? addWeeksToWeekString(factoryShipWeek, -leadTimes.production_weeks) : null
+
+  return {
+    planned_arrival_week: arrivalWeek || currentWeek,
+    planned_ship_week: shipWeek || currentWeek,
+    planned_factory_ship_week: factoryShipWeek || currentWeek,
+    planned_order_week: orderWeek || currentWeek,
+  }
+}
+
+/**
+ * Fetch comprehensive V2.0 algorithm audit data with procurement/logistics tracking
+ * Window: 4 weeks past + current week + 11 weeks future (16 weeks total)
+ */
+export async function fetchAlgorithmAuditV2(sku: string): Promise<AlgorithmAuditResultV2> {
+  const supabase = await createServerSupabaseClient()
+
+  // Fetch product info
+  const { data: product } = await supabase
+    .from('products')
+    .select('*')
+    .eq('sku', sku)
+    .single()
+
+  if (!product) {
+    return {
+      product: null,
+      rows: [],
+      leadTimes: {
+        production_weeks: 8,
+        loading_weeks: 1,
+        shipping_weeks: 4,
+        safety_stock_weeks: 2,
+      },
+      metadata: {
+        current_week: getCurrentWeek(),
+        start_week: '',
+        end_week: '',
+        total_weeks: 0,
+        avg_weekly_sales: 0,
+        safety_stock_weeks: 0,
+      },
+    }
+  }
+
+  // Configure lead times (default values, can be extended to read from config)
+  const leadTimes: SupplyChainLeadTimes = {
+    production_weeks: 8,
+    loading_weeks: 1,
+    shipping_weeks: 4,
+    safety_stock_weeks: product.safety_stock_weeks,
+  }
+
+  // Generate 16-week range: current week - 4 to current week + 11
+  const currentWeek = getCurrentWeek()
+  const startWeek = addWeeksToWeekString(currentWeek, -4) || currentWeek
+  const endWeek = addWeeksToWeekString(currentWeek, 11) || currentWeek
+
+  // Build week array
+  const weeks: string[] = []
+  let currentIterWeek = startWeek
+  for (let i = 0; i < 16; i++) {
+    weeks.push(currentIterWeek)
+    const next = addWeeksToWeekString(currentIterWeek, 1)
+    if (!next) break
+    currentIterWeek = next
+  }
+
+  // Fetch all data in parallel
+  const [
+    purchaseOrdersResult,
+    productionDeliveriesResult,
+    shipmentsResult,
+    forecastsResult,
+    actualsResult,
+    inventorySnapshotsResult,
+  ] = await Promise.all([
+    // Purchase Orders with items (for order week tracking)
+    supabase
+      .from('purchase_orders')
+      .select(`
+        id,
+        po_number,
+        actual_order_date,
+        purchase_order_items!inner(sku, ordered_qty)
+      `)
+      .eq('purchase_order_items.sku', sku)
+      .not('actual_order_date', 'is', null),
+
+    // Production Deliveries (for factory ship week tracking)
+    supabase
+      .from('production_deliveries')
+      .select(`
+        id,
+        delivery_number,
+        sku,
+        delivered_qty,
+        actual_delivery_date
+      `)
+      .eq('sku', sku)
+      .not('actual_delivery_date', 'is', null),
+
+    // Shipments with items (for ship/arrival week tracking)
+    supabase
+      .from('shipments')
+      .select(`
+        id,
+        tracking_number,
+        planned_departure_date,
+        actual_departure_date,
+        planned_arrival_date,
+        actual_arrival_date,
+        shipment_items!inner(sku, shipped_qty)
+      `)
+      .eq('shipment_items.sku', sku),
+
+    // Sales Forecasts
+    supabase
+      .from('sales_forecasts')
+      .select('week_iso, forecast_qty')
+      .eq('sku', sku)
+      .in('week_iso', weeks),
+
+    // Sales Actuals
+    supabase
+      .from('sales_actuals')
+      .select('week_iso, actual_qty')
+      .eq('sku', sku)
+      .in('week_iso', weeks),
+
+    // Current inventory snapshot
+    supabase
+      .from('inventory_snapshots')
+      .select('qty_on_hand')
+      .eq('sku', sku),
+  ])
+
+  const purchaseOrders = purchaseOrdersResult.data || []
+  const productionDeliveries = productionDeliveriesResult.data || []
+  const shipments = shipmentsResult.data || []
+  const forecasts = forecastsResult.data || []
+  const actuals = actualsResult.data || []
+  const snapshots = inventorySnapshotsResult.data || []
+
+  // Calculate initial stock (sum of all warehouses)
+  const initialStock = snapshots.reduce((sum, s) => sum + s.qty_on_hand, 0)
+
+  // Build forecast and actual maps
+  const forecastMap = new Map<string, number>()
+  forecasts.forEach(f => {
+    const current = forecastMap.get(f.week_iso) || 0
+    forecastMap.set(f.week_iso, current + f.forecast_qty)
+  })
+
+  const actualMap = new Map<string, number>()
+  actuals.forEach(a => {
+    const current = actualMap.get(a.week_iso) || 0
+    actualMap.set(a.week_iso, current + a.actual_qty)
+  })
+
+  // Calculate average weekly sales for safety threshold
+  const totalEffectiveSales = weeks.reduce((sum, week) => {
+    const forecast = forecastMap.get(week) || 0
+    const actual = actualMap.get(week)
+    return sum + (actual !== undefined && actual !== null ? actual : forecast)
+  }, 0)
+  const avgWeeklySales = totalEffectiveSales / weeks.length
+
+  // Aggregate purchase orders by order week
+  const ordersByWeek = new Map<string, number>()
+  purchaseOrders.forEach(po => {
+    if (!po.actual_order_date) return
+    const orderWeek = getWeekFromDate(new Date(po.actual_order_date))
+
+    const items = Array.isArray(po.purchase_order_items)
+      ? po.purchase_order_items
+      : [po.purchase_order_items]
+
+    items.forEach((item) => {
+      if (!item || typeof item !== 'object' || !('sku' in item) || !('ordered_qty' in item)) return
+      if (item.sku !== sku) return
+
+      const current = ordersByWeek.get(orderWeek) || 0
+      ordersByWeek.set(orderWeek, current + item.ordered_qty)
+    })
+  })
+
+  // Aggregate production deliveries by factory ship week
+  const factoryShipsByWeek = new Map<string, number>()
+  productionDeliveries.forEach(delivery => {
+    if (!delivery.actual_delivery_date) return
+    const deliveryWeek = getWeekFromDate(new Date(delivery.actual_delivery_date))
+
+    const current = factoryShipsByWeek.get(deliveryWeek) || 0
+    factoryShipsByWeek.set(deliveryWeek, current + delivery.delivered_qty)
+  })
+
+  // Aggregate shipments by departure and arrival week
+  const shipmentsByDepartureWeek = new Map<string, number>()
+  const shipmentsByArrivalWeek = new Map<string, number>()
+  const shipmentDetailsByArrivalWeek = new Map<string, ShipmentDetailV2[]>()
+
+  shipments.forEach(shipment => {
+    const items = Array.isArray(shipment.shipment_items)
+      ? shipment.shipment_items
+      : [shipment.shipment_items]
+
+    items.forEach((item) => {
+      if (!item || typeof item !== 'object' || !('sku' in item) || !('shipped_qty' in item)) return
+      if (item.sku !== sku) return
+
+      // Track by departure week
+      if (shipment.actual_departure_date) {
+        const departureWeek = getWeekFromDate(new Date(shipment.actual_departure_date))
+        const current = shipmentsByDepartureWeek.get(departureWeek) || 0
+        shipmentsByDepartureWeek.set(departureWeek, current + item.shipped_qty)
+      }
+
+      // Track by arrival week (for inventory calculation)
+      const arrivalDate = shipment.actual_arrival_date || shipment.planned_arrival_date
+      if (arrivalDate) {
+        const arrivalWeek = getWeekFromDate(new Date(arrivalDate))
+        const current = shipmentsByArrivalWeek.get(arrivalWeek) || 0
+        shipmentsByArrivalWeek.set(arrivalWeek, current + item.shipped_qty)
+
+        // Add to details list
+        const detail: ShipmentDetailV2 = {
+          tracking_number: shipment.tracking_number,
+          planned_departure_date: shipment.planned_departure_date,
+          actual_departure_date: shipment.actual_departure_date,
+          planned_arrival_date: shipment.planned_arrival_date,
+          actual_arrival_date: shipment.actual_arrival_date,
+          shipped_qty: item.shipped_qty,
+          arrival_source: shipment.actual_arrival_date ? 'actual' : 'planned',
+        }
+
+        const existing = shipmentDetailsByArrivalWeek.get(arrivalWeek) || []
+        existing.push(detail)
+        shipmentDetailsByArrivalWeek.set(arrivalWeek, existing)
+      }
+    })
+  })
+
+  // Build rows with rolling inventory calculation
+  let runningStock = initialStock
+  const rows: AlgorithmAuditRowV2[] = weeks.map((week, index) => {
+    const weekOffset = index - 4 // -4 to +11
+
+    // Sales data
+    const sales_forecast = forecastMap.get(week) || 0
+    const sales_actual = actualMap.get(week) ?? null
+    const sales_effective = sales_actual ?? sales_forecast
+    const sales_source: 'actual' | 'forecast' = sales_actual !== null ? 'actual' : 'forecast'
+
+    // Backtrack timeline calculation
+    const timeline = calculateBacktrackTimeline(week, leadTimes)
+    const planned_arrival_qty = sales_effective * leadTimes.safety_stock_weeks
+
+    // Actual data (aggregated quantities)
+    const actual_order_qty = ordersByWeek.get(week) || 0
+    const actual_factory_ship_qty = factoryShipsByWeek.get(week) || 0
+    const actual_ship_qty = shipmentsByDepartureWeek.get(week) || 0
+    const actual_arrival_qty = shipmentsByArrivalWeek.get(week) || 0
+
+    // Determine actual weeks (only if qty > 0)
+    const actual_order_week = actual_order_qty > 0 ? week : null
+    const actual_factory_ship_week = actual_factory_ship_qty > 0 ? week : null
+    const actual_ship_week = actual_ship_qty > 0 ? week : null
+    const actual_arrival_week = actual_arrival_qty > 0 ? week : null
+
+    // Shipment details for this week
+    const weekShipments = shipmentDetailsByArrivalWeek.get(week) || []
+
+    // Inventory calculation
+    const opening_stock = runningStock
+    const arrival_effective = actual_arrival_qty // Use actual arrivals only
+    const closing_stock = opening_stock + arrival_effective - sales_effective
+
+    // Update running stock for next iteration
+    runningStock = closing_stock
+
+    // Safety threshold and status
+    const safety_threshold = avgWeeklySales * product.safety_stock_weeks
+    let stock_status: StockStatus = 'OK'
+    if (closing_stock <= 0) {
+      stock_status = 'Stockout'
+    } else if (closing_stock < safety_threshold) {
+      stock_status = 'Risk'
+    }
+
+    // Turnover ratio
+    const turnover_ratio = sales_effective > 0 ? closing_stock / sales_effective : null
+
+    // Get week start date
+    const weekStartDate = parseWeekString(week)
+    const week_start_date = weekStartDate ? format(weekStartDate, 'yyyy-MM-dd') : week
+
+    return {
+      week_iso: week,
+      week_start_date,
+      week_offset: weekOffset,
+      is_past: weekOffset < 0,
+      is_current: weekOffset === 0,
+      sales_forecast,
+      sales_actual,
+      sales_effective,
+      sales_source,
+      planned_arrival_week: timeline.planned_arrival_week,
+      planned_ship_week: timeline.planned_ship_week,
+      planned_factory_ship_week: timeline.planned_factory_ship_week,
+      planned_order_week: timeline.planned_order_week,
+      planned_arrival_qty,
+      actual_order_week,
+      actual_order_qty,
+      actual_factory_ship_week,
+      actual_factory_ship_qty,
+      actual_ship_week,
+      actual_ship_qty,
+      actual_arrival_week,
+      actual_arrival_qty,
+      opening_stock,
+      arrival_effective,
+      closing_stock,
+      safety_threshold,
+      turnover_ratio,
+      stock_status,
+      shipments: weekShipments,
+    }
+  })
+
+  return {
+    product,
+    rows,
+    leadTimes,
+    metadata: {
+      current_week: currentWeek,
+      start_week: startWeek,
+      end_week: endWeek,
+      total_weeks: weeks.length,
+      avg_weekly_sales: avgWeeklySales,
+      safety_stock_weeks: product.safety_stock_weeks,
+    },
+  }
 }
