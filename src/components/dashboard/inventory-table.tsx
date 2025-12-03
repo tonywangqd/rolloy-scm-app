@@ -25,11 +25,11 @@ export function InventoryTable({ data }: InventoryTableProps) {
   }
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader>
         <CardTitle>库存概览</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

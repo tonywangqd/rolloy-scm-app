@@ -69,16 +69,20 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Two Column Layout */}
+        {/* Two Column Layout - Same height */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Inventory Table - 2/3 width */}
-          <div className="lg:col-span-2">
-            <InventoryTable data={inventory} />
+          <div className="lg:col-span-2 flex">
+            <div className="w-full">
+              <InventoryTable data={inventory} />
+            </div>
           </div>
 
           {/* Quick Actions - 1/3 width */}
-          <div>
-            <QuickActions />
+          <div className="flex">
+            <div className="w-full">
+              <QuickActions />
+            </div>
           </div>
         </div>
       </div>

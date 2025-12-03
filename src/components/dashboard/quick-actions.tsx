@@ -42,12 +42,12 @@ export function QuickActions() {
   ]
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader>
         <CardTitle>快捷操作</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <CardContent className="flex-1">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 h-full content-start">
           {actions.map((action) => (
             <Link
               key={action.title}
