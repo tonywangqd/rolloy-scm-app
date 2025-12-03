@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.3.2',
+  number: '1.5.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-03 21:10',
+  updatedAt: '2025-12-03 21:55',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: 'P0级库存计算BUG修复：到货使用received_qty、幂等性检查、在途数量修正',
+  changelog: '算法验证V3前端实现：20列表格组件、筛选器、完整页面布局',
 }
 
 // 格式化显示

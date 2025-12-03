@@ -70,6 +70,50 @@ export function getCurrentWeek(): string {
 }
 
 /**
+ * Add or subtract weeks from an ISO week string
+ * @param weekStr ISO week string in format "YYYY-WW" or "YYYY-WXX"
+ * @param numWeeks Number of weeks to add (positive) or subtract (negative)
+ * @returns New ISO week string or null if invalid input
+ */
+export function addWeeksToISOWeek(weekStr: string, numWeeks: number): string | null {
+  try {
+    // Parse the week string (handle both "YYYY-WW" and "YYYY-WXX" formats)
+    const match = weekStr.match(/^(\d{4})-W?(\d{1,2})$/)
+    if (!match) return null
+
+    const [, yearStr, weekStr2] = match
+    const year = parseInt(yearStr, 10)
+    const week = parseInt(weekStr2, 10)
+
+    if (isNaN(year) || isNaN(week) || week < 1 || week > 53) {
+      return null
+    }
+
+    // Get the Monday of the specified week
+    const firstDayOfYear = new Date(year, 0, 4) // Jan 4 is always in week 1
+    const firstMonday = startOfWeek(firstDayOfYear, { weekStartsOn: 1 })
+    const targetDate = addWeeks(firstMonday, week - 1)
+
+    // Add the specified number of weeks
+    const resultDate = addWeeks(targetDate, numWeeks)
+
+    // Return the ISO week string
+    return getISOWeekString(resultDate)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Get ISO week from a date
+ * @param date Date object
+ * @returns ISO week string in format "YYYY-WXX"
+ */
+export function getWeekFromDate(date: Date): string {
+  return getISOWeekString(date)
+}
+
+/**
  * Get last business day of a month (excluding Saturday and Sunday)
  */
 export function getLastBusinessDay(date: Date): Date {

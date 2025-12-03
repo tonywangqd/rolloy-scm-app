@@ -998,6 +998,84 @@ export interface AlgorithmAuditResultV2 {
 }
 
 // ================================================================
+// ALGORITHM AUDIT V3 TYPES
+// ================================================================
+
+/**
+ * Supply chain lead time configuration for V3
+ * Extended from V2 to include configurable shipping weeks
+ */
+export interface SupplyChainLeadTimesV3 {
+  production_weeks: number      // From products.production_lead_weeks (default: 5 weeks)
+  loading_weeks: number          // Fixed: 1 week (container loading time)
+  shipping_weeks: number         // User-configurable: default 5 weeks (can be 4-6 weeks)
+  safety_stock_weeks: number     // From products.safety_stock_weeks (default: 2 weeks)
+}
+
+/**
+ * Single row in the Algorithm Audit V3 table
+ * Represents one week's data across 20 columns
+ */
+export interface AlgorithmAuditRowV3 {
+  // Column 1: Week identifier (fixed column)
+  week_iso: string               // "2026-W08"
+  week_start_date: string        // "2026-02-16" (Monday)
+  week_offset: number            // -4 to +11 (0 = current week)
+  is_past: boolean               // week_offset < 0
+  is_current: boolean            // week_offset === 0
+
+  // Columns 2-4: Sales Group
+  sales_forecast: number         // Sum from sales_forecasts for this week
+  sales_actual: number | null    // Sum from sales_actuals for this week (null if no data)
+  sales_effective: number        // COALESCE(sales_actual, sales_forecast)
+
+  // Columns 5-7: Order Group (下单)
+  planned_order: number          // Reverse-calculated quantity (accumulated from multiple sales demands)
+  actual_order: number           // Sum from purchase_orders aggregated by actual_order_date week
+  order_effective: number        // COALESCE(actual_order, planned_order)
+
+  // Columns 8-10: Factory Ship Group (工厂出货)
+  planned_factory_ship: number   // Reverse-calculated quantity
+  actual_factory_ship: number    // Sum from production_deliveries aggregated by actual_delivery_date week
+  factory_ship_effective: number // COALESCE(actual_factory_ship, planned_factory_ship)
+
+  // Columns 11-13: Ship Group (物流发货)
+  planned_ship: number           // Reverse-calculated quantity
+  actual_ship: number            // Sum from shipments aggregated by actual_departure_date week
+  ship_effective: number         // COALESCE(actual_ship, planned_ship)
+
+  // Columns 14-16: Arrival Group (到仓)
+  planned_arrival: number        // Reverse-calculated quantity
+  actual_arrival: number         // Sum from shipments aggregated by effective arrival week
+  arrival_effective: number      // COALESCE(actual_arrival, planned_arrival) - used for inventory calculation
+
+  // Columns 17-20: Inventory Group (库存)
+  opening_stock: number          // Period start stock (= last week's closing_stock)
+  closing_stock: number          // opening_stock + arrival_effective - sales_effective
+  safety_threshold: number       // sales_effective × safety_stock_weeks
+  stock_status: StockStatus      // 'OK' | 'Risk' | 'Stockout'
+}
+
+/**
+ * Complete V3 audit result for a SKU
+ */
+export interface AlgorithmAuditResultV3 {
+  product: Product | null
+  rows: AlgorithmAuditRowV3[]
+  leadTimes: SupplyChainLeadTimesV3
+  metadata: {
+    current_week: string
+    start_week: string
+    end_week: string
+    total_weeks: number
+    avg_weekly_sales: number
+    safety_stock_weeks: number
+    production_lead_weeks: number
+    shipping_weeks: number         // User-provided parameter
+  }
+}
+
+// ================================================================
 // BALANCE MANAGEMENT TYPES
 // ================================================================
 
@@ -1121,6 +1199,84 @@ export interface ShipmentExtended extends Shipment {
   finalized_at: string | null
   finalized_by: string | null
   shipment_status: ShipmentStatus
+}
+
+// ================================================================
+// ALGORITHM AUDIT V3 TYPES
+// ================================================================
+
+/**
+ * Supply chain lead time configuration for V3
+ * Extended from V2 to include configurable shipping weeks
+ */
+export interface SupplyChainLeadTimesV3 {
+  production_weeks: number      // From products.production_lead_weeks (default: 5 weeks)
+  loading_weeks: number          // Fixed: 1 week (container loading time)
+  shipping_weeks: number         // User-configurable: default 5 weeks (can be 4-6 weeks)
+  safety_stock_weeks: number     // From products.safety_stock_weeks (default: 2 weeks)
+}
+
+/**
+ * Single row in the Algorithm Audit V3 table
+ * Represents one week's data across 20 columns
+ */
+export interface AlgorithmAuditRowV3 {
+  // Column 1: Week identifier (fixed column)
+  week_iso: string               // "2026-W08"
+  week_start_date: string        // "2026-02-16" (Monday)
+  week_offset: number            // -4 to +11 (0 = current week)
+  is_past: boolean               // week_offset < 0
+  is_current: boolean            // week_offset === 0
+
+  // Columns 2-4: Sales Group
+  sales_forecast: number         // Sum from sales_forecasts for this week
+  sales_actual: number | null    // Sum from sales_actuals for this week (null if no data)
+  sales_effective: number        // COALESCE(sales_actual, sales_forecast)
+
+  // Columns 5-7: Order Group (下单)
+  planned_order: number          // Reverse-calculated quantity (accumulated from multiple sales demands)
+  actual_order: number           // Sum from purchase_orders aggregated by actual_order_date week
+  order_effective: number        // COALESCE(actual_order, planned_order)
+
+  // Columns 8-10: Factory Ship Group (工厂出货)
+  planned_factory_ship: number   // Reverse-calculated quantity
+  actual_factory_ship: number    // Sum from production_deliveries aggregated by actual_delivery_date week
+  factory_ship_effective: number // COALESCE(actual_factory_ship, planned_factory_ship)
+
+  // Columns 11-13: Ship Group (物流发货)
+  planned_ship: number           // Reverse-calculated quantity
+  actual_ship: number            // Sum from shipments aggregated by actual_departure_date week
+  ship_effective: number         // COALESCE(actual_ship, planned_ship)
+
+  // Columns 14-16: Arrival Group (到仓)
+  planned_arrival: number        // Reverse-calculated quantity
+  actual_arrival: number         // Sum from shipments aggregated by effective arrival week
+  arrival_effective: number      // COALESCE(actual_arrival, planned_arrival) - used for inventory calculation
+
+  // Columns 17-20: Inventory Group (库存)
+  opening_stock: number          // Period start stock (= last week's closing_stock)
+  closing_stock: number          // opening_stock + arrival_effective - sales_effective
+  safety_threshold: number       // sales_effective × safety_stock_weeks
+  stock_status: StockStatus      // 'OK' | 'Risk' | 'Stockout'
+}
+
+/**
+ * Complete V3 audit result for a SKU
+ */
+export interface AlgorithmAuditResultV3 {
+  product: Product | null
+  rows: AlgorithmAuditRowV3[]
+  leadTimes: SupplyChainLeadTimesV3
+  metadata: {
+    current_week: string
+    start_week: string
+    end_week: string
+    total_weeks: number
+    avg_weekly_sales: number
+    safety_stock_weeks: number
+    production_lead_weeks: number
+    shipping_weeks: number         // User-provided parameter
+  }
 }
 
 // ================================================================
