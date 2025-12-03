@@ -10,7 +10,7 @@ export const VERSION = {
   number: '1.2.1',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-03 23:00',
+  updatedAt: '2025-12-04 08:01',
 
   // 版本标签
   tag: '正式版' as const,
