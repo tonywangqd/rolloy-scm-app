@@ -15,12 +15,25 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { ToastContainer } from '@/components/ui/toast'
+import { useToast } from '@/lib/hooks/use-toast'
 import { ArrowLeft, Save, Plus, Trash2, Download, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Product, Channel } from '@/lib/types/database'
 import { getCurrentWeek, addWeeksToWeekString, getWeekInfo, parseWeekString } from '@/lib/utils/date'
 import { format, endOfISOWeek } from 'date-fns'
+import { deleteSalesActualBySku } from '@/lib/actions/planning'
 
 interface ActualRow {
   id?: string
@@ -49,6 +62,10 @@ export default function ActualsPage() {
   const [selectedWeek, setSelectedWeek] = useState('')
   const [availableWeeks, setAvailableWeeks] = useState<string[]>([])
   const [actuals, setActuals] = useState<ActualRow[]>([])
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteTargetIndex, setDeleteTargetIndex] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const { toasts, showToast, dismissToast } = useToast()
 
   // Generate week options (past 12 weeks + current week + 1 future week)
   const generateWeekOptions = () => {
@@ -181,8 +198,39 @@ export default function ActualsPage() {
     ])
   }
 
-  const removeRow = (index: number) => {
-    setActuals(actuals.filter((_, i) => i !== index))
+  const openDeleteDialog = (index: number) => {
+    setDeleteTargetIndex(index)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleDelete = async () => {
+    if (deleteTargetIndex === null || !selectedWeek) return
+
+    const row = actuals[deleteTargetIndex]
+
+    // If it's a new unsaved row, just remove it from the UI
+    if (row.isNew && !row.id) {
+      setActuals(actuals.filter((_, i) => i !== deleteTargetIndex))
+      setDeleteDialogOpen(false)
+      setDeleteTargetIndex(null)
+      showToast('已删除行', 'success')
+      return
+    }
+
+    // Otherwise, delete from database
+    setDeleting(true)
+    const result = await deleteSalesActualBySku(selectedWeek, row.sku)
+    setDeleting(false)
+
+    if (result.success) {
+      showToast('删除成功', 'success')
+      setDeleteDialogOpen(false)
+      setDeleteTargetIndex(null)
+      // Reload data
+      await loadActuals()
+    } else {
+      showToast(`删除失败: ${result.error}`, 'error')
+    }
   }
 
   const updateRow = (index: number, field: 'sku' | 'channel', value: string, channelCode?: string) => {
@@ -517,7 +565,7 @@ export default function ActualsPage() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => removeRow(index)}
+                              onClick={() => openDeleteDialog(index)}
                             >
                               <Trash2 className="h-4 w-4 text-red-500" />
                             </Button>
@@ -554,6 +602,31 @@ export default function ActualsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除该SKU的所有渠道实际销量数据吗？此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? '删除中...' : '删除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

@@ -242,6 +242,64 @@ export async function deleteSalesActual(
 }
 
 /**
+ * Delete all forecasts for a SKU in a specific week (all channels)
+ */
+export async function deleteSalesForecastBySku(
+  weekIso: string,
+  sku: string
+): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  const { error } = await supabase
+    .from('sales_forecasts')
+    .delete()
+    .eq('week_iso', weekIso)
+    .eq('sku', sku)
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath('/planning')
+  revalidatePath('/planning/forecasts')
+  return { success: true }
+}
+
+/**
+ * Delete all actuals for a SKU in a specific week (all channels)
+ */
+export async function deleteSalesActualBySku(
+  weekIso: string,
+  sku: string
+): Promise<{ success: boolean; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  const { error } = await supabase
+    .from('sales_actuals')
+    .delete()
+    .eq('week_iso', weekIso)
+    .eq('sku', sku)
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath('/planning')
+  revalidatePath('/planning/actuals')
+  return { success: true }
+}
+
+/**
  * Copy forecasts from one week to another
  */
 export async function copyForecastsToWeek(

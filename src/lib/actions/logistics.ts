@@ -172,6 +172,77 @@ export async function updateShipmentPaymentStatus(
 }
 
 /**
+ * Update an existing shipment (excluding items)
+ * Items cannot be edited - they must be deleted and recreated
+ */
+export async function updateShipment(
+  shipmentId: string,
+  shipmentData: Partial<ShipmentData>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate ID
+    const idValidation = deleteByIdSchema.safeParse({ id: shipmentId })
+    if (!idValidation.success) {
+      return {
+        success: false,
+        error: `Validation error: ${idValidation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Check if shipment exists
+    const { data: existingShipment, error: fetchError } = await supabase
+      .from('shipments')
+      .select('id')
+      .eq('id', shipmentId)
+      .single()
+
+    if (fetchError || !existingShipment) {
+      console.error('Error fetching shipment:', fetchError)
+      return { success: false, error: 'Shipment not found' }
+    }
+
+    // Update only the provided fields
+    const { error: updateError } = await supabase
+      .from('shipments')
+      .update({
+        tracking_number: shipmentData.tracking_number,
+        destination_warehouse_id: shipmentData.destination_warehouse_id,
+        logistics_plan: shipmentData.logistics_plan,
+        logistics_region: shipmentData.logistics_region,
+        planned_departure_date: shipmentData.planned_departure_date,
+        actual_departure_date: shipmentData.actual_departure_date,
+        planned_arrival_date: shipmentData.planned_arrival_date,
+        actual_arrival_date: shipmentData.actual_arrival_date,
+        weight_kg: shipmentData.weight_kg,
+        cost_per_kg_usd: shipmentData.cost_per_kg_usd,
+        surcharge_usd: shipmentData.surcharge_usd,
+        tax_refund_usd: shipmentData.tax_refund_usd,
+        remarks: shipmentData.remarks,
+      })
+      .eq('id', shipmentId)
+
+    if (updateError) {
+      console.error('Error updating shipment:', updateError)
+      return { success: false, error: updateError.message }
+    }
+
+    revalidatePath('/logistics')
+    revalidatePath(`/logistics/${shipmentId}`)
+    return { success: true }
+  } catch (error) {
+    console.error('Error updating shipment:', error)
+    return { success: false, error: 'Failed to update shipment' }
+  }
+}
+
+/**
  * Mark shipment as arrived
  * Updates the arrival date and processes inventory updates
  */
