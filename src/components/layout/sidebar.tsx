@@ -13,6 +13,8 @@ import {
   Package,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Calculator,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -52,6 +54,18 @@ const navigation = [
     href: '/inventory',
     icon: Package,
     description: 'Inventory',
+    subItems: [
+      {
+        name: '库存概览',
+        href: '/inventory',
+        icon: Package,
+      },
+      {
+        name: '算法验证',
+        href: '/inventory/algorithm-audit',
+        icon: Calculator,
+      },
+    ],
   },
   {
     name: '系统设置',
@@ -61,9 +75,34 @@ const navigation = [
   },
 ]
 
+interface SubItem {
+  name: string
+  href: string
+  icon: React.ElementType
+}
+
+interface NavItem {
+  name: string
+  href: string
+  icon: React.ElementType
+  description: string
+  subItems?: SubItem[]
+}
+
 export function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['库存管理']))
+
+  const toggleExpand = (itemName: string) => {
+    const newExpanded = new Set(expandedItems)
+    if (newExpanded.has(itemName)) {
+      newExpanded.delete(itemName)
+    } else {
+      newExpanded.add(itemName)
+    }
+    setExpandedItems(newExpanded)
+  }
 
   return (
     <div
@@ -91,9 +130,70 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-2">
-        {navigation.map((item) => {
+        {(navigation as NavItem[]).map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== '/' && pathname.startsWith(item.href))
+          const hasSubItems = item.subItems && item.subItems.length > 0
+          const isExpanded = expandedItems.has(item.name)
+
+          if (hasSubItems && !collapsed) {
+            return (
+              <div key={item.name}>
+                <button
+                  onClick={() => toggleExpand(item.name)}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  )}
+                >
+                  <div className="flex items-center">
+                    <item.icon
+                      className={cn(
+                        'h-5 w-5 flex-shrink-0',
+                        isActive ? 'text-blue-700' : 'text-gray-400'
+                      )}
+                    />
+                    <span className="ml-3">{item.name}</span>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      'h-4 w-4 transition-transform',
+                      isExpanded ? 'rotate-180' : ''
+                    )}
+                  />
+                </button>
+                {isExpanded && (
+                  <div className="ml-6 mt-1 space-y-1">
+                    {item.subItems!.map((subItem) => {
+                      const isSubActive = pathname === subItem.href
+                      return (
+                        <Link
+                          key={subItem.href}
+                          href={subItem.href}
+                          className={cn(
+                            'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
+                            isSubActive
+                              ? 'bg-blue-100 text-blue-700 font-medium'
+                              : 'text-gray-600 hover:bg-gray-100'
+                          )}
+                        >
+                          <subItem.icon
+                            className={cn(
+                              'h-4 w-4 flex-shrink-0',
+                              isSubActive ? 'text-blue-700' : 'text-gray-400'
+                            )}
+                          />
+                          <span className="ml-2">{subItem.name}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          }
 
           return (
             <Link
