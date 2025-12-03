@@ -317,3 +317,68 @@ export async function markShipmentArrived(
     return { success: false, error: 'Failed to mark shipment as arrived' }
   }
 }
+
+/**
+ * Delete a shipment
+ * Cascade deletes shipment items
+ */
+export async function deleteShipment(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate ID
+    const validation = deleteByIdSchema.safeParse({ id })
+    if (!validation.success) {
+      return {
+        success: false,
+        error: `Validation error: ${validation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Check if shipment exists and hasn't arrived yet
+    const { data: shipment, error: fetchError } = await supabase
+      .from('shipments')
+      .select('id, tracking_number, actual_arrival_date')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !shipment) {
+      return { success: false, error: 'Shipment not found' }
+    }
+
+    // Prevent deletion of arrived shipments
+    if (shipment.actual_arrival_date) {
+      return {
+        success: false,
+        error: '已到货的发运单无法删除（库存已更新）'
+      }
+    }
+
+    // Delete shipment (cascade deletes items)
+    const { error } = await supabase
+      .from('shipments')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('Error deleting shipment:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/logistics')
+    return { success: true }
+  } catch (err) {
+    console.error('Error deleting shipment:', err)
+    return {
+      success: false,
+      error: `Failed to delete shipment: ${err instanceof Error ? err.message : 'Unknown error'}`,
+    }
+  }
+}

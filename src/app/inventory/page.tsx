@@ -1,23 +1,16 @@
 import { Header } from '@/components/layout/header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import {
   fetchInventoryStats,
   fetchInventorySummaryBySku,
   fetchInventoryByWarehouse,
   fetchIncomingInventory,
 } from '@/lib/queries/inventory'
-import { formatNumber, formatDate } from '@/lib/utils'
+import { formatNumber } from '@/lib/utils'
 import { Package, Warehouse, Truck, BoxIcon } from 'lucide-react'
 import { InventoryByWarehouse } from '@/components/inventory/inventory-by-warehouse'
+import { SkuSummaryTable } from '@/components/inventory/sku-summary-table'
+import { IncomingShipmentsTable } from '@/components/inventory/incoming-shipments-table'
 
 export const dynamic = 'force-dynamic'
 
@@ -118,47 +111,7 @@ export default async function InventoryPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>追踪号</TableHead>
-                    <TableHead>目的仓库</TableHead>
-                    <TableHead>物流方案</TableHead>
-                    <TableHead>预计到达</TableHead>
-                    <TableHead>SKU 明细</TableHead>
-                    <TableHead className="text-right">总数量</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {incoming.map((shipment) => (
-                    <TableRow key={shipment.tracking_number}>
-                      <TableCell className="font-medium">{shipment.tracking_number}</TableCell>
-                      <TableCell>{shipment.destination_warehouse}</TableCell>
-                      <TableCell>{shipment.logistics_plan || '-'}</TableCell>
-                      <TableCell>
-                        {shipment.planned_arrival_date
-                          ? formatDate(shipment.planned_arrival_date)
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {shipment.items.slice(0, 3).map((item) => (
-                            <Badge key={item.sku} variant="default">
-                              {item.sku}: {item.qty}
-                            </Badge>
-                          ))}
-                          {shipment.items.length > 3 && (
-                            <Badge variant="default">+{shipment.items.length - 3}</Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatNumber(shipment.total_qty)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <IncomingShipmentsTable shipments={incoming} />
             </CardContent>
           </Card>
         )}
@@ -172,42 +125,7 @@ export default async function InventoryPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {skuSummary.length === 0 ? (
-              <div className="flex h-32 items-center justify-center text-gray-500">
-                暂无库存数据
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>产品名称</TableHead>
-                    <TableHead className="text-right">总库存</TableHead>
-                    <TableHead className="text-right">FBA</TableHead>
-                    <TableHead className="text-right">3PL</TableHead>
-                    <TableHead className="text-right">仓库数</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {skuSummary.map((item) => (
-                    <TableRow key={item.sku}>
-                      <TableCell className="font-medium">{item.sku}</TableCell>
-                      <TableCell>{item.product_name}</TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatNumber(item.total_stock)}
-                      </TableCell>
-                      <TableCell className="text-right text-orange-600">
-                        {formatNumber(item.fba_stock)}
-                      </TableCell>
-                      <TableCell className="text-right text-purple-600">
-                        {formatNumber(item.threepl_stock)}
-                      </TableCell>
-                      <TableCell className="text-right">{item.warehouse_count}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+            <SkuSummaryTable items={skuSummary} />
           </CardContent>
         </Card>
 

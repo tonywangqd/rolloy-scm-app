@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ToastContainer } from '@/components/ui/toast'
+import { ExportButton } from '@/components/ui/export-button'
 import { useToast } from '@/lib/hooks/use-toast'
 import { ArrowLeft, Save, Copy, Plus, Trash2, Download, Upload, FileSpreadsheet } from 'lucide-react'
 import Link from 'next/link'
@@ -370,6 +371,23 @@ export default function ForecastsPage() {
     return sum + Object.values(f.channelForecasts).reduce((a, b) => a + b, 0)
   }, 0)
 
+  // Prepare export data
+  const exportData = useMemo(() => {
+    const rows: any[] = []
+    forecasts.forEach((row) => {
+      const exportRow: any = {
+        'SKU': row.sku,
+      }
+      channels.forEach((channel) => {
+        exportRow[channel.channel_name] = row.channelForecasts[channel.channel_code] || 0
+      })
+      const rowTotal = Object.values(row.channelForecasts).reduce((a, b) => a + b, 0)
+      exportRow['合计'] = rowTotal
+      rows.push(exportRow)
+    })
+    return rows
+  }, [forecasts, channels])
+
   return (
     <div className="flex flex-col">
       <Header title="销量预测管理" description="编辑周度销量预测" />
@@ -461,6 +479,12 @@ export default function ForecastsPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>预测明细</CardTitle>
             <div className="flex gap-2">
+              {forecasts.length > 0 && (
+                <ExportButton
+                  data={exportData}
+                  filename={`销量预测_${selectedWeek || new Date().toISOString().split('T')[0]}`}
+                />
+              )}
               <Button type="button" variant="outline" size="sm" onClick={addRow}>
                 <Plus className="mr-2 h-4 w-4" />
                 添加行
