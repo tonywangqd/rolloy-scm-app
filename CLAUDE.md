@@ -186,3 +186,45 @@ Required in `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 ```
+
+## Version Management (IMPORTANT - 必须遵守)
+
+**每次 git commit 之前，必须更新版本文件 `src/lib/version.ts`**
+
+### 更新规则
+
+1. **版本号规则 (Semantic Versioning):**
+   - `MAJOR.MINOR.PATCH` 格式
+   - PATCH +1: Bug修复、小改动
+   - MINOR +1: 新功能、页面、组件
+   - MAJOR +1: 重大架构变更、破坏性更新
+
+2. **更新时间格式:**
+   - 使用中国时区 (CST/UTC+8)
+   - 格式: `YYYY-MM-DD HH:mm`
+   - 示例: `2025-12-03 22:45`
+
+3. **更新说明:**
+   - 简短描述本次更新的主要内容
+   - 与 commit message 保持一致
+
+### 版本文件位置
+
+```typescript
+// src/lib/version.ts
+export const VERSION = {
+  number: '1.2.0',           // ← 更新版本号
+  updatedAt: '2025-12-03 22:45',  // ← 更新时间 (中国时区)
+  tag: '正式版',              // ← 版本标签
+  changelog: '本次更新说明',   // ← 更新说明
+}
+```
+
+### 自动更新检查清单
+
+每次提交代码时，Claude 必须：
+- [ ] 检查是否有实质性代码变更
+- [ ] 如有变更，更新 `src/lib/version.ts`
+- [ ] 版本号根据变更类型递增
+- [ ] 更新时间使用当前中国时间
+- [ ] changelog 填写本次更新摘要

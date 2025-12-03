@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { getVersionDisplay } from '@/lib/version'
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -221,16 +222,16 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Version Info */}
+      {/* Version Info - 从 src/lib/version.ts 读取 */}
       {!collapsed && (
         <div className="border-t border-gray-200 px-3 py-3">
           <div className="rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-blue-700">v1.2.0</span>
-              <span className="text-[10px] text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded">正式版</span>
+              <span className="text-xs font-semibold text-blue-700">{getVersionDisplay().full}</span>
+              <span className="text-[10px] text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded">{getVersionDisplay().tag}</span>
             </div>
             <div className="mt-1 text-[10px] text-gray-500">
-              更新于 2025-12-03 22:30 CST
+              {getVersionDisplay().date}
             </div>
           </div>
         </div>
@@ -238,7 +239,7 @@ export function Sidebar() {
       {collapsed && (
         <div className="border-t border-gray-200 px-2 py-2">
           <div className="flex items-center justify-center">
-            <span className="text-[10px] font-semibold text-blue-600">v1.2</span>
+            <span className="text-[10px] font-semibold text-blue-600">{getVersionDisplay().short}</span>
           </div>
         </div>
       )}
