@@ -128,6 +128,100 @@ export async function fetchProcurementPayments(): Promise<ProcurementPaymentGrou
     .sort((a, b) => a.payment_month.localeCompare(b.payment_month))
 }
 
+/**
+ * Fetch all procurement payments (both pending and paid)
+ * Returns separate arrays for pending and paid payments
+ */
+export async function fetchProcurementPaymentsAll(): Promise<{
+  pending: ProcurementPaymentGroup[]
+  paid: ProcurementPaymentGroup[]
+}> {
+  const supabase = await createServerSupabaseClient()
+
+  // Fetch all deliveries (including paid ones)
+  const { data, error } = await supabase
+    .from('production_deliveries')
+    .select(`
+      id,
+      delivery_number,
+      actual_delivery_date,
+      total_value_usd,
+      payment_status,
+      po_item_id,
+      purchase_order_items!inner (
+        po_id,
+        purchase_orders!inner (
+          po_number,
+          supplier_id,
+          suppliers (
+            supplier_name
+          )
+        )
+      )
+    `)
+    .not('actual_delivery_date', 'is', null)
+    .order('actual_delivery_date')
+
+  if (error || !data) {
+    console.error('Error fetching procurement payments:', error)
+    return { pending: [], paid: [] }
+  }
+
+  // Separate maps for pending and paid
+  const pendingMap = new Map<string, { total_usd: number; items: ProcurementPayment[] }>()
+  const paidMap = new Map<string, { total_usd: number; items: ProcurementPayment[] }>()
+
+  data.forEach((delivery: any) => {
+    const deliveryDate = new Date(delivery.actual_delivery_date)
+    const paymentDate = getProcurementPaymentDate(deliveryDate)
+    const paymentDateStr = formatDateISO(paymentDate)
+
+    const poItem = delivery.purchase_order_items
+    const po = poItem?.purchase_orders
+    const supplier = po?.suppliers
+
+    const isPaid = delivery.payment_status === 'Paid'
+    const targetMap = isPaid ? paidMap : pendingMap
+
+    if (!targetMap.has(paymentDateStr)) {
+      targetMap.set(paymentDateStr, { total_usd: 0, items: [] })
+    }
+
+    const group = targetMap.get(paymentDateStr)!
+    const amount = delivery.total_value_usd || 0
+
+    group.total_usd += amount
+    group.items.push({
+      id: delivery.id,
+      po_number: po?.po_number || 'N/A',
+      supplier_name: supplier?.supplier_name || 'Unknown',
+      delivery_number: delivery.delivery_number,
+      delivery_date: delivery.actual_delivery_date,
+      amount_usd: amount,
+      payment_date: paymentDateStr,
+      payment_month: `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`,
+      payment_status: delivery.payment_status,
+    })
+  })
+
+  // Convert to arrays and sort by payment date
+  const pending = Array.from(pendingMap.entries())
+    .map(([payment_month, data]) => ({
+      payment_month,
+      ...data,
+    }))
+    .sort((a, b) => a.payment_month.localeCompare(b.payment_month))
+
+  const paid = Array.from(paidMap.entries())
+    .map(([payment_month, data]) => ({
+      payment_month,
+      ...data,
+    }))
+    .sort((a, b) => b.payment_month.localeCompare(a.payment_month)) // Reverse order for paid
+
+  return { pending, paid }
+}
+
 // ================================================================
 // LOGISTICS PAYMENTS (CNY)
 // ================================================================
@@ -208,6 +302,93 @@ export async function fetchLogisticsPayments(): Promise<LogisticsPaymentGroup[]>
       ...data,
     }))
     .sort((a, b) => a.payment_period.localeCompare(b.payment_period))
+}
+
+/**
+ * Fetch all logistics payments (both pending and paid)
+ * Returns separate arrays for pending and paid payments
+ */
+export async function fetchLogisticsPaymentsAll(): Promise<{
+  pending: LogisticsPaymentGroup[]
+  paid: LogisticsPaymentGroup[]
+}> {
+  const supabase = await createServerSupabaseClient()
+
+  // Exchange rate: 1 USD = 7.2 CNY (hardcoded for now)
+  const USD_TO_CNY = 7.2
+
+  const { data, error } = await supabase
+    .from('shipments')
+    .select('id, tracking_number, actual_arrival_date, total_cost_usd, payment_status')
+    .not('actual_arrival_date', 'is', null)
+    .order('actual_arrival_date')
+
+  if (error || !data) {
+    console.error('Error fetching logistics payments:', error)
+    return { pending: [], paid: [] }
+  }
+
+  // Separate maps for pending and paid
+  const pendingMap = new Map<string, { payment_date: string; total_cny: number; total_usd: number; items: LogisticsPayment[] }>()
+  const paidMap = new Map<string, { payment_date: string; total_cny: number; total_usd: number; items: LogisticsPayment[] }>()
+
+  data.forEach((shipment: any) => {
+    const arrivalDate = new Date(shipment.actual_arrival_date)
+    const paymentDate = getLogisticsPaymentDate(arrivalDate)
+    const paymentDateStr = formatDateISO(paymentDate)
+    const dayOfMonth = arrivalDate.getDate()
+
+    // Payment period format: "2025-01上" (上半月) or "2025-01下" (下半月)
+    const yearMonth = `${arrivalDate.getFullYear()}-${String(arrivalDate.getMonth() + 1).padStart(2, '0')}`
+    const period = dayOfMonth <= 15 ? '上' : '下'
+    const paymentPeriod = `${yearMonth}${period}`
+
+    const isPaid = shipment.payment_status === 'Paid'
+    const targetMap = isPaid ? paidMap : pendingMap
+
+    if (!targetMap.has(paymentDateStr)) {
+      targetMap.set(paymentDateStr, {
+        payment_date: paymentDateStr,
+        total_cny: 0,
+        total_usd: 0,
+        items: [],
+      })
+    }
+
+    const group = targetMap.get(paymentDateStr)!
+    const amountUsd = shipment.total_cost_usd || 0
+    const amountCny = amountUsd * USD_TO_CNY
+
+    group.total_usd += amountUsd
+    group.total_cny += amountCny
+    group.items.push({
+      id: shipment.id,
+      tracking_number: shipment.tracking_number,
+      arrival_date: shipment.actual_arrival_date,
+      amount_cny: amountCny,
+      amount_usd: amountUsd,
+      payment_date: paymentDateStr,
+      payment_period: paymentPeriod,
+      payment_status: shipment.payment_status,
+    })
+  })
+
+  // Convert to arrays and sort by payment date
+  const pending = Array.from(pendingMap.entries())
+    .map(([payment_period, data]) => ({
+      payment_period,
+      ...data,
+    }))
+    .sort((a, b) => a.payment_period.localeCompare(b.payment_period))
+
+  const paid = Array.from(paidMap.entries())
+    .map(([payment_period, data]) => ({
+      payment_period,
+      ...data,
+    }))
+    .sort((a, b) => b.payment_period.localeCompare(a.payment_period)) // Reverse order for paid
+
+  return { pending, paid }
 }
 
 // ================================================================

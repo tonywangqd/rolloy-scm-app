@@ -20,16 +20,22 @@ interface InventoryProjectionChartProps {
 
 export function InventoryProjectionChart({ data, sku }: InventoryProjectionChartProps) {
   // Format data for chart
-  const chartData = data.map((item) => ({
-    week: item.week_iso.split('-W')[1] ? `W${item.week_iso.split('-W')[1]}` : item.week_iso,
-    week_full: item.week_iso,
-    opening_stock: item.opening_stock,
-    closing_stock: item.closing_stock,
-    safety_threshold: item.safety_stock_threshold,
-    incoming: item.incoming_qty,
-    sales: item.effective_sales,
-    status: item.stock_status,
-  }))
+  const chartData = data.map((item) => {
+    // Extract month and week from week_start_date
+    const weekStartDate = new Date(item.week_start_date)
+    const month = String(weekStartDate.getMonth() + 1).padStart(2, '0')
+    const weekNum = item.week_iso.split('-W')[1]
+
+    return {
+      week: `${month}/W${weekNum}`,
+      week_full: item.week_iso,
+      closing_stock: item.closing_stock,
+      safety_threshold: item.safety_stock_threshold,
+      incoming: item.incoming_qty,
+      sales: item.effective_sales,
+      status: item.stock_status,
+    }
+  })
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -39,9 +45,6 @@ export function InventoryProjectionChart({ data, sku }: InventoryProjectionChart
         <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
           <p className="mb-2 font-semibold text-gray-900">{label}</p>
           <div className="space-y-1">
-            <p className="text-sm text-blue-600">
-              期初库存: <span className="font-semibold">{data.opening_stock.toLocaleString()}</span>
-            </p>
             <p className="text-sm text-purple-600">
               期末库存: <span className="font-semibold">{data.closing_stock.toLocaleString()}</span>
             </p>
@@ -76,7 +79,7 @@ export function InventoryProjectionChart({ data, sku }: InventoryProjectionChart
         <CardHeader>
           <CardTitle>库存趋势</CardTitle>
           <CardDescription>
-            {sku ? `${sku} 的库存预测趋势` : '未来12周库存预测趋势'}
+            {sku ? `${sku} 的库存预测趋势` : '过去12周+未来12周库存预测趋势'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -93,7 +96,7 @@ export function InventoryProjectionChart({ data, sku }: InventoryProjectionChart
       <CardHeader>
         <CardTitle>库存趋势</CardTitle>
         <CardDescription>
-          {sku ? `${sku} 的库存预测趋势` : '未来12周库存预测趋势'}
+          {sku ? `${sku} 的库存预测趋势` : '过去12周+未来12周库存预测趋势'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -122,20 +125,26 @@ export function InventoryProjectionChart({ data, sku }: InventoryProjectionChart
             {/* Lines */}
             <Line
               type="monotone"
-              dataKey="opening_stock"
-              name="期初库存"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              dot={{ fill: '#3b82f6', r: 4 }}
-              activeDot={{ r: 6 }}
-            />
-            <Line
-              type="monotone"
               dataKey="closing_stock"
               name="期末库存"
               stroke="#8b5cf6"
               strokeWidth={2}
-              dot={{ fill: '#8b5cf6', r: 4 }}
+              dot={(props: any) => {
+                const { payload, cx, cy } = props
+                if (payload.closing_stock <= 0) {
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={8}
+                      fill="#ef4444"
+                      stroke="#fff"
+                      strokeWidth={2}
+                    />
+                  )
+                }
+                return <circle cx={cx} cy={cy} r={4} fill="#8b5cf6" />
+              }}
               activeDot={{ r: 6 }}
             />
             {/* Safety stock threshold as step line (dynamic based on weekly sales) */}

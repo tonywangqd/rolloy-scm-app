@@ -213,6 +213,7 @@ export interface Product {
   unit_cost_usd: number
   unit_weight_kg: number | null
   safety_stock_weeks: number
+  production_lead_weeks: number
   is_active: boolean
   created_at: string
   updated_at: string
@@ -228,6 +229,7 @@ export interface ProductInsert {
   unit_cost_usd?: number
   unit_weight_kg?: number | null
   safety_stock_weeks?: number
+  production_lead_weeks?: number
   is_active?: boolean
 }
 
@@ -240,6 +242,7 @@ export interface ProductUpdate {
   unit_cost_usd?: number
   unit_weight_kg?: number | null
   safety_stock_weeks?: number
+  production_lead_weeks?: number
   is_active?: boolean
 }
 
@@ -911,7 +914,7 @@ export interface SKURiskSummary {
  * Used for backtrack calculation in algorithm audit
  */
 export interface SupplyChainLeadTimes {
-  production_weeks: number      // Production cycle (default: 8 weeks)
+  production_weeks: number      // Production cycle (from product.production_lead_weeks, default: 5 weeks)
   loading_weeks: number         // Loading preparation (default: 1 week)
   shipping_weeks: number        // Shipping time (default: 4 weeks)
   safety_stock_weeks: number    // Safety stock (from product.safety_stock_weeks)

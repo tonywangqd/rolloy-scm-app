@@ -220,13 +220,18 @@ export async function fetchInventoryStats(): Promise<{
 
 /**
  * Fetch incoming inventory (shipments in transit)
+ *
+ * P0 BUG FIX (2025-12-03):
+ * - BUG-003: Use received_qty when available to account for expected variances
+ *   For in-transit shipments (not yet arrived), shipped_qty is the expected quantity.
+ *   If received_qty has been pre-set (e.g., partial receipt expected), use that instead.
  */
 export async function fetchIncomingInventory(): Promise<{
   tracking_number: string
   destination_warehouse: string
   logistics_plan: string | null
   planned_arrival_date: string | null
-  items: { sku: string; qty: number }[]
+  items: { sku: string; qty: number; shipped_qty: number; received_qty: number }[]
   total_qty: number
 }[]> {
   const supabase = await createServerSupabaseClient()
@@ -239,11 +244,11 @@ export async function fetchIncomingInventory(): Promise<{
     .is('actual_arrival_date', null)
     .order('planned_arrival_date')
 
-  // Fetch shipment items
+  // Fetch shipment items with received_qty for BUG-003 fix
   const shipmentIds = (shipments || []).map((s: any) => s.id)
   const { data: items } = await supabase
     .from('shipment_items')
-    .select('*')
+    .select('shipment_id, sku, shipped_qty, received_qty')
     .in('shipment_id', shipmentIds)
 
   // Fetch warehouses
@@ -256,14 +261,22 @@ export async function fetchIncomingInventory(): Promise<{
   const warehouseMap = new Map((warehouses || []).map((w: any) => [w.id, `${w.warehouse_code} - ${w.warehouse_name}`]))
 
   // Group items by shipment
-  const itemsByShipment = new Map<string, { sku: string; qty: number }[]>()
+  // BUG-003 FIX: Include both shipped_qty and received_qty for transparency
+  const itemsByShipment = new Map<string, { sku: string; qty: number; shipped_qty: number; received_qty: number }[]>()
   ;(items || []).forEach((item: any) => {
     if (!itemsByShipment.has(item.shipment_id)) {
       itemsByShipment.set(item.shipment_id, [])
     }
+    // BUG-003 FIX: Use received_qty if set and > 0, otherwise use shipped_qty
+    // For in-transit items, received_qty may be 0 (not yet received), so we fall back to shipped_qty
+    const effectiveQty = (item.received_qty !== null && item.received_qty > 0)
+      ? item.received_qty
+      : item.shipped_qty
     itemsByShipment.get(item.shipment_id)!.push({
       sku: item.sku,
-      qty: item.shipped_qty,
+      qty: effectiveQty,
+      shipped_qty: item.shipped_qty || 0,
+      received_qty: item.received_qty || 0,
     })
   })
 

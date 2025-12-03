@@ -1,8 +1,8 @@
 import { Header } from '@/components/layout/header'
 import { Card, CardContent } from '@/components/ui/card'
 import {
-  fetchProcurementPayments,
-  fetchLogisticsPayments,
+  fetchProcurementPaymentsAll,
+  fetchLogisticsPaymentsAll,
   fetchPaymentSummary,
 } from '@/lib/queries/finance'
 import { formatCurrency, formatCurrencyCNY } from '@/lib/utils'
@@ -12,9 +12,9 @@ import { FinanceTabs } from '@/components/finance/finance-tabs'
 export const dynamic = 'force-dynamic'
 
 export default async function FinancePage() {
-  const [procurementPayments, logisticsPayments, summary] = await Promise.all([
-    fetchProcurementPayments(),
-    fetchLogisticsPayments(),
+  const [procurementAll, logisticsAll, summary] = await Promise.all([
+    fetchProcurementPaymentsAll(),
+    fetchLogisticsPaymentsAll(),
     fetchPaymentSummary(),
   ])
 
@@ -103,8 +103,10 @@ export default async function FinancePage() {
 
         {/* Finance Tabs */}
         <FinanceTabs
-          procurementPayments={procurementPayments}
-          logisticsPayments={logisticsPayments}
+          procurementPending={procurementAll.pending}
+          procurementPaid={procurementAll.paid}
+          logisticsPending={logisticsAll.pending}
+          logisticsPaid={logisticsAll.paid}
         />
       </div>
     </div>

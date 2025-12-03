@@ -138,6 +138,10 @@ export async function deleteInventorySnapshot(
 
 /**
  * Process shipment arrival - update inventory
+ *
+ * P0 BUG FIXES (2025-12-03):
+ * - BUG-001: Use received_qty instead of shipped_qty to account for logistics losses
+ * - BUG-002: Add idempotency check to prevent duplicate inventory updates
  */
 export async function processShipmentArrival(
   shipmentId: string
@@ -169,6 +173,14 @@ export async function processShipmentArrival(
     return { success: false, error: shipmentError?.message || 'Shipment not found' }
   }
 
+  // BUG-002 FIX: Idempotency check - prevent duplicate processing
+  if ((shipment as any).actual_arrival_date) {
+    return {
+      success: false,
+      error: `Shipment ${(shipment as any).tracking_number} has already been processed (arrived: ${(shipment as any).actual_arrival_date})`
+    }
+  }
+
   // Update inventory for each item
   const items = (shipment as any).shipment_items || []
   for (const item of items) {
@@ -181,7 +193,13 @@ export async function processShipmentArrival(
       .single()
 
     const currentQty = currentInv?.qty_on_hand || 0
-    const newQty = currentQty + item.shipped_qty
+
+    // BUG-001 FIX: Use received_qty if available, fallback to shipped_qty
+    // received_qty accounts for logistics losses (variance = shipped - received)
+    const arrivalQty = item.received_qty !== undefined && item.received_qty !== null
+      ? item.received_qty
+      : item.shipped_qty
+    const newQty = currentQty + arrivalQty
 
     // Upsert inventory
     const { error: invError } = await supabase

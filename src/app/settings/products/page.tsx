@@ -23,13 +23,10 @@ import { deleteProduct as deleteProductAction, deactivateProduct, activateProduc
 
 interface EditingProduct {
   sku: string
-  spu: string
-  color_code: string
   product_name: string
-  category: string
   unit_cost_usd: number
-  unit_weight_kg: number
   safety_stock_weeks: number
+  production_lead_weeks: number
   is_active: boolean
   isNew?: boolean
 }
@@ -66,13 +63,10 @@ export default function ProductsPage() {
   const startEdit = (product: Product) => {
     setEditingProduct({
       sku: product.sku,
-      spu: product.spu || '',
-      color_code: product.color_code || '',
       product_name: product.product_name,
-      category: product.category || '',
       unit_cost_usd: product.unit_cost_usd || 0,
-      unit_weight_kg: product.unit_weight_kg || 0,
       safety_stock_weeks: product.safety_stock_weeks || 2,
+      production_lead_weeks: (product as any).production_lead_weeks || 5,
       is_active: product.is_active,
     })
   }
@@ -80,13 +74,10 @@ export default function ProductsPage() {
   const startNew = () => {
     setEditingProduct({
       sku: '',
-      spu: '',
-      color_code: '',
       product_name: '',
-      category: '',
       unit_cost_usd: 0,
-      unit_weight_kg: 0,
       safety_stock_weeks: 2,
+      production_lead_weeks: 5,
       is_active: true,
       isNew: true,
     })
@@ -120,13 +111,10 @@ export default function ProductsPage() {
     if (editingProduct.isNew) {
       const { error } = await (supabase.from('products') as any).insert({
         sku: editingProduct.sku,
-        spu: editingProduct.spu || '',
-        color_code: editingProduct.color_code || '',
         product_name: editingProduct.product_name,
-        category: editingProduct.category || null,
         unit_cost_usd: editingProduct.unit_cost_usd,
-        unit_weight_kg: editingProduct.unit_weight_kg || null,
         safety_stock_weeks: editingProduct.safety_stock_weeks,
+        production_lead_weeks: editingProduct.production_lead_weeks,
         is_active: editingProduct.is_active,
       })
 
@@ -141,13 +129,10 @@ export default function ProductsPage() {
       const { error } = await (supabase
         .from('products') as any)
         .update({
-          spu: editingProduct.spu || '',
-          color_code: editingProduct.color_code || '',
           product_name: editingProduct.product_name,
-          category: editingProduct.category || null,
           unit_cost_usd: editingProduct.unit_cost_usd,
-          unit_weight_kg: editingProduct.unit_weight_kg || null,
           safety_stock_weeks: editingProduct.safety_stock_weeks,
+          production_lead_weeks: editingProduct.production_lead_weeks,
           is_active: editingProduct.is_active,
         })
         .eq('sku', editingProduct.sku)
@@ -244,7 +229,7 @@ export default function ProductsPage() {
               <CardTitle>{editingProduct.isNew ? '添加产品' : '编辑产品'}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="sku">SKU *</Label>
                   <Input
@@ -254,28 +239,6 @@ export default function ProductsPage() {
                       setEditingProduct({ ...editingProduct, sku: e.target.value })
                     }
                     disabled={!editingProduct.isNew}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="spu">SPU (产品系列)</Label>
-                  <Input
-                    id="spu"
-                    value={editingProduct.spu}
-                    onChange={(e) =>
-                      setEditingProduct({ ...editingProduct, spu: e.target.value })
-                    }
-                    placeholder="例: PROD-001"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="color_code">颜色代码</Label>
-                  <Input
-                    id="color_code"
-                    value={editingProduct.color_code}
-                    onChange={(e) =>
-                      setEditingProduct({ ...editingProduct, color_code: e.target.value })
-                    }
-                    placeholder="例: RED, BLU"
                   />
                 </div>
                 <div className="space-y-2">
@@ -289,18 +252,7 @@ export default function ProductsPage() {
                   />
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
-                <div className="space-y-2">
-                  <Label htmlFor="category">类别</Label>
-                  <Input
-                    id="category"
-                    value={editingProduct.category}
-                    onChange={(e) =>
-                      setEditingProduct({ ...editingProduct, category: e.target.value })
-                    }
-                    placeholder="例: 电子产品, 服装"
-                  />
-                </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="unit_cost_usd">单位成本 (USD) *</Label>
                   <Input
@@ -318,22 +270,6 @@ export default function ProductsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="unit_weight_kg">单件重量 (Kg)</Label>
-                  <Input
-                    id="unit_weight_kg"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editingProduct.unit_weight_kg}
-                    onChange={(e) =>
-                      setEditingProduct({
-                        ...editingProduct,
-                        unit_weight_kg: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="safety_stock_weeks">安全库存周数 *</Label>
                   <Input
                     id="safety_stock_weeks"
@@ -345,6 +281,22 @@ export default function ProductsPage() {
                       setEditingProduct({
                         ...editingProduct,
                         safety_stock_weeks: parseInt(e.target.value) || 2,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="production_lead_weeks">生产周期 (周) *</Label>
+                  <Input
+                    id="production_lead_weeks"
+                    type="number"
+                    step="1"
+                    min="1"
+                    value={editingProduct.production_lead_weeks}
+                    onChange={(e) =>
+                      setEditingProduct({
+                        ...editingProduct,
+                        production_lead_weeks: parseInt(e.target.value) || 5,
                       })
                     }
                   />
@@ -402,13 +354,10 @@ export default function ProductsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>SKU</TableHead>
-                    <TableHead>SPU</TableHead>
-                    <TableHead>颜色代码</TableHead>
                     <TableHead>产品名称</TableHead>
-                    <TableHead>类别</TableHead>
                     <TableHead className="text-right">单位成本 (USD)</TableHead>
-                    <TableHead className="text-right">单件重量 (Kg)</TableHead>
                     <TableHead className="text-right">安全库存周数</TableHead>
+                    <TableHead className="text-right">生产周期 (周)</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>
@@ -417,18 +366,15 @@ export default function ProductsPage() {
                   {products.map((product) => (
                     <TableRow key={product.sku}>
                       <TableCell className="font-medium">{product.sku}</TableCell>
-                      <TableCell>{product.spu || '-'}</TableCell>
-                      <TableCell>{product.color_code || '-'}</TableCell>
                       <TableCell>{product.product_name}</TableCell>
-                      <TableCell>{product.category || '-'}</TableCell>
                       <TableCell className="text-right">
                         ${product.unit_cost_usd?.toFixed(2) || '0.00'}
                       </TableCell>
                       <TableCell className="text-right">
-                        {product.unit_weight_kg?.toFixed(2) || '-'}
+                        {product.safety_stock_weeks}周
                       </TableCell>
                       <TableCell className="text-right">
-                        {product.safety_stock_weeks}周
+                        {(product as any).production_lead_weeks || 5}周
                       </TableCell>
                       <TableCell>
                         <Badge variant={product.is_active ? 'success' : 'default'}>
