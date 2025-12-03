@@ -27,13 +27,14 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ToastContainer } from '@/components/ui/toast'
 import { useToast } from '@/lib/hooks/use-toast'
-import { ArrowLeft, Save, Plus, Trash2, Download, Upload } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Download, Upload, FileSpreadsheet } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Product, Channel } from '@/lib/types/database'
 import { getCurrentWeek, addWeeksToWeekString, getWeekInfo, parseWeekString } from '@/lib/utils/date'
 import { format, endOfISOWeek } from 'date-fns'
 import { deleteSalesActualBySku } from '@/lib/actions/planning'
+import { ExcelImportDialog } from '@/components/planning/excel-import-dialog'
 
 interface ActualRow {
   id?: string
@@ -65,6 +66,7 @@ export default function ActualsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleteTargetIndex, setDeleteTargetIndex] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const { toasts, showToast, dismissToast } = useToast()
 
   // Generate week options (past 12 weeks + current week + 1 future week)
@@ -406,38 +408,23 @@ export default function ActualsPage() {
           </CardContent>
         </Card>
 
-        {/* Excel Upload Section */}
+        {/* Excel Import Button */}
         <Card>
           <CardHeader>
-            <CardTitle>从Excel导入</CardTitle>
+            <CardTitle>批量导入</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={downloadTemplate}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                下载模板
-              </Button>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="file-upload-actuals"
-                  type="file"
-                  accept=".tsv,.txt,.csv"
-                  onChange={handleFileUpload}
-                  className="max-w-xs"
-                />
-                <Label htmlFor="file-upload-actuals" className="text-sm text-gray-500">
-                  <Upload className="inline h-4 w-4 mr-1" />
-                  选择文件上传
-                </Label>
-              </div>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setImportDialogOpen(true)}
+              disabled={!selectedWeek}
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Excel 批量导入
+            </Button>
             <p className="mt-2 text-sm text-gray-500">
-              模板格式: SKU | 渠道 | 实际数量 (制表符分隔)
+              支持 CSV 格式批量导入实际销量数据,带数据验证和预览功能
             </p>
           </CardContent>
         </Card>
@@ -627,6 +614,17 @@ export default function ActualsPage() {
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Excel Import Dialog */}
+      <ExcelImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        type="actual"
+        weekIso={selectedWeek}
+        onImportComplete={loadActuals}
+        validSkus={new Set(products.map((p) => p.sku))}
+        validChannels={new Set(channels.map((c) => c.channel_code))}
+      />
     </div>
   )
 }

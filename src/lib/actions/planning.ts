@@ -61,16 +61,38 @@ export async function batchUpsertSalesForecasts(
     return { success: false, error: authResult.error }
   }
 
+  if (!forecasts || forecasts.length === 0) {
+    return { success: false, error: 'No data to import' }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  // Calculate week dates for each forecast
+  const { parseWeekString } = await import('@/lib/utils/date')
+  const { format, endOfISOWeek } = await import('date-fns')
+
+  const forecastsWithDates = forecasts.map((f) => {
+    const weekStart = parseWeekString(f.week_iso)
+    if (!weekStart) {
+      throw new Error(`Invalid week format: ${f.week_iso}`)
+    }
+    const weekEnd = endOfISOWeek(weekStart)
+
+    return {
+      ...f,
+      week_start_date: format(weekStart, 'yyyy-MM-dd'),
+      week_end_date: format(weekEnd, 'yyyy-MM-dd'),
+    }
+  })
+
   // Validate input
-  const validation = batchSalesForecastsSchema.safeParse(forecasts)
+  const validation = batchSalesForecastsSchema.safeParse(forecastsWithDates)
   if (!validation.success) {
     return {
       success: false,
       error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
     }
   }
-
-  const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('sales_forecasts')
@@ -135,16 +157,38 @@ export async function batchUpsertSalesActuals(
     return { success: false, error: authResult.error }
   }
 
+  if (!actuals || actuals.length === 0) {
+    return { success: false, error: 'No data to import' }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  // Calculate week dates for each actual
+  const { parseWeekString } = await import('@/lib/utils/date')
+  const { format, endOfISOWeek } = await import('date-fns')
+
+  const actualsWithDates = actuals.map((a) => {
+    const weekStart = parseWeekString(a.week_iso)
+    if (!weekStart) {
+      throw new Error(`Invalid week format: ${a.week_iso}`)
+    }
+    const weekEnd = endOfISOWeek(weekStart)
+
+    return {
+      ...a,
+      week_start_date: format(weekStart, 'yyyy-MM-dd'),
+      week_end_date: format(weekEnd, 'yyyy-MM-dd'),
+    }
+  })
+
   // Validate input
-  const validation = batchSalesActualsSchema.safeParse(actuals)
+  const validation = batchSalesActualsSchema.safeParse(actualsWithDates)
   if (!validation.success) {
     return {
       success: false,
       error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
     }
   }
-
-  const supabase = await createServerSupabaseClient()
 
   const { error } = await supabase
     .from('sales_actuals')
