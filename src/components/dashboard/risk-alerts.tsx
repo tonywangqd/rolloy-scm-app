@@ -65,7 +65,12 @@ export function RiskAlerts({ alerts }: RiskAlertsProps) {
                   >
                     <span className="text-gray-400 select-none">•</span>
                     <div className="flex-1 flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-900">{alert.sku}</span>
+                      <Link
+                        href={`/inventory/algorithm-audit?sku=${alert.sku}`}
+                        className="font-medium text-gray-900 hover:text-blue-600 hover:underline transition-colors"
+                      >
+                        {alert.sku}
+                      </Link>
                       <Badge variant={badgeVariant} className="text-xs">
                         {statusText}
                       </Badge>

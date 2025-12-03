@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -49,7 +50,14 @@ export function IncomingShipmentsTable({ shipments }: IncomingShipmentsTableProp
         <TableBody>
           {pagination.paginatedItems.map((shipment) => (
             <TableRow key={shipment.tracking_number}>
-              <TableCell className="font-medium">{shipment.tracking_number}</TableCell>
+              <TableCell className="font-medium">
+                <Link
+                  href="/logistics"
+                  className="text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  {shipment.tracking_number}
+                </Link>
+              </TableCell>
               <TableCell>{shipment.destination_warehouse}</TableCell>
               <TableCell>{shipment.logistics_plan || '-'}</TableCell>
               <TableCell>

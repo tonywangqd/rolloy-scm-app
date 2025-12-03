@@ -142,7 +142,12 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
                   {pagination.paginatedItems.map((delivery) => (
                     <TableRow key={delivery.id}>
                       <TableCell className="font-medium">
-                        {delivery.delivery_number}
+                        <Link
+                          href={`/procurement/deliveries/${delivery.id}`}
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {delivery.delivery_number}
+                        </Link>
                       </TableCell>
                       <TableCell>{delivery.sku}</TableCell>
                       <TableCell>{delivery.channel_code || '-'}</TableCell>

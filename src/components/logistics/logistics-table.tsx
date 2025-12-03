@@ -139,7 +139,12 @@ export function LogisticsTable({ shipments }: LogisticsTableProps) {
             {filteredShipments.map((shipment) => (
               <TableRow key={shipment.id}>
                 <TableCell className="font-medium">
-                  {shipment.tracking_number}
+                  <Link
+                    href={`/logistics/${shipment.id}`}
+                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    {shipment.tracking_number}
+                  </Link>
                 </TableCell>
                 <TableCell>{shipment.batch_code || '-'}</TableCell>
                 <TableCell>

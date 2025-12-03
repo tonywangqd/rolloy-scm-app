@@ -130,7 +130,12 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   {pagination.paginatedItems.map((order) => (
                     <TableRow key={order.po_id}>
                       <TableCell className="font-medium">
-                        {order.po_number}
+                        <Link
+                          href={`/procurement/${order.po_id}`}
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {order.po_number}
+                        </Link>
                       </TableCell>
                       <TableCell>{order.batch_code}</TableCell>
                       <TableCell>{order.supplier_name || '-'}</TableCell>

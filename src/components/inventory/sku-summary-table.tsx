@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import {
   Table,
   TableBody,
@@ -52,7 +53,14 @@ export function SkuSummaryTable({ items }: SkuSummaryTableProps) {
         <TableBody>
           {pagination.paginatedItems.map((item) => (
             <TableRow key={item.sku}>
-              <TableCell className="font-medium">{item.sku}</TableCell>
+              <TableCell className="font-medium">
+                <Link
+                  href={`/inventory/algorithm-audit?sku=${item.sku}`}
+                  className="text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  {item.sku}
+                </Link>
+              </TableCell>
               <TableCell>{item.product_name}</TableCell>
               <TableCell className="text-right font-semibold">
                 {formatNumber(item.total_stock)}

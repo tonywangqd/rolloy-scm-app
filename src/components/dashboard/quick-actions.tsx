@@ -36,7 +36,7 @@ export function QuickActions() {
       title: '查看库存投影',
       description: '27周预测',
       icon: BarChart,
-      href: '/planning/projections',
+      href: '/planning/projection',
       color: 'text-orange-600',
     },
   ]

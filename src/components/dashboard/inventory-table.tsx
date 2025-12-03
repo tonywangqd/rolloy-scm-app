@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatNumber } from '@/lib/utils'
@@ -48,7 +49,14 @@ export function InventoryTable({ data }: InventoryTableProps) {
                   className="border-b border-gray-100 last:border-0"
                 >
                   <td className="py-3 pr-4">
-                    <Badge variant="default">{item.sku}</Badge>
+                    <Link
+                      href={`/inventory/algorithm-audit?sku=${item.sku}`}
+                      className="inline-block hover:opacity-80 transition-opacity"
+                    >
+                      <Badge variant="default" className="cursor-pointer hover:bg-blue-700">
+                        {item.sku}
+                      </Badge>
+                    </Link>
                   </td>
                   <td className="py-3 pr-4 text-gray-900">{item.product_name}</td>
                   <td className="py-3 pr-4 text-gray-500">{item.spu}</td>

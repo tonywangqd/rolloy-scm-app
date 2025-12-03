@@ -50,6 +50,50 @@ export async function fetchPurchaseOrderById(id: string): Promise<{
 }
 
 /**
+ * Fetch complete purchase order details with supplier and deliveries
+ */
+export async function fetchPurchaseOrderDetails(id: string): Promise<{
+  order: PurchaseOrder | null
+  supplier: Supplier | null
+  items: PurchaseOrderItem[]
+  deliveries: DeliveryDetail[]
+}> {
+  const supabase = await createServerSupabaseClient()
+
+  // Fetch order first
+  const { data: order, error: orderError } = await supabase
+    .from('purchase_orders')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (orderError || !order) {
+    return {
+      order: null,
+      supplier: null,
+      items: [],
+      deliveries: [],
+    }
+  }
+
+  // Fetch related data in parallel
+  const [itemsResult, supplierResult, deliveriesResult] = await Promise.all([
+    supabase.from('purchase_order_items').select('*').eq('po_id', id).order('sku'),
+    order.supplier_id
+      ? supabase.from('suppliers').select('*').eq('id', order.supplier_id).single()
+      : Promise.resolve({ data: null, error: null }),
+    supabase.rpc('get_deliveries_by_po', { po_id_param: id }),
+  ])
+
+  return {
+    order,
+    supplier: supplierResult.data,
+    items: itemsResult.data || [],
+    deliveries: deliveriesResult.data || [],
+  }
+}
+
+/**
  * Fetch production deliveries for a PO
  */
 export async function fetchDeliveriesByPO(poId: string): Promise<ProductionDelivery[]> {
