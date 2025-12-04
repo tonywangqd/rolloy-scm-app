@@ -107,7 +107,7 @@ export function SkuRankingChart({ data }: SkuRankingChartProps) {
         <CardDescription>销量前10的产品SKU</CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={400}>
+        <ResponsiveContainer width="100%" height={Math.max(data.length * 50 + 20, 120)}>
           <BarChart
             data={data}
             layout="vertical"
@@ -141,7 +141,7 @@ export function SkuRankingChart({ data }: SkuRankingChartProps) {
         </ResponsiveContainer>
 
         {/* Top 3 Highlight */}
-        <div className="mt-4 grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">
+        <div className={`mt-4 grid gap-3 border-t border-gray-100 pt-4 ${data.length === 1 ? 'grid-cols-1' : data.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
           {data.slice(0, 3).map((item, index) => (
             <div
               key={item.sku}
