@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.6.4',
+  number: '1.6.5',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-04 19:04',
+  updatedAt: '2025-12-04 21:15',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '修复销量趋势图图例和Tooltip重复显示问题',
+  changelog: '修复算法验证页面缓存导致预测数据不更新的问题',
 }
 
 // 格式化显示

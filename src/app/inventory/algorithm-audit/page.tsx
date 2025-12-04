@@ -6,6 +6,7 @@
 
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
+import { unstable_noStore as noStore } from 'next/cache'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlgorithmAuditTable } from '@/components/inventory/algorithm-audit-table'
 import { AlgorithmAuditFilters } from '@/components/inventory/algorithm-audit-filters'
@@ -17,6 +18,9 @@ interface PageProps {
 }
 
 export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
+  // 禁用缓存，确保每次访问都获取最新数据
+  noStore()
+
   const params = await searchParams
   const products = await fetchActiveProducts()
 
