@@ -27,13 +27,17 @@ export function SalesTrendChart({ data }: SalesTrendChartProps) {
     week: item.week_iso.split('-W')[1] ? `W${item.week_iso.split('-W')[1]}` : item.week_iso,
   }))
 
-  // Custom tooltip
+  // Custom tooltip - filter out duplicate entries (keep only Bar data with Chinese names)
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
+      // Filter to only show entries with Chinese names (from Bar components)
+      const filteredPayload = payload.filter((entry: any) =>
+        entry.name === '预测销量' || entry.name === '实际销量'
+      )
       return (
         <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
           <p className="mb-2 font-semibold text-gray-900">{label}</p>
-          {payload.map((entry: any, index: number) => (
+          {filteredPayload.map((entry: any, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {entry.name}: <span className="font-semibold">{entry.value.toLocaleString()}</span>
             </p>
@@ -109,6 +113,7 @@ export function SalesTrendChart({ data }: SalesTrendChartProps) {
               strokeWidth={2}
               dot={{ fill: '#3b82f6', r: 4 }}
               activeDot={{ r: 6 }}
+              legendType="none"
             />
             <Line
               type="monotone"
@@ -117,6 +122,7 @@ export function SalesTrendChart({ data }: SalesTrendChartProps) {
               strokeWidth={2}
               dot={{ fill: '#1e40af', r: 4 }}
               activeDot={{ r: 6 }}
+              legendType="none"
             />
           </ComposedChart>
         </ResponsiveContainer>
