@@ -10,7 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
-import { usePagination } from '@/hooks/use-pagination'
+import { usePagination } from '@/lib/hooks/use-pagination'
 import { formatNumber } from '@/lib/utils'
 
 interface SkuSummaryItem {

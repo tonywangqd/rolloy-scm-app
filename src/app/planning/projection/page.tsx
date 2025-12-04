@@ -1,6 +1,6 @@
 import { Header } from '@/components/layout/header'
 import { RiskSummaryCards } from '@/components/planning/risk-summary-cards'
-import { InventoryProjectionPageClient } from './page-client'
+import { InventoryProjectionPageClient } from './projection.client'
 import {
   fetchInventoryProjection12Weeks,
   fetchRiskSummary,

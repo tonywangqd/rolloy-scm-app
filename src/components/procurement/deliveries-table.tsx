@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/table'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
-import { usePagination } from '@/hooks/use-pagination'
+import { usePagination } from '@/lib/hooks/use-pagination'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { Eye, Plus } from 'lucide-react'
 import type { ProductionDelivery } from '@/lib/types/database'

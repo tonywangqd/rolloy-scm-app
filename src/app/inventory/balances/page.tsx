@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { BalanceSummaryCards } from '@/components/balance/balance-summary-cards'
-import { OpenBalanceList } from '@/components/balance/open-balance-list'
-import { BalanceResolutionDialog } from '@/components/balance/balance-resolution-dialog'
+import { BalanceSummaryCards } from '@/components/inventory/balance/balance-summary-cards'
+import { OpenBalanceList } from '@/components/inventory/balance/open-balance-list'
+import { BalanceResolutionDialog } from '@/components/inventory/balance/balance-resolution-dialog'
 import { Package } from 'lucide-react'
 
 interface BalanceResolution {

@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
-import { usePagination } from '@/hooks/use-pagination'
+import { usePagination } from '@/lib/hooks/use-pagination'
 import { Settings2, AlertTriangle, Clock, CheckCircle } from 'lucide-react'
 
 interface BalanceResolution {

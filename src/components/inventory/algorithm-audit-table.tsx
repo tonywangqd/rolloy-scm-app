@@ -4,11 +4,11 @@ import React from 'react'
 import { Badge } from '@/components/ui/badge'
 import type { AlgorithmAuditRowV3, StockStatus } from '@/lib/types/database'
 
-interface AlgorithmAuditTableV3Props {
+interface AlgorithmAuditTableProps {
   rows: AlgorithmAuditRowV3[]
 }
 
-export function AlgorithmAuditTableV3({ rows }: AlgorithmAuditTableV3Props) {
+export function AlgorithmAuditTable({ rows }: AlgorithmAuditTableProps) {
   const getStockStatusBadge = (status: StockStatus) => {
     const variants = {
       OK: 'success' as const,

@@ -13,17 +13,17 @@ import {
 } from '@/components/ui/select'
 import type { Product } from '@/lib/types/database'
 
-interface AlgorithmAuditV3FiltersProps {
+interface AlgorithmAuditFiltersProps {
   products: Product[]
   selectedSku: string
   shippingWeeks: number
 }
 
-export function AlgorithmAuditV3Filters({
+export function AlgorithmAuditFilters({
   products,
   selectedSku,
   shippingWeeks,
-}: AlgorithmAuditV3FiltersProps) {
+}: AlgorithmAuditFiltersProps) {
   const router = useRouter()
   const pathname = usePathname()
 

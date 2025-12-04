@@ -13,8 +13,17 @@ import type {
   SupplyChainLeadTimes,
   AlgorithmAuditRowV2,
   AlgorithmAuditResultV2,
-  ShipmentDetail as ShipmentDetailV2
+  ShipmentDetail as ShipmentDetailV2,
+  AlgorithmAuditRowV3,
+  AlgorithmAuditResultV3,
+  SupplyChainLeadTimesV3,
 } from '@/lib/types/database'
+import {
+  getISOWeekString,
+  parseISOWeekString,
+  addWeeksToISOWeek,
+  formatDateISO,
+} from '@/lib/utils'
 
 // ================================================================
 // TYPE DEFINITIONS
@@ -707,6 +716,329 @@ export async function fetchAlgorithmAuditV2(sku: string): Promise<AlgorithmAudit
       total_weeks: weeks.length,
       avg_weekly_sales: avgWeeklySales,
       safety_stock_weeks: product.safety_stock_weeks,
+    },
+  }
+}
+
+// ================================================================
+// ALGORITHM AUDIT V3.0 (20-Column Reverse Calculation)
+// ================================================================
+
+/**
+ * Fetch Algorithm Audit V3 data for a specific SKU
+ *
+ * @param sku - Product SKU to analyze
+ * @param shippingWeeks - Configurable shipping lead time (default: 5 weeks, range: 4-6)
+ * @returns Complete audit result with 20-column data
+ */
+export async function fetchAlgorithmAuditV3(
+  sku: string,
+  shippingWeeks: number = 5
+): Promise<AlgorithmAuditResultV3> {
+  const supabase = await createServerSupabaseClient()
+
+  // STEP 1: Fetch Product Configuration
+  const { data: product } = await supabase
+    .from('products')
+    .select('*')
+    .eq('sku', sku)
+    .single()
+
+  if (!product) {
+    return {
+      product: null,
+      rows: [],
+      leadTimes: {
+        production_weeks: 5,
+        loading_weeks: 1,
+        shipping_weeks: shippingWeeks,
+        safety_stock_weeks: 2,
+      },
+      metadata: {
+        current_week: getCurrentWeek(),
+        start_week: '',
+        end_week: '',
+        total_weeks: 0,
+        avg_weekly_sales: 0,
+        safety_stock_weeks: 2,
+        production_lead_weeks: 5,
+        shipping_weeks: shippingWeeks,
+      },
+    }
+  }
+
+  // STEP 2: Configure Lead Times
+  const leadTimesV3: SupplyChainLeadTimesV3 = {
+    production_weeks: product.production_lead_weeks,
+    loading_weeks: 1,
+    shipping_weeks: shippingWeeks,
+    safety_stock_weeks: product.safety_stock_weeks,
+  }
+
+  // STEP 3: Generate 16-Week Range
+  const currentWeekV3 = getCurrentWeek()
+  const startWeekV3 = addWeeksToISOWeek(currentWeekV3, -4) || currentWeekV3
+  const endWeekV3 = addWeeksToISOWeek(currentWeekV3, 11) || currentWeekV3
+
+  const weeksV3: string[] = []
+  let currentIterWeekV3 = startWeekV3
+  for (let i = 0; i < 16; i++) {
+    weeksV3.push(currentIterWeekV3)
+    const next = addWeeksToISOWeek(currentIterWeekV3, 1)
+    if (!next) break
+    currentIterWeekV3 = next
+  }
+
+  // STEP 4: Fetch All Data Sources in Parallel
+  const [
+    forecastsResultV3,
+    actualsResultV3,
+    purchaseOrdersResultV3,
+    productionDeliveriesResultV3,
+    shipmentsResultV3,
+    inventorySnapshotsResultV3,
+  ] = await Promise.all([
+    supabase
+      .from('sales_forecasts')
+      .select('week_iso, forecast_qty')
+      .eq('sku', sku)
+      .in('week_iso', weeksV3),
+    supabase
+      .from('sales_actuals')
+      .select('week_iso, actual_qty')
+      .eq('sku', sku)
+      .in('week_iso', weeksV3),
+    supabase
+      .from('purchase_orders')
+      .select(`
+        id,
+        po_number,
+        actual_order_date,
+        purchase_order_items!inner(sku, ordered_qty)
+      `)
+      .eq('purchase_order_items.sku', sku)
+      .not('actual_order_date', 'is', null),
+    supabase
+      .from('production_deliveries')
+      .select('sku, delivered_qty, actual_delivery_date')
+      .eq('sku', sku)
+      .not('actual_delivery_date', 'is', null),
+    supabase
+      .from('shipments')
+      .select(`
+        id,
+        tracking_number,
+        planned_departure_date,
+        actual_departure_date,
+        planned_arrival_date,
+        actual_arrival_date,
+        shipment_items!inner(sku, shipped_qty)
+      `)
+      .eq('shipment_items.sku', sku),
+    supabase
+      .from('inventory_snapshots')
+      .select('qty_on_hand')
+      .eq('sku', sku),
+  ])
+
+  const forecastsV3 = forecastsResultV3.data || []
+  const actualsV3 = actualsResultV3.data || []
+  const purchaseOrdersV3 = purchaseOrdersResultV3.data || []
+  const productionDeliveriesV3 = productionDeliveriesResultV3.data || []
+  const shipmentsV3 = shipmentsResultV3.data || []
+  const snapshotsV3 = inventorySnapshotsResultV3.data || []
+
+  // STEP 5: Build Weekly Aggregation Maps
+  const forecastMapV3 = new Map<string, number>()
+  forecastsV3.forEach((f) => {
+    const current = forecastMapV3.get(f.week_iso) || 0
+    forecastMapV3.set(f.week_iso, current + f.forecast_qty)
+  })
+
+  const actualSalesMapV3 = new Map<string, number>()
+  actualsV3.forEach((a) => {
+    const current = actualSalesMapV3.get(a.week_iso) || 0
+    actualSalesMapV3.set(a.week_iso, current + a.actual_qty)
+  })
+
+  const actualOrderMapV3 = new Map<string, number>()
+  purchaseOrdersV3.forEach((po) => {
+    if (!po.actual_order_date) return
+    const orderWeek = getWeekFromDate(new Date(po.actual_order_date))
+    const items = Array.isArray(po.purchase_order_items)
+      ? po.purchase_order_items
+      : [po.purchase_order_items]
+    items.forEach((item: any) => {
+      if (!item || typeof item !== 'object' || !('sku' in item) || !('ordered_qty' in item)) return
+      if (item.sku !== sku) return
+      const current = actualOrderMapV3.get(orderWeek) || 0
+      actualOrderMapV3.set(orderWeek, current + item.ordered_qty)
+    })
+  })
+
+  const actualFactoryShipMapV3 = new Map<string, number>()
+  productionDeliveriesV3.forEach((delivery) => {
+    if (!delivery.actual_delivery_date) return
+    const deliveryWeek = getWeekFromDate(new Date(delivery.actual_delivery_date))
+    const current = actualFactoryShipMapV3.get(deliveryWeek) || 0
+    actualFactoryShipMapV3.set(deliveryWeek, current + delivery.delivered_qty)
+  })
+
+  const actualShipMapV3 = new Map<string, number>()
+  shipmentsV3.forEach((shipment: any) => {
+    if (!shipment.actual_departure_date) return
+    const departureWeek = getWeekFromDate(new Date(shipment.actual_departure_date))
+    const items = Array.isArray(shipment.shipment_items)
+      ? shipment.shipment_items
+      : [shipment.shipment_items]
+    items.forEach((item: any) => {
+      if (!item || typeof item !== 'object' || !('sku' in item) || !('shipped_qty' in item)) return
+      if (item.sku !== sku) return
+      const current = actualShipMapV3.get(departureWeek) || 0
+      actualShipMapV3.set(departureWeek, current + item.shipped_qty)
+    })
+  })
+
+  const actualArrivalMapV3 = new Map<string, number>()
+  shipmentsV3.forEach((shipment: any) => {
+    const arrivalDate = shipment.actual_arrival_date || shipment.planned_arrival_date
+    if (!arrivalDate) return
+    const arrivalWeek = getWeekFromDate(new Date(arrivalDate))
+    const items = Array.isArray(shipment.shipment_items)
+      ? shipment.shipment_items
+      : [shipment.shipment_items]
+    items.forEach((item: any) => {
+      if (!item || typeof item !== 'object' || !('sku' in item) || !('shipped_qty' in item)) return
+      if (item.sku !== sku) return
+      const current = actualArrivalMapV3.get(arrivalWeek) || 0
+      actualArrivalMapV3.set(arrivalWeek, current + item.shipped_qty)
+    })
+  })
+
+  // STEP 6: Initialize Rows with Sales and Actual Data
+  const rowsV3: AlgorithmAuditRowV3[] = weeksV3.map((week, index) => {
+    const weekOffset = index - 4
+    const weekStartDate = parseISOWeekString(week)
+    const week_start_date = weekStartDate ? formatDateISO(weekStartDate) : week
+
+    const sales_forecast = forecastMapV3.get(week) || 0
+    const sales_actual = actualSalesMapV3.get(week) ?? null
+    const sales_effective = sales_actual ?? sales_forecast
+
+    const actual_order = actualOrderMapV3.get(week) || 0
+    const actual_factory_ship = actualFactoryShipMapV3.get(week) || 0
+    const actual_ship = actualShipMapV3.get(week) || 0
+    const actual_arrival = actualArrivalMapV3.get(week) || 0
+
+    return {
+      week_iso: week,
+      week_start_date,
+      week_offset: weekOffset,
+      is_past: weekOffset < 0,
+      is_current: weekOffset === 0,
+      sales_forecast,
+      sales_actual,
+      sales_effective,
+      planned_order: 0,
+      actual_order,
+      order_effective: 0,
+      planned_factory_ship: 0,
+      actual_factory_ship,
+      factory_ship_effective: 0,
+      planned_ship: 0,
+      actual_ship,
+      ship_effective: 0,
+      planned_arrival: 0,
+      actual_arrival,
+      arrival_effective: 0,
+      opening_stock: 0,
+      closing_stock: 0,
+      safety_threshold: 0,
+      stock_status: 'OK' as StockStatus,
+    }
+  })
+
+  // STEP 7: Reverse Calculation for Planned Quantities
+  const plannedOrderMapV3 = new Map<string, number>()
+  const plannedFactoryShipMapV3 = new Map<string, number>()
+  const plannedShipMapV3 = new Map<string, number>()
+  const plannedArrivalMapV3 = new Map<string, number>()
+
+  rowsV3.forEach((row) => {
+    const salesDemand = row.sales_effective
+    if (salesDemand <= 0) return
+
+    const arrivalWeek = addWeeksToISOWeek(row.week_iso, -leadTimesV3.safety_stock_weeks)
+    const shipWeek = arrivalWeek ? addWeeksToISOWeek(arrivalWeek, -leadTimesV3.shipping_weeks) : null
+    const factoryShipWeek = shipWeek ? addWeeksToISOWeek(shipWeek, -leadTimesV3.loading_weeks) : null
+    const orderWeek = factoryShipWeek
+      ? addWeeksToISOWeek(factoryShipWeek, -leadTimesV3.production_weeks)
+      : null
+
+    if (arrivalWeek) {
+      const current = plannedArrivalMapV3.get(arrivalWeek) || 0
+      plannedArrivalMapV3.set(arrivalWeek, current + salesDemand)
+    }
+    if (shipWeek) {
+      const current = plannedShipMapV3.get(shipWeek) || 0
+      plannedShipMapV3.set(shipWeek, current + salesDemand)
+    }
+    if (factoryShipWeek) {
+      const current = plannedFactoryShipMapV3.get(factoryShipWeek) || 0
+      plannedFactoryShipMapV3.set(factoryShipWeek, current + salesDemand)
+    }
+    if (orderWeek) {
+      const current = plannedOrderMapV3.get(orderWeek) || 0
+      plannedOrderMapV3.set(orderWeek, current + salesDemand)
+    }
+  })
+
+  rowsV3.forEach((row) => {
+    row.planned_order = plannedOrderMapV3.get(row.week_iso) || 0
+    row.planned_factory_ship = plannedFactoryShipMapV3.get(row.week_iso) || 0
+    row.planned_ship = plannedShipMapV3.get(row.week_iso) || 0
+    row.planned_arrival = plannedArrivalMapV3.get(row.week_iso) || 0
+
+    row.order_effective = row.actual_order || row.planned_order
+    row.factory_ship_effective = row.actual_factory_ship || row.planned_factory_ship
+    row.ship_effective = row.actual_ship || row.planned_ship
+    row.arrival_effective = row.actual_arrival || row.planned_arrival
+  })
+
+  // STEP 8: Calculate Rolling Inventory
+  const initialStockV3 = snapshotsV3.reduce((sum, s) => sum + s.qty_on_hand, 0)
+  const totalEffectiveSalesV3 = rowsV3.reduce((sum, row) => sum + row.sales_effective, 0)
+  const avgWeeklySalesV3 = totalEffectiveSalesV3 / rowsV3.length
+
+  let runningStockV3 = initialStockV3
+  rowsV3.forEach((row) => {
+    row.opening_stock = runningStockV3
+    row.closing_stock = runningStockV3 + row.arrival_effective - row.sales_effective
+    row.safety_threshold = row.sales_effective * leadTimesV3.safety_stock_weeks
+    runningStockV3 = row.closing_stock
+
+    if (row.closing_stock <= 0) {
+      row.stock_status = 'Stockout'
+    } else if (row.closing_stock < row.safety_threshold) {
+      row.stock_status = 'Risk'
+    } else {
+      row.stock_status = 'OK'
+    }
+  })
+
+  return {
+    product,
+    rows: rowsV3,
+    leadTimes: leadTimesV3,
+    metadata: {
+      current_week: currentWeekV3,
+      start_week: startWeekV3,
+      end_week: endWeekV3,
+      total_weeks: weeksV3.length,
+      avg_weekly_sales: avgWeeklySalesV3,
+      safety_stock_weeks: product.safety_stock_weeks,
+      production_lead_weeks: product.production_lead_weeks,
+      shipping_weeks: shippingWeeks,
     },
   }
 }

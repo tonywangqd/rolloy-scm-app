@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/table'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
-import { usePagination } from '@/hooks/use-pagination'
+import { usePagination } from '@/lib/hooks/use-pagination'
 import { formatDate, getPOStatusVariant } from '@/lib/utils'
 import { Plus, Eye, Pencil } from 'lucide-react'
 import { DeletePOButton } from './delete-po-button'

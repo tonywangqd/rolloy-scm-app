@@ -12,7 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
-import { usePagination } from '@/hooks/use-pagination'
+import { usePagination } from '@/lib/hooks/use-pagination'
 import { formatDate, formatCurrencyCNY, getWarehouseTypeVariant } from '@/lib/utils'
 import { PaymentStatusToggle } from '@/components/logistics/payment-status-toggle'
 import { ArrivalConfirmButton } from '@/components/logistics/arrival-confirm-button'
