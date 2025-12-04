@@ -1,0 +1,456 @@
+========================================
+Rolloy SCM Database Analysis Report
+========================================
+
+1. 数据量统计 (Table Row Counts)
+
+┌─────────────────────────────┬────────────┐
+│ Table Name                  │ Row Count  │
+├─────────────────────────────┼────────────┤
+│ products                    │          9 │
+│ warehouses                  │         83 │
+│ channels                    │          4 │
+│ suppliers                   │          3 │
+│ purchase_orders             │          2 │
+│ purchase_order_items        │          5 │
+│ production_deliveries       │          1 │
+│ shipments                   │          2 │
+│ shipment_items              │          4 │
+│ sales_forecasts             │        120 │
+│ sales_actuals               │         40 │
+│ inventory_snapshots         │          7 │
+└─────────────────────────────┴────────────┘
+
+
+2. 样本数据详情 (Sample Data Details)
+
+
+[products] - Total: 9 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "sku": "W1RD",
+    "spu": "W1",
+    "color_code": "RD",
+    "product_name": "W1 Smartwatch - Red",
+    "unit_cost_usd": 35,
+    "safety_stock_weeks": 2,
+    "production_lead_weeks": 5,
+    "is_active": true
+  },
+  {
+    "sku": "W1BK",
+    "spu": "W1",
+    "color_code": "BK",
+    "product_name": "W1 Smartwatch - Black",
+    "unit_cost_usd": 35,
+    "safety_stock_weeks": 2,
+    "production_lead_weeks": 5,
+    "is_active": true
+  },
+  {
+    "sku": "W2RD",
+    "spu": "W2",
+    "color_code": "RD",
+    "product_name": "W2 Smartwatch - Red",
+    "unit_cost_usd": 40,
+    "safety_stock_weeks": 2,
+    "production_lead_weeks": 5,
+    "is_active": true
+  },
+  {
+    "sku": "W2BK",
+    "spu": "W2",
+    "color_code": "BK",
+    "product_name": "W2 Smartwatch - Black",
+    "unit_cost_usd": 40,
+    "safety_stock_weeks": 2,
+    "production_lead_weeks": 5,
+    "is_active": true
+  },
+  {
+    "sku": "SKU-001",
+    "spu": "SPU-A",
+    "color_code": "BLK",
+    "product_name": "Product A - Black",
+    "unit_cost_usd": 25,
+    "safety_stock_weeks": 2,
+    "production_lead_weeks": 5,
+    "is_active": true
+  }
+]
+
+[warehouses] - Total: 83 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "warehouse_code": "FBA-AMA1",
+    "warehouse_name": "Amazon FBA AMA1",
+    "warehouse_type": "FBA",
+    "region": "East",
+    "postal_code": null,
+    "is_active": true
+  },
+  {
+    "warehouse_code": "FBA-ORD2",
+    "warehouse_name": "Amazon FBA ORD2",
+    "warehouse_type": "FBA",
+    "region": "Central",
+    "postal_code": null,
+    "is_active": true
+  },
+  {
+    "warehouse_code": "FBA-OAK3",
+    "warehouse_name": "Amazon FBA OAK3",
+    "warehouse_type": "FBA",
+    "region": "West",
+    "postal_code": null,
+    "is_active": true
+  },
+  {
+    "warehouse_code": "FBA-TEB4",
+    "warehouse_name": "Amazon FBA TEB4",
+    "warehouse_type": "FBA",
+    "region": "East",
+    "postal_code": null,
+    "is_active": true
+  },
+  {
+    "warehouse_code": "FBA-JAX3",
+    "warehouse_name": "Amazon FBA JAX3",
+    "warehouse_type": "FBA",
+    "region": "East",
+    "postal_code": null,
+    "is_active": true
+  }
+]
+
+[channels] - Total: 4 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "channel_code": "AMZ-US",
+    "channel_name": "Amazon-US",
+    "is_active": true
+  },
+  {
+    "channel_code": "SPF-US",
+    "channel_name": "Shopify-US",
+    "is_active": true
+  },
+  {
+    "channel_code": "WMT-US",
+    "channel_name": "Walmart-US",
+    "is_active": true
+  },
+  {
+    "channel_code": "SHOP-US",
+    "channel_name": "Shopify US",
+    "is_active": true
+  }
+]
+
+[suppliers] - Total: 3 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "supplier_code": "SUP-001",
+    "supplier_name": "Default Supplier",
+    "contact_email": null,
+    "payment_terms_days": 60,
+    "is_active": true
+  },
+  {
+    "supplier_code": "SUP001",
+    "supplier_name": "Default Supplier",
+    "contact_email": null,
+    "payment_terms_days": 60,
+    "is_active": true
+  },
+  {
+    "supplier_code": "SUP-002",
+    "supplier_name": "Guangzhou Factory B",
+    "contact_email": null,
+    "payment_terms_days": 60,
+    "is_active": true
+  }
+]
+
+[purchase_orders] - Total: 2 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "po_number": "PO-2025-001",
+    "batch_code": "BATCH-2025-Q1-01",
+    "supplier_id": "b3b2a1ce-329e-49c1-b8b7-2d65758932b9",
+    "po_status": "Confirmed",
+    "planned_order_date": "2025-11-18",
+    "actual_order_date": "2025-11-18",
+    "planned_ship_date": "2025-12-09"
+  },
+  {
+    "po_number": "PO-2025-002",
+    "batch_code": "BATCH-2025-Q1-02",
+    "supplier_id": "f98771ee-1926-4068-a214-f7f850155e46",
+    "po_status": "In Production",
+    "planned_order_date": "2025-11-25",
+    "actual_order_date": "2025-11-25",
+    "planned_ship_date": "2025-12-16"
+  }
+]
+
+[purchase_order_items] - Total: 5 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "po_id": "6ade23ca-248b-4148-aa3a-154590b324aa",
+    "sku": "SKU-002",
+    "channel_code": "AMZ-US",
+    "ordered_qty": 800,
+    "delivered_qty": 0,
+    "unit_price_usd": 25
+  },
+  {
+    "po_id": "6ade23ca-248b-4148-aa3a-154590b324aa",
+    "sku": "SKU-003",
+    "channel_code": "SHOP-US",
+    "ordered_qty": 500,
+    "delivered_qty": 0,
+    "unit_price_usd": 35
+  },
+  {
+    "po_id": "eb27914c-a1f2-40d2-afe9-9175375dadaa",
+    "sku": "SKU-004",
+    "channel_code": "AMZ-US",
+    "ordered_qty": 600,
+    "delivered_qty": 0,
+    "unit_price_usd": 45
+  },
+  {
+    "po_id": "eb27914c-a1f2-40d2-afe9-9175375dadaa",
+    "sku": "SKU-005",
+    "channel_code": "SHOP-US",
+    "ordered_qty": 700,
+    "delivered_qty": 0,
+    "unit_price_usd": 30
+  },
+  {
+    "po_id": "6ade23ca-248b-4148-aa3a-154590b324aa",
+    "sku": "SKU-001",
+    "channel_code": "AMZ-US",
+    "ordered_qty": 1000,
+    "delivered_qty": 30,
+    "unit_price_usd": 25
+  }
+]
+
+[production_deliveries] - Total: 1 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "delivery_number": "DLV-2025-3467",
+    "po_item_id": "83c91a08-1f89-4318-9ae6-661c29edb09e",
+    "sku": "SKU-001",
+    "channel_code": "AMZ-US",
+    "delivered_qty": 30,
+    "planned_delivery_date": null,
+    "actual_delivery_date": "2025-12-02",
+    "payment_status": "Paid"
+  }
+]
+
+[shipments] - Total: 2 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "tracking_number": "TRK-2025-001",
+    "batch_code": "BATCH-2025-Q1-01",
+    "destination_warehouse_id": "e0c72030-14f1-481d-a193-8dc9821ab629",
+    "planned_departure_date": "2025-11-27",
+    "actual_departure_date": "2025-11-27",
+    "planned_arrival_date": "2025-12-12",
+    "actual_arrival_date": null,
+    "weight_kg": 500,
+    "unit_count": null
+  },
+  {
+    "tracking_number": "TRK-2025-002",
+    "batch_code": "BATCH-2025-Q1-01",
+    "destination_warehouse_id": "01a43702-708c-475e-a41d-caf3c4300599",
+    "planned_departure_date": "2025-11-22",
+    "actual_departure_date": "2025-11-22",
+    "planned_arrival_date": "2025-11-29",
+    "actual_arrival_date": "2025-12-01",
+    "weight_kg": 200,
+    "unit_count": null
+  }
+]
+
+[shipment_items] - Total: 4 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "shipment_id": "0835fd35-31d9-4d82-9295-5157c6ceefcd",
+    "sku": "SKU-001",
+    "shipped_qty": 300
+  },
+  {
+    "shipment_id": "0835fd35-31d9-4d82-9295-5157c6ceefcd",
+    "sku": "SKU-002",
+    "shipped_qty": 250
+  },
+  {
+    "shipment_id": "814f604c-2d79-4bfc-a806-808ca84dd5c8",
+    "sku": "SKU-003",
+    "shipped_qty": 200
+  },
+  {
+    "shipment_id": "814f604c-2d79-4bfc-a806-808ca84dd5c8",
+    "sku": "SKU-004",
+    "shipped_qty": 150
+  }
+]
+
+[sales_forecasts] - Total: 120 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "sku": "SKU-001",
+    "channel_code": "AMZ-US",
+    "week_iso": "2025-W49",
+    "week_start_date": "2025-12-01",
+    "forecast_qty": 171
+  },
+  {
+    "sku": "SKU-001",
+    "channel_code": "SHOP-US",
+    "week_iso": "2025-W49",
+    "week_start_date": "2025-12-01",
+    "forecast_qty": 195
+  },
+  {
+    "sku": "SKU-002",
+    "channel_code": "AMZ-US",
+    "week_iso": "2025-W49",
+    "week_start_date": "2025-12-01",
+    "forecast_qty": 163
+  },
+  {
+    "sku": "SKU-002",
+    "channel_code": "SHOP-US",
+    "week_iso": "2025-W49",
+    "week_start_date": "2025-12-01",
+    "forecast_qty": 92
+  },
+  {
+    "sku": "SKU-003",
+    "channel_code": "AMZ-US",
+    "week_iso": "2025-W49",
+    "week_start_date": "2025-12-01",
+    "forecast_qty": 144
+  }
+]
+
+[sales_actuals] - Total: 40 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "sku": "SKU-001",
+    "channel_code": "AMZ-US",
+    "week_iso": "2025-W45",
+    "week_start_date": "2025-11-03",
+    "actual_qty": 183
+  },
+  {
+    "sku": "SKU-001",
+    "channel_code": "SHOP-US",
+    "week_iso": "2025-W45",
+    "week_start_date": "2025-11-03",
+    "actual_qty": 119
+  },
+  {
+    "sku": "SKU-002",
+    "channel_code": "AMZ-US",
+    "week_iso": "2025-W45",
+    "week_start_date": "2025-11-03",
+    "actual_qty": 143
+  },
+  {
+    "sku": "SKU-002",
+    "channel_code": "SHOP-US",
+    "week_iso": "2025-W45",
+    "week_start_date": "2025-11-03",
+    "actual_qty": 173
+  },
+  {
+    "sku": "SKU-003",
+    "channel_code": "AMZ-US",
+    "week_iso": "2025-W45",
+    "week_start_date": "2025-11-03",
+    "actual_qty": 127
+  }
+]
+
+[inventory_snapshots] - Total: 7 rows
+────────────────────────────────────────────────────────────────────────────────
+[
+  {
+    "sku": "SKU-001",
+    "warehouse_id": "e0c72030-14f1-481d-a193-8dc9821ab629",
+    "qty_on_hand": 500,
+    "last_counted_at": "2025-12-02T15:49:04.618308+00:00"
+  },
+  {
+    "sku": "SKU-001",
+    "warehouse_id": "01a43702-708c-475e-a41d-caf3c4300599",
+    "qty_on_hand": 300,
+    "last_counted_at": "2025-12-02T15:49:04.618308+00:00"
+  },
+  {
+    "sku": "SKU-002",
+    "warehouse_id": "e0c72030-14f1-481d-a193-8dc9821ab629",
+    "qty_on_hand": 400,
+    "last_counted_at": "2025-12-02T15:49:04.618308+00:00"
+  },
+  {
+    "sku": "SKU-002",
+    "warehouse_id": "26e2696e-39f0-48c7-a87a-4e256d155b68",
+    "qty_on_hand": 200,
+    "last_counted_at": "2025-12-02T15:49:04.618308+00:00"
+  },
+  {
+    "sku": "SKU-003",
+    "warehouse_id": "e0c72030-14f1-481d-a193-8dc9821ab629",
+    "qty_on_hand": 600,
+    "last_counted_at": "2025-12-02T15:49:04.618308+00:00"
+  }
+]
+
+
+3. 数据关联关系分析 (Relationship Analysis)
+
+────────────────────────────────────────────────────────────────────────────────
+✓ 基础数据 (Master Data):
+  - Products: 9 SKUs
+  - Warehouses: 83 locations
+  - Channels: 4 channels
+  - Suppliers: 3 suppliers
+
+✓ 采购链条 (Procurement Chain):
+  - Purchase Orders: 2 POs
+  - Purchase Order Items: 5 line items
+  - Average items per PO: 2.5
+
+✓ 物流链条 (Logistics Chain):
+  - Shipments: 2 shipments
+  - Shipment Items: 4 line items
+  - Average items per shipment: 2.0
+
+✓ 销售数据 (Sales Data):
+  - Forecasts: 120 forecast records
+  - Actuals: 40 actual records
+
+========================================
+Analysis Complete
+========================================
+
