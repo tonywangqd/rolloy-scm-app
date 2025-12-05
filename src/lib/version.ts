@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.6.7',
+  number: '1.6.8',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-05 09:29',
+  updatedAt: '2025-12-05 09:39',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '采购订单页面SKU和渠道改为从数据库动态获取',
+  changelog: 'PO号格式改为PO2025-12-05-001，自动生成序号',
 }
 
 // 格式化显示

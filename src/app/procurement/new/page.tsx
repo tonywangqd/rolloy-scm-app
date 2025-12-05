@@ -33,7 +33,7 @@ export default function NewPurchaseOrderPage() {
   const [channels, setChannels] = useState<Channel[]>([])
 
   const [formData, setFormData] = useState({
-    po_number: `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+    po_number: '',
     batch_code: '',
     planned_order_date: new Date().toISOString().split('T')[0],
     actual_order_date: '',
@@ -43,14 +43,32 @@ export default function NewPurchaseOrderPage() {
 
   const [items, setItems] = useState<POItem[]>([])
 
-  // 加载产品和渠道数据
+  // 生成当天的 PO 号：PO2025-12-05-001
+  const generatePONumber = async (supabase: ReturnType<typeof createClient>) => {
+    const today = new Date()
+    const dateStr = today.toISOString().split('T')[0] // 2025-12-05
+    const prefix = `PO${dateStr}-`
+
+    // 查询当天已有的订单数量
+    const { data: existingPOs } = await supabase
+      .from('purchase_orders')
+      .select('po_number')
+      .like('po_number', `${prefix}%`)
+
+    const count = existingPOs?.length || 0
+    const sequence = String(count + 1).padStart(3, '0')
+    return `${prefix}${sequence}`
+  }
+
+  // 加载产品、渠道数据和生成PO号
   useEffect(() => {
     const loadData = async () => {
       const supabase = createClient()
 
-      const [productsResult, channelsResult] = await Promise.all([
+      const [productsResult, channelsResult, poNumber] = await Promise.all([
         supabase.from('products').select('*').eq('is_active', true).order('sku'),
         supabase.from('channels').select('*').eq('is_active', true).order('channel_code'),
+        generatePONumber(supabase),
       ])
 
       const loadedProducts = (productsResult.data || []) as Product[]
@@ -58,6 +76,7 @@ export default function NewPurchaseOrderPage() {
 
       setProducts(loadedProducts)
       setChannels(loadedChannels)
+      setFormData((prev) => ({ ...prev, po_number: poNumber }))
 
       // 设置默认的第一个订单项
       if (loadedProducts.length > 0 && loadedChannels.length > 0) {
