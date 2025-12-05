@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.6.6',
+  number: '1.6.7',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-05 09:17',
+  updatedAt: '2025-12-05 09:29',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '修复周次格式不一致导致算法验证无法读取预测数据的严重BUG',
+  changelog: '采购订单页面SKU和渠道改为从数据库动态获取',
 }
 
 // 格式化显示

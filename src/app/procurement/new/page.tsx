@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { createPurchaseOrder } from '@/lib/actions/procurement'
+import { createClient } from '@/lib/supabase/client'
 import { Plus, Trash2, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import type { Product, Channel } from '@/lib/types/database'
 
 interface POItem {
   sku: string
@@ -20,27 +22,15 @@ interface POItem {
   unit_price_usd: number
 }
 
-const SKUS = ['A2RD', 'A2BK', 'A5RD', 'A5BK', 'W1RD', 'W1BK', 'W2RD', 'W2BK']
-const CHANNELS = [
-  { code: 'AMZ-US', name: 'Amazon-US' },
-  { code: 'SPF-US', name: 'Shopify-US' },
-  { code: 'WMT-US', name: 'Walmart-US' },
-]
-const SKU_PRICES: Record<string, number> = {
-  A2RD: 50,
-  A2BK: 50,
-  A5RD: 50,
-  A5BK: 50,
-  W1RD: 35,
-  W1BK: 35,
-  W2RD: 40,
-  W2BK: 40,
-}
-
 export default function NewPurchaseOrderPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [dataLoading, setDataLoading] = useState(true)
+
+  // 从数据库加载的产品和渠道
+  const [products, setProducts] = useState<Product[]>([])
+  const [channels, setChannels] = useState<Channel[]>([])
 
   const [formData, setFormData] = useState({
     po_number: `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
@@ -51,14 +41,52 @@ export default function NewPurchaseOrderPage() {
     remarks: '',
   })
 
-  const [items, setItems] = useState<POItem[]>([
-    { sku: 'A2RD', channel_code: 'AMZ-US', ordered_qty: 100, unit_price_usd: 50 },
-  ])
+  const [items, setItems] = useState<POItem[]>([])
+
+  // 加载产品和渠道数据
+  useEffect(() => {
+    const loadData = async () => {
+      const supabase = createClient()
+
+      const [productsResult, channelsResult] = await Promise.all([
+        supabase.from('products').select('*').eq('is_active', true).order('sku'),
+        supabase.from('channels').select('*').eq('is_active', true).order('channel_code'),
+      ])
+
+      const loadedProducts = (productsResult.data || []) as Product[]
+      const loadedChannels = (channelsResult.data || []) as Channel[]
+
+      setProducts(loadedProducts)
+      setChannels(loadedChannels)
+
+      // 设置默认的第一个订单项
+      if (loadedProducts.length > 0 && loadedChannels.length > 0) {
+        setItems([
+          {
+            sku: loadedProducts[0].sku,
+            channel_code: loadedChannels[0].channel_code,
+            ordered_qty: 100,
+            unit_price_usd: loadedProducts[0].unit_cost_usd || 0,
+          },
+        ])
+      }
+
+      setDataLoading(false)
+    }
+
+    loadData()
+  }, [])
 
   const addItem = () => {
+    if (products.length === 0 || channels.length === 0) return
     setItems([
       ...items,
-      { sku: 'A2RD', channel_code: 'AMZ-US', ordered_qty: 100, unit_price_usd: 50 },
+      {
+        sku: products[0].sku,
+        channel_code: channels[0].channel_code,
+        ordered_qty: 100,
+        unit_price_usd: products[0].unit_cost_usd || 0,
+      },
     ])
   }
 
@@ -71,10 +99,11 @@ export default function NewPurchaseOrderPage() {
   const updateItem = (index: number, field: keyof POItem, value: string | number) => {
     const newItems = [...items]
     if (field === 'sku') {
+      const product = products.find((p) => p.sku === value)
       newItems[index] = {
         ...newItems[index],
         sku: value as string,
-        unit_price_usd: SKU_PRICES[value as string] || 50,
+        unit_price_usd: product?.unit_cost_usd || 0,
       }
     } else {
       newItems[index] = { ...newItems[index], [field]: value }
@@ -226,97 +255,115 @@ export default function NewPurchaseOrderPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>订购明细</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={addItem}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addItem}
+                disabled={dataLoading || products.length === 0}
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 添加行
               </Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {items.map((item, index) => (
-                  <div
-                    key={index}
-                    className="grid grid-cols-1 gap-4 rounded-lg border border-gray-200 p-4 md:grid-cols-5"
-                  >
-                    <div className="space-y-2">
-                      <Label>SKU</Label>
-                      <Select
-                        value={item.sku}
-                        onChange={(e) => updateItem(index, 'sku', e.target.value)}
+              {dataLoading ? (
+                <div className="flex h-32 items-center justify-center text-gray-500">
+                  加载中...
+                </div>
+              ) : products.length === 0 || channels.length === 0 ? (
+                <div className="flex h-32 items-center justify-center text-gray-500">
+                  请先在设置中添加产品和渠道
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    {items.map((item, index) => (
+                      <div
+                        key={index}
+                        className="grid grid-cols-1 gap-4 rounded-lg border border-gray-200 p-4 md:grid-cols-5"
                       >
-                        {SKUS.map((sku) => (
-                          <option key={sku} value={sku}>
-                            {sku}
-                          </option>
-                        ))}
-                      </Select>
+                        <div className="space-y-2">
+                          <Label>SKU</Label>
+                          <Select
+                            value={item.sku}
+                            onChange={(e) => updateItem(index, 'sku', e.target.value)}
+                          >
+                            {products.map((p) => (
+                              <option key={p.sku} value={p.sku}>
+                                {p.sku} - {p.product_name}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>渠道</Label>
+                          <Select
+                            value={item.channel_code}
+                            onChange={(e) =>
+                              updateItem(index, 'channel_code', e.target.value)
+                            }
+                          >
+                            {channels.map((ch) => (
+                              <option key={ch.channel_code} value={ch.channel_code}>
+                                {ch.channel_name}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>数量</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.ordered_qty}
+                            onChange={(e) =>
+                              updateItem(index, 'ordered_qty', parseInt(e.target.value) || 0)
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>单价 (USD)</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unit_price_usd}
+                            onChange={(e) =>
+                              updateItem(index, 'unit_price_usd', parseFloat(e.target.value) || 0)
+                            }
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeItem(index)}
+                            disabled={items.length === 1}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Summary */}
+                  <div className="mt-6 flex justify-end space-x-8 border-t border-gray-200 pt-4">
+                    <div className="text-right">
+                      <p className="text-sm text-gray-500">总数量</p>
+                      <p className="text-xl font-semibold">{totalQty}</p>
                     </div>
-                    <div className="space-y-2">
-                      <Label>渠道</Label>
-                      <Select
-                        value={item.channel_code}
-                        onChange={(e) =>
-                          updateItem(index, 'channel_code', e.target.value)
-                        }
-                      >
-                        {CHANNELS.map((ch) => (
-                          <option key={ch.code} value={ch.code}>
-                            {ch.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>数量</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.ordered_qty}
-                        onChange={(e) =>
-                          updateItem(index, 'ordered_qty', parseInt(e.target.value) || 0)
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>单价 (USD)</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.unit_price_usd}
-                        onChange={(e) =>
-                          updateItem(index, 'unit_price_usd', parseFloat(e.target.value) || 0)
-                        }
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeItem(index)}
-                        disabled={items.length === 1}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-500">总金额</p>
+                      <p className="text-xl font-semibold text-green-600">
+                        ${totalValue.toLocaleString()}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
-
-              {/* Summary */}
-              <div className="mt-6 flex justify-end space-x-8 border-t border-gray-200 pt-4">
-                <div className="text-right">
-                  <p className="text-sm text-gray-500">总数量</p>
-                  <p className="text-xl font-semibold">{totalQty}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-500">总金额</p>
-                  <p className="text-xl font-semibold text-green-600">
-                    ${totalValue.toLocaleString()}
-                  </p>
-                </div>
-              </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
