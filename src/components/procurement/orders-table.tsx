@@ -19,6 +19,7 @@ import { usePagination } from '@/lib/hooks/use-pagination'
 import { formatDate, getPOStatusVariant } from '@/lib/utils'
 import { Plus, Eye, Pencil } from 'lucide-react'
 import { DeletePOButton } from './delete-po-button'
+import { ConfirmPOButton } from './confirm-po-button'
 import type { POFulfillmentView } from '@/lib/types/database'
 
 interface OrdersTableProps {
@@ -170,6 +171,13 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {order.po_status === 'Draft' && (
+                            <ConfirmPOButton
+                              poId={order.po_id}
+                              poNumber={order.po_number}
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            />
+                          )}
                           <Link href={`/procurement/${order.po_id}`}>
                             <Button variant="ghost" size="sm" title="查看详情">
                               <Eye className="h-4 w-4" />

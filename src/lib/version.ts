@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.7.1',
+  number: '1.7.2',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-05 13:30',
+  updatedAt: '2025-12-05 14:24',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '新增自动提交推送规则到CLAUDE.md',
+  changelog: '采购订单列表新增快捷确认按钮，方便将草稿订单确认后用于交货记录',
 }
 
 // 格式化显示
