@@ -15,19 +15,27 @@ export function cn(...inputs: ClassValue[]) {
 // ================================================================
 
 /**
- * Get ISO week string in format "YYYY-WW"
+ * Get ISO week string in format "YYYY-WNN" (ISO 8601 standard)
+ * Example: 2025-W49
  */
 export function getISOWeekString(date: Date): string {
   const year = getISOWeekYear(date)
   const week = getISOWeek(date)
-  return `${year}-${week.toString().padStart(2, '0')}`
+  return `${year}-W${week.toString().padStart(2, '0')}`
 }
 
 /**
- * Parse ISO week string "YYYY-WW" to Date (Monday of that week)
+ * Parse ISO week string "YYYY-WNN" to Date (Monday of that week)
+ * Supports both "2025-W49" and "2025-49" formats
  */
 export function parseISOWeekString(weekStr: string): Date {
-  const [year, week] = weekStr.split('-').map(Number)
+  // Handle both "YYYY-WNN" and "YYYY-NN" formats
+  const match = weekStr.match(/^(\d{4})-W?(\d{1,2})$/)
+  if (!match) {
+    throw new Error(`Invalid week string format: ${weekStr}`)
+  }
+  const year = parseInt(match[1], 10)
+  const week = parseInt(match[2], 10)
   const firstDayOfYear = new Date(year, 0, 4) // Jan 4 is always in week 1
   const firstMonday = startOfWeek(firstDayOfYear, { weekStartsOn: 1 })
   return addWeeks(firstMonday, week - 1)
