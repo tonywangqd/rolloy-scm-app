@@ -56,14 +56,14 @@ function getPaymentStatusBadge(status: PaymentStatus) {
   )
 }
 
-// Format date
+// Format date as YYYY/MM/DD
 function formatDate(dateString: string | null) {
   if (!dateString) return '-'
-  return new Date(dateString).toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
+  const d = new Date(dateString)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}/${month}/${day}`
 }
 
 export default async function PurchaseOrderDetailPage({

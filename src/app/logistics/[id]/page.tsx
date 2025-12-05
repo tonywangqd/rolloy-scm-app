@@ -35,10 +35,14 @@ export default async function ShipmentDetailPage({ params }: ShipmentDetailPageP
     return 'default'
   }
 
-  // Format date
+  // Format date as YYYY/MM/DD
   const formatDate = (date: string | null) => {
     if (!date) return '-'
-    return new Date(date).toLocaleDateString('zh-CN')
+    const d = new Date(date)
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}/${month}/${day}`
   }
 
   return (

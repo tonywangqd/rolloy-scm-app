@@ -199,11 +199,11 @@ export function formatNumber(value: number): string {
 }
 
 /**
- * Format date as "MMM d, yyyy"
+ * Format date as "YYYY/MM/DD" for display
  */
 export function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  return format(d, 'MMM d, yyyy')
+  return format(d, 'yyyy/MM/dd')
 }
 
 /**
