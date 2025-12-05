@@ -729,13 +729,18 @@ export async function fetchAlgorithmAuditV2(sku: string): Promise<AlgorithmAudit
  *
  * @param sku - Product SKU to analyze
  * @param shippingWeeks - Configurable shipping lead time (default: 5 weeks, range: 4-6)
+ * @param customStartWeek - Optional custom start week (format: 2025-W01)
+ * @param customEndWeek - Optional custom end week (format: 2026-W52)
  * @returns Complete audit result with 20-column data
  */
 export async function fetchAlgorithmAuditV3(
   sku: string,
-  shippingWeeks: number = 5
+  shippingWeeks: number = 5,
+  customStartWeek?: string,
+  customEndWeek?: string
 ): Promise<AlgorithmAuditResultV3> {
   const supabase = await createServerSupabaseClient()
+  const currentWeekV3 = getCurrentWeek()
 
   // STEP 1: Fetch Product Configuration
   const { data: product } = await supabase
@@ -755,7 +760,7 @@ export async function fetchAlgorithmAuditV3(
         safety_stock_weeks: 2,
       },
       metadata: {
-        current_week: getCurrentWeek(),
+        current_week: currentWeekV3,
         start_week: '',
         end_week: '',
         total_weeks: 0,
@@ -775,15 +780,18 @@ export async function fetchAlgorithmAuditV3(
     safety_stock_weeks: product.safety_stock_weeks,
   }
 
-  // STEP 3: Generate 16-Week Range
-  const currentWeekV3 = getCurrentWeek()
-  const startWeekV3 = addWeeksToISOWeek(currentWeekV3, -4) || currentWeekV3
-  const endWeekV3 = addWeeksToISOWeek(currentWeekV3, 11) || currentWeekV3
+  // STEP 3: Generate Week Range (supports custom range or default 16-week)
+  // 如果提供了自定义起始周和结束周，使用它们；否则使用默认的16周范围
+  const startWeekV3 = customStartWeek || addWeeksToISOWeek(currentWeekV3, -4) || currentWeekV3
+  const endWeekV3 = customEndWeek || addWeeksToISOWeek(currentWeekV3, 11) || currentWeekV3
 
+  // 生成周次数组
   const weeksV3: string[] = []
   let currentIterWeekV3 = startWeekV3
-  for (let i = 0; i < 16; i++) {
+  // 最多生成200周（约4年）以防止无限循环
+  for (let i = 0; i < 200; i++) {
     weeksV3.push(currentIterWeekV3)
+    if (currentIterWeekV3 >= endWeekV3) break
     const next = addWeeksToISOWeek(currentIterWeekV3, 1)
     if (!next) break
     currentIterWeekV3 = next
@@ -916,8 +924,12 @@ export async function fetchAlgorithmAuditV3(
   })
 
   // STEP 6: Initialize Rows with Sales and Actual Data
+  // 计算当前周在数组中的索引（用于week_offset）
+  const currentWeekIndex = weeksV3.indexOf(currentWeekV3)
+
   const rowsV3: AlgorithmAuditRowV3[] = weeksV3.map((week, index) => {
-    const weekOffset = index - 4
+    // week_offset: 相对于当前周的偏移量
+    const weekOffset = currentWeekIndex >= 0 ? index - currentWeekIndex : index
     const weekStartDate = parseISOWeekString(week)
     const week_start_date = weekStartDate ? formatDateISO(weekStartDate) : week
 
@@ -934,8 +946,8 @@ export async function fetchAlgorithmAuditV3(
       week_iso: week,
       week_start_date,
       week_offset: weekOffset,
-      is_past: weekOffset < 0,
-      is_current: weekOffset === 0,
+      is_past: week < currentWeekV3,      // 基于周次字符串比较
+      is_current: week === currentWeekV3, // 精确匹配当前周
       sales_forecast,
       sales_actual,
       sales_effective,

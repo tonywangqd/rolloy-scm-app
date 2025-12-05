@@ -11,10 +11,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlgorithmAuditTable } from '@/components/inventory/algorithm-audit-table'
 import { AlgorithmAuditFilters } from '@/components/inventory/algorithm-audit-filters'
 import { fetchAlgorithmAuditV3, fetchActiveProducts } from '@/lib/queries/algorithm-audit'
-import { formatNumber } from '@/lib/utils'
+import { formatNumber, getCurrentWeek, addWeeksToISOWeek } from '@/lib/utils'
 
 interface PageProps {
-  searchParams: Promise<{ sku?: string; shipping_weeks?: string }>
+  searchParams: Promise<{
+    sku?: string
+    shipping_weeks?: string
+    start_week?: string
+    end_week?: string
+  }>
 }
 
 export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
@@ -24,9 +29,16 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
   const params = await searchParams
   const products = await fetchActiveProducts()
 
+  // 计算默认周次范围（当前周-4 到 当前周+11，共16周）
+  const currentWeek = getCurrentWeek()
+  const defaultStartWeek = addWeeksToISOWeek(currentWeek, -4) || '2025-W01'
+  const defaultEndWeek = addWeeksToISOWeek(currentWeek, 11) || '2025-W52'
+
   // Parse parameters
   const selectedSku = params.sku || (products.length > 0 ? products[0].sku : null)
   const shippingWeeks = parseInt(params.shipping_weeks || '5', 10)
+  const startWeek = params.start_week || defaultStartWeek
+  const endWeek = params.end_week || defaultEndWeek
 
   if (!selectedSku) {
     return (
@@ -41,8 +53,8 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
     )
   }
 
-  // Fetch audit data for selected SKU
-  const auditData = await fetchAlgorithmAuditV3(selectedSku, shippingWeeks)
+  // Fetch audit data for selected SKU with custom week range
+  const auditData = await fetchAlgorithmAuditV3(selectedSku, shippingWeeks, startWeek, endWeek)
 
   if (!auditData.product) {
     redirect('/inventory/algorithm-audit')
@@ -67,6 +79,8 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
           products={products}
           selectedSku={selectedSku}
           shippingWeeks={shippingWeeks}
+          startWeek={startWeek}
+          endWeek={endWeek}
         />
       </Suspense>
 
