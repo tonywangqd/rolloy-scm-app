@@ -958,7 +958,7 @@ export async function fetchAlgorithmAuditV3(
     }
   })
 
-  // STEP 7: Reverse Calculation for Planned Quantities
+  // STEP 7: Reverse Calculation for Planned Quantities (from sales demand)
   const plannedOrderMapV3 = new Map<string, number>()
   const plannedFactoryShipMapV3 = new Map<string, number>()
   const plannedShipMapV3 = new Map<string, number>()
@@ -993,12 +993,93 @@ export async function fetchAlgorithmAuditV3(
     }
   })
 
-  rowsV3.forEach((row) => {
-    row.planned_order = plannedOrderMapV3.get(row.week_iso) || 0
-    row.planned_factory_ship = plannedFactoryShipMapV3.get(row.week_iso) || 0
-    row.planned_ship = plannedShipMapV3.get(row.week_iso) || 0
-    row.planned_arrival = plannedArrivalMapV3.get(row.week_iso) || 0
+  // STEP 7.5: Forward Propagation from Actual Orders
+  // When an actual order is placed, propagate it forward through the supply chain
+  const forwardFactoryShipMapV3 = new Map<string, number>()
+  const forwardShipMapV3 = new Map<string, number>()
+  const forwardArrivalMapV3 = new Map<string, number>()
 
+  rowsV3.forEach((row) => {
+    // Forward propagate from actual orders
+    if (row.actual_order > 0) {
+      // Order placed → factory ships after production_weeks
+      const factoryShipWeek = addWeeksToISOWeek(row.week_iso, leadTimesV3.production_weeks)
+      if (factoryShipWeek) {
+        const current = forwardFactoryShipMapV3.get(factoryShipWeek) || 0
+        forwardFactoryShipMapV3.set(factoryShipWeek, current + row.actual_order)
+      }
+
+      // Factory ships → departs port after loading_weeks
+      const shipWeek = factoryShipWeek
+        ? addWeeksToISOWeek(factoryShipWeek, leadTimesV3.loading_weeks)
+        : null
+      if (shipWeek) {
+        const current = forwardShipMapV3.get(shipWeek) || 0
+        forwardShipMapV3.set(shipWeek, current + row.actual_order)
+      }
+
+      // Departs → arrives after shipping_weeks
+      const arrivalWeek = shipWeek
+        ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
+        : null
+      if (arrivalWeek) {
+        const current = forwardArrivalMapV3.get(arrivalWeek) || 0
+        forwardArrivalMapV3.set(arrivalWeek, current + row.actual_order)
+      }
+    }
+
+    // Forward propagate from actual factory shipments (if no order tracking)
+    if (row.actual_factory_ship > 0) {
+      // Factory ships → departs port after loading_weeks
+      const shipWeek = addWeeksToISOWeek(row.week_iso, leadTimesV3.loading_weeks)
+      if (shipWeek) {
+        const existingForward = forwardShipMapV3.get(shipWeek) || 0
+        // Only add if not already tracked from orders
+        if (existingForward === 0) {
+          forwardShipMapV3.set(shipWeek, row.actual_factory_ship)
+        }
+      }
+
+      // Departs → arrives after shipping_weeks
+      const arrivalWeek = shipWeek
+        ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
+        : null
+      if (arrivalWeek) {
+        const existingForward = forwardArrivalMapV3.get(arrivalWeek) || 0
+        if (existingForward === 0) {
+          forwardArrivalMapV3.set(arrivalWeek, row.actual_factory_ship)
+        }
+      }
+    }
+
+    // Forward propagate from actual shipments (departures)
+    if (row.actual_ship > 0) {
+      const arrivalWeek = addWeeksToISOWeek(row.week_iso, leadTimesV3.shipping_weeks)
+      if (arrivalWeek) {
+        const existingForward = forwardArrivalMapV3.get(arrivalWeek) || 0
+        // Only add if not already tracked from earlier stages
+        if (existingForward === 0) {
+          forwardArrivalMapV3.set(arrivalWeek, row.actual_ship)
+        }
+      }
+    }
+  })
+
+  rowsV3.forEach((row) => {
+    // Set planned values from reverse calculation (sales demand based)
+    row.planned_order = plannedOrderMapV3.get(row.week_iso) || 0
+
+    // For factory_ship, ship, and arrival: use forward propagation from actuals if available
+    // Otherwise fall back to reverse calculation from sales demand
+    const forwardFactoryShip = forwardFactoryShipMapV3.get(row.week_iso) || 0
+    const forwardShip = forwardShipMapV3.get(row.week_iso) || 0
+    const forwardArrival = forwardArrivalMapV3.get(row.week_iso) || 0
+
+    row.planned_factory_ship = forwardFactoryShip || plannedFactoryShipMapV3.get(row.week_iso) || 0
+    row.planned_ship = forwardShip || plannedShipMapV3.get(row.week_iso) || 0
+    row.planned_arrival = forwardArrival || plannedArrivalMapV3.get(row.week_iso) || 0
+
+    // Effective values: use actual if available, otherwise planned
     row.order_effective = row.actual_order || row.planned_order
     row.factory_ship_effective = row.actual_factory_ship || row.planned_factory_ship
     row.ship_effective = row.actual_ship || row.planned_ship

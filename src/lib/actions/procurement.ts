@@ -213,6 +213,76 @@ export async function updateDeliveryPaymentStatus(
 }
 
 /**
+ * Update purchase order details
+ */
+export async function updatePurchaseOrder(
+  id: string,
+  updates: {
+    batch_code?: string
+    planned_order_date?: string | null
+    actual_order_date?: string | null
+    planned_ship_date?: string | null
+    po_status?: string
+    remarks?: string | null
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Check authentication
+    const authResult = await requireAuth()
+    if (authResult.error) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate ID
+    const idValidation = deleteByIdSchema.safeParse({ id })
+    if (!idValidation.success) {
+      return {
+        success: false,
+        error: `Validation error: ${idValidation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
+    // Validate status if provided
+    if (updates.po_status) {
+      const statusValidation = poStatusSchema.safeParse(updates.po_status)
+      if (!statusValidation.success) {
+        return {
+          success: false,
+          error: `Status validation error: ${statusValidation.error.issues.map((e) => e.message).join(', ')}`,
+        }
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    const { error } = await supabase
+      .from('purchase_orders')
+      .update({
+        ...(updates.batch_code !== undefined && { batch_code: updates.batch_code }),
+        ...(updates.planned_order_date !== undefined && { planned_order_date: updates.planned_order_date }),
+        ...(updates.actual_order_date !== undefined && { actual_order_date: updates.actual_order_date }),
+        ...(updates.planned_ship_date !== undefined && { planned_ship_date: updates.planned_ship_date }),
+        ...(updates.po_status !== undefined && { po_status: updates.po_status }),
+        ...(updates.remarks !== undefined && { remarks: updates.remarks }),
+      })
+      .eq('id', id)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/procurement')
+    revalidatePath(`/procurement/${id}`)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: `Failed to update purchase order: ${err instanceof Error ? err.message : 'Unknown error'}`,
+    }
+  }
+}
+
+/**
  * Delete a purchase order
  */
 export async function deletePurchaseOrder(

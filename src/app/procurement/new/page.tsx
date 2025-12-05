@@ -43,11 +43,14 @@ export default function NewPurchaseOrderPage() {
 
   const [items, setItems] = useState<POItem[]>([])
 
-  // 生成当天的 PO 号：PO2025-12-05-001
+  // 生成当天的 PO 号：PO2025120501 (PO + YYYYMMDD + 2位序号)
   const generatePONumber = async (supabase: ReturnType<typeof createClient>) => {
     const today = new Date()
-    const dateStr = today.toISOString().split('T')[0] // 2025-12-05
-    const prefix = `PO${dateStr}-`
+    const year = today.getFullYear()
+    const month = String(today.getMonth() + 1).padStart(2, '0')
+    const day = String(today.getDate()).padStart(2, '0')
+    const dateStr = `${year}${month}${day}` // 20251205
+    const prefix = `PO${dateStr}`
 
     // 查询当天已有的订单数量
     const { data: existingPOs } = await supabase
@@ -56,7 +59,7 @@ export default function NewPurchaseOrderPage() {
       .like('po_number', `${prefix}%`)
 
     const count = existingPOs?.length || 0
-    const sequence = String(count + 1).padStart(3, '0')
+    const sequence = String(count + 1).padStart(2, '0')
     return `${prefix}${sequence}`
   }
 
@@ -345,12 +348,9 @@ export default function NewPurchaseOrderPage() {
                           <Label>单价 (USD)</Label>
                           <Input
                             type="number"
-                            min="0"
-                            step="0.01"
                             value={item.unit_price_usd}
-                            onChange={(e) =>
-                              updateItem(index, 'unit_price_usd', parseFloat(e.target.value) || 0)
-                            }
+                            readOnly
+                            className="bg-gray-50 cursor-not-allowed"
                           />
                         </div>
                         <div className="flex items-end">
