@@ -286,3 +286,86 @@ export async function validatePONumberFormat(poNumber: string): Promise<boolean>
 
   return data || false
 }
+
+/**
+ * Fetch delivery record with context for editing
+ * Returns delivery + PO + item constraints
+ */
+export async function fetchDeliveryForEdit(
+  deliveryId: string
+): Promise<{ data: import('@/lib/types/database').DeliveryEditContext | null; error: string | null }> {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    // Query delivery with related data
+    const { data: delivery, error: deliveryError } = await supabase
+      .from('production_deliveries')
+      .select(`
+        *,
+        po_item:purchase_order_items!inner(
+          id,
+          po_id,
+          ordered_qty,
+          delivered_qty,
+          po:purchase_orders!inner(
+            id,
+            po_number,
+            batch_code,
+            supplier:suppliers(supplier_name)
+          )
+        )
+      `)
+      .eq('id', deliveryId)
+      .single()
+
+    if (deliveryError || !delivery) {
+      return {
+        data: null,
+        error: deliveryError?.message || 'Delivery not found',
+      }
+    }
+
+    // Calculate other deliveries qty (excluding current delivery)
+    const { data: otherDeliveries, error: otherError } = await supabase
+      .from('production_deliveries')
+      .select('delivered_qty')
+      .eq('po_item_id', delivery.po_item_id)
+      .neq('id', deliveryId)
+
+    if (otherError) {
+      return { data: null, error: otherError.message }
+    }
+
+    const otherDeliveriesQty = otherDeliveries?.reduce(
+      (sum, d) => sum + d.delivered_qty,
+      0
+    ) || 0
+
+    const maxAllowedQty = delivery.po_item.ordered_qty - otherDeliveriesQty
+
+    return {
+      data: {
+        delivery,
+        po: {
+          id: delivery.po_item.po.id,
+          po_number: delivery.po_item.po.po_number,
+          batch_code: delivery.po_item.po.batch_code,
+          supplier_name: delivery.po_item.po.supplier?.supplier_name || null,
+        },
+        po_item: {
+          id: delivery.po_item.id,
+          ordered_qty: delivery.po_item.ordered_qty,
+          delivered_qty: delivery.po_item.delivered_qty,
+        },
+        other_deliveries_qty: otherDeliveriesQty,
+        max_allowed_qty: maxAllowedQty,
+      },
+      error: null,
+    }
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    }
+  }
+}

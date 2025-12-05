@@ -2,9 +2,7 @@
 
 import React, { useState } from 'react'
 import Link from 'next/link'
-import { ChevronDown, ChevronRight, Info } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 
 // ================================================================
 // TYPE DEFINITIONS (Temporary - will be moved to @/lib/types/database)
@@ -165,43 +163,7 @@ function getCoverageLabel(status: CoverageStatus, uncoveredQty: number): string 
   }
 }
 
-function getFulfillmentBadgeVariant(status: 'Complete' | 'Partial' | 'Pending'): 'success' | 'warning' | 'default' {
-  switch (status) {
-    case 'Complete':
-      return 'success'
-    case 'Partial':
-      return 'warning'
-    default:
-      return 'default'
-  }
-}
-
-function getShipmentStatusBadgeVariant(
-  status: 'Fully Shipped' | 'Partially Shipped' | 'Awaiting Shipment'
-): 'success' | 'warning' | 'default' {
-  switch (status) {
-    case 'Fully Shipped':
-      return 'success'
-    case 'Partially Shipped':
-      return 'warning'
-    default:
-      return 'default'
-  }
-}
-
-function getShipmentCurrentStatusBadge(
-  status: 'Arrived' | 'In Transit' | 'Departed' | 'Awaiting'
-): 'success' | 'warning' | 'default' {
-  switch (status) {
-    case 'Arrived':
-      return 'success'
-    case 'In Transit':
-    case 'Departed':
-      return 'warning'
-    default:
-      return 'default'
-  }
-}
+// Removed unused badge variant functions - replaced with inline tooltip content
 
 function getSourceTypeLabel(sourceType: PropagationSourceType): string {
   switch (sourceType) {
@@ -242,6 +204,31 @@ function formatValue(value: number | null): string {
 // SUB-COMPONENTS
 // ================================================================
 
+// ================================================================
+// TOOLTIP TYPES
+// ================================================================
+
+type TooltipColumnType =
+  | 'sales_forecast'
+  | 'sales_actual'
+  | 'sales_effective'
+  | 'order_planned'
+  | 'order_actual'
+  | 'order_effective'
+  | 'factory_ship_planned'
+  | 'factory_ship_actual'
+  | 'factory_ship_effective'
+  | 'ship_planned'
+  | 'ship_actual'
+  | 'ship_effective'
+  | 'arrival_planned'
+  | 'arrival_actual'
+  | 'arrival_effective'
+  | 'inventory_opening'
+  | 'inventory_closing'
+  | 'inventory_safety'
+  | 'inventory_status'
+
 interface TooltipProps {
   content: React.ReactNode
   children: React.ReactNode
@@ -249,20 +236,39 @@ interface TooltipProps {
 
 function Tooltip({ content, children }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false)
+  const [delayTimeout, setDelayTimeout] = useState<NodeJS.Timeout | null>(null)
+
+  const handleMouseEnter = () => {
+    const timeout = setTimeout(() => {
+      setIsVisible(true)
+    }, 300)
+    setDelayTimeout(timeout)
+  }
+
+  const handleMouseLeave = () => {
+    if (delayTimeout) {
+      clearTimeout(delayTimeout)
+    }
+    setIsVisible(false)
+  }
 
   return (
     <div className="relative inline-block">
       <div
-        onMouseEnter={() => setIsVisible(true)}
-        onMouseLeave={() => setIsVisible(false)}
-        className="cursor-help"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        className="cursor-help border-b border-dashed border-gray-300 hover:border-gray-500 transition-colors"
       >
         {children}
       </div>
       {isVisible && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg">
+        <div
+          className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-4 bg-white border border-gray-200 rounded-lg shadow-xl"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
           <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
-            <div className="border-4 border-transparent border-t-gray-900"></div>
+            <div className="border-8 border-transparent border-t-white"></div>
           </div>
           {content}
         </div>
@@ -271,254 +277,595 @@ function Tooltip({ content, children }: TooltipProps) {
   )
 }
 
-interface ExpandedDetailsProps {
-  row: AlgorithmAuditRowV4
-  type: 'order' | 'factory_ship' | 'ship' | 'arrival'
+// ================================================================
+// DATA PROVENANCE TOOLTIP COMPONENT
+// ================================================================
+
+interface DataProvenanceTooltipProps {
+  columnType: TooltipColumnType
+  rowData: AlgorithmAuditRowV4
+  children: React.ReactNode
+  disabled?: boolean
 }
 
-function ExpandedDetails({ row, type }: ExpandedDetailsProps) {
-  if (type === 'order' && row.order_details.length > 0) {
-    const totalOrdered = row.order_details.reduce((sum, o) => sum + o.ordered_qty, 0)
-    const totalDelivered = row.order_details.reduce((sum, o) => sum + o.delivered_qty, 0)
-    const totalPending = row.order_details.reduce((sum, o) => sum + o.pending_qty, 0)
-
-    return (
-      <div className="p-4 bg-blue-50 border-l-4 border-blue-500">
-        <h4 className="font-semibold text-sm mb-3 text-blue-900">订单详情 - {row.week_iso}</h4>
-
-        <div className="grid grid-cols-4 gap-4 mb-4 text-sm">
-          <div>
-            <span className="text-gray-600">总订单量:</span>
-            <span className="ml-2 font-semibold">{totalOrdered}</span>
-          </div>
-          <div>
-            <span className="text-gray-600">已交付:</span>
-            <span className="ml-2 font-semibold text-green-700">{totalDelivered}</span>
-          </div>
-          <div>
-            <span className="text-gray-600">待交付:</span>
-            <span className="ml-2 font-semibold text-orange-700">{totalPending}</span>
-          </div>
-          <div>
-            <span className="text-gray-600">覆盖缺口:</span>
-            <span className="ml-2 font-semibold text-red-700">{row.sales_uncovered_qty}</span>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse bg-white rounded">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-3 py-2 text-left border">PO号</th>
-                <th className="px-3 py-2 text-left border">下单日期</th>
-                <th className="px-3 py-2 text-left border">供应商</th>
-                <th className="px-3 py-2 text-right border">订单量</th>
-                <th className="px-3 py-2 text-right border">已交付</th>
-                <th className="px-3 py-2 text-right border">待交付</th>
-                <th className="px-3 py-2 text-center border">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {row.order_details.map((order) => (
-                <tr key={order.po_id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 border">
-                    <Link
-                      href={`/procurement/edit/${order.po_id}`}
-                      className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                    >
-                      {order.po_number}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 border text-gray-700">{order.order_date}</td>
-                  <td className="px-3 py-2 border text-gray-700">{order.supplier_name || '-'}</td>
-                  <td className="px-3 py-2 border text-right font-medium">{order.ordered_qty}</td>
-                  <td className="px-3 py-2 border text-right text-green-700">{order.delivered_qty}</td>
-                  <td className="px-3 py-2 border text-right text-orange-700">{order.pending_qty}</td>
-                  <td className="px-3 py-2 border text-center">
-                    <Badge variant={getFulfillmentBadgeVariant(order.fulfillment_status)}>
-                      {order.fulfillment_status === 'Complete' ? '✓ 完成' : ''}
-                      {order.fulfillment_status === 'Partial' ? '⚠ 部分' : ''}
-                      {order.fulfillment_status === 'Pending' ? '待处理' : ''}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    )
+function DataProvenanceTooltip({ columnType, rowData, children, disabled = false }: DataProvenanceTooltipProps) {
+  if (disabled) {
+    return <>{children}</>
   }
 
-  if (type === 'factory_ship' && row.factory_ship_details.length > 0) {
-    return (
-      <div className="p-4 bg-purple-50 border-l-4 border-purple-500">
-        <h4 className="font-semibold text-sm mb-3 text-purple-900">工厂出货详情 - {row.week_iso}</h4>
+  const tooltipContent = generateTooltipContent(columnType, rowData)
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse bg-white rounded">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-3 py-2 text-left border">交货单号</th>
-                <th className="px-3 py-2 text-left border">关联PO</th>
-                <th className="px-3 py-2 text-left border">交货日期</th>
-                <th className="px-3 py-2 text-right border">交货量</th>
-                <th className="px-3 py-2 text-right border">已发货</th>
-                <th className="px-3 py-2 text-right border">待发货</th>
-                <th className="px-3 py-2 text-center border">发货状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {row.factory_ship_details.map((delivery) => (
-                <tr key={delivery.delivery_id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 border font-medium">{delivery.delivery_number}</td>
-                  <td className="px-3 py-2 border">
-                    <span className="text-blue-600 text-xs">{delivery.po_number}</span>
-                  </td>
-                  <td className="px-3 py-2 border text-gray-700">{delivery.delivery_date}</td>
-                  <td className="px-3 py-2 border text-right font-medium">{delivery.delivered_qty}</td>
-                  <td className="px-3 py-2 border text-right text-green-700">{delivery.shipped_qty}</td>
-                  <td className="px-3 py-2 border text-right text-orange-700">{delivery.unshipped_qty}</td>
-                  <td className="px-3 py-2 border text-center">
-                    <Badge variant={getShipmentStatusBadgeVariant(delivery.shipment_status)}>
-                      {delivery.shipment_status}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    )
-  }
-
-  if (type === 'ship' && row.ship_details.length > 0) {
-    return (
-      <div className="p-4 bg-orange-50 border-l-4 border-orange-500">
-        <h4 className="font-semibold text-sm mb-3 text-orange-900">物流发货详情 - {row.week_iso}</h4>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse bg-white rounded">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-3 py-2 text-left border">货柜号</th>
-                <th className="px-3 py-2 text-left border">关联交货单</th>
-                <th className="px-3 py-2 text-right border">发货量</th>
-                <th className="px-3 py-2 text-left border">发货日期</th>
-                <th className="px-3 py-2 text-left border">预计到达周</th>
-                <th className="px-3 py-2 text-left border">实际到达日期</th>
-                <th className="px-3 py-2 text-center border">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {row.ship_details.map((shipment) => (
-                <tr key={shipment.shipment_id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 border">
-                    <Link
-                      href={`/logistics/edit/${shipment.shipment_id}`}
-                      className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                    >
-                      {shipment.tracking_number}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 border text-xs text-gray-600">
-                    {shipment.delivery_number || '-'}
-                  </td>
-                  <td className="px-3 py-2 border text-right font-medium">{shipment.shipped_qty}</td>
-                  <td className="px-3 py-2 border text-gray-700">{shipment.departure_date || '-'}</td>
-                  <td className="px-3 py-2 border text-gray-700">{shipment.planned_arrival_week}</td>
-                  <td className="px-3 py-2 border text-gray-700">{shipment.arrival_date || '-'}</td>
-                  <td className="px-3 py-2 border text-center">
-                    <Badge variant={getShipmentCurrentStatusBadge(shipment.current_status)}>
-                      {shipment.current_status === 'Arrived' ? '✓ 已到仓' : ''}
-                      {shipment.current_status === 'In Transit' ? '运输中' : ''}
-                      {shipment.current_status === 'Departed' ? '已发货' : ''}
-                      {shipment.current_status === 'Awaiting' ? '待发货' : ''}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    )
-  }
-
-  if (type === 'arrival' && row.arrival_details.length > 0) {
-    return (
-      <div className="p-4 bg-green-50 border-l-4 border-green-500">
-        <h4 className="font-semibold text-sm mb-3 text-green-900">到仓详情 - {row.week_iso}</h4>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse bg-white rounded">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-3 py-2 text-left border">货柜号</th>
-                <th className="px-3 py-2 text-left border">关联PO</th>
-                <th className="px-3 py-2 text-right border">到仓量</th>
-                <th className="px-3 py-2 text-left border">到仓日期</th>
-                <th className="px-3 py-2 text-left border">仓库代码</th>
-                <th className="px-3 py-2 text-left border">仓库名称</th>
-              </tr>
-            </thead>
-            <tbody>
-              {row.arrival_details.map((arrival) => (
-                <tr key={arrival.shipment_id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 border">
-                    <Link
-                      href={`/logistics/edit/${arrival.shipment_id}`}
-                      className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                    >
-                      {arrival.tracking_number}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 border text-xs text-gray-600">{arrival.po_number || '-'}</td>
-                  <td className="px-3 py-2 border text-right font-medium text-green-700">
-                    {arrival.arrived_qty}
-                  </td>
-                  <td className="px-3 py-2 border text-gray-700">{arrival.arrival_date}</td>
-                  <td className="px-3 py-2 border text-gray-700">{arrival.warehouse_code}</td>
-                  <td className="px-3 py-2 border text-gray-700">
-                    {arrival.destination_warehouse_name}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    )
-  }
-
-  return null
+  return (
+    <Tooltip content={tooltipContent}>
+      {children}
+    </Tooltip>
+  )
 }
+
+// ================================================================
+// TOOLTIP CONTENT GENERATOR
+// ================================================================
+
+function generateTooltipContent(columnType: TooltipColumnType, rowData: AlgorithmAuditRowV4): React.ReactNode {
+  switch (columnType) {
+    case 'sales_forecast':
+      return generateSalesForecastTooltip(rowData)
+    case 'sales_actual':
+      return generateSalesActualTooltip(rowData)
+    case 'sales_effective':
+      return generateSalesEffectiveTooltip(rowData)
+    case 'order_planned':
+      return generateOrderPlannedTooltip(rowData)
+    case 'order_actual':
+      return generateOrderActualTooltip(rowData)
+    case 'order_effective':
+      return generateOrderEffectiveTooltip(rowData)
+    case 'factory_ship_planned':
+      return generateFactoryShipPlannedTooltip(rowData)
+    case 'factory_ship_actual':
+      return generateFactoryShipActualTooltip(rowData)
+    case 'factory_ship_effective':
+      return generateFactoryShipEffectiveTooltip(rowData)
+    case 'ship_planned':
+      return generateShipPlannedTooltip(rowData)
+    case 'ship_actual':
+      return generateShipActualTooltip(rowData)
+    case 'ship_effective':
+      return generateShipEffectiveTooltip(rowData)
+    case 'arrival_planned':
+      return generateArrivalPlannedTooltip(rowData)
+    case 'arrival_actual':
+      return generateArrivalActualTooltip(rowData)
+    case 'arrival_effective':
+      return generateArrivalEffectiveTooltip(rowData)
+    case 'inventory_opening':
+      return generateInventoryOpeningTooltip(rowData)
+    case 'inventory_closing':
+      return generateInventoryClosingTooltip(rowData)
+    case 'inventory_safety':
+      return generateInventorySafetyTooltip(rowData)
+    case 'inventory_status':
+      return generateInventoryStatusTooltip(rowData)
+    default:
+      return null
+  }
+}
+
+function generateSalesForecastTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📊</span>
+        <h4 className="text-sm font-semibold text-gray-900">销售 Sales (预测)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.sales_forecast} units</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Sales forecast (sales_forecasts)</div>
+        <div className="text-xs text-gray-500 mt-1">Week: {row.week_iso}</div>
+      </div>
+    </div>
+  )
+}
+
+function generateSalesActualTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📊</span>
+        <h4 className="text-sm font-semibold text-gray-900">销售 Sales (实际)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">
+          Value: {row.sales_actual !== null ? `${row.sales_actual} units` : 'No actual data yet'}
+        </div>
+        <div className="text-xs text-gray-600 mt-1">
+          Source: {row.sales_actual !== null ? 'Actual sales (sales_actuals)' : 'Not yet recorded'}
+        </div>
+        <div className="text-xs text-gray-500 mt-1">Week: {row.week_iso}</div>
+      </div>
+    </div>
+  )
+}
+
+function generateSalesEffectiveTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📊</span>
+        <h4 className="text-sm font-semibold text-gray-900">销售 Sales (取值)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.sales_effective} units</div>
+        <div className="text-xs text-gray-600 mt-1">
+          Source: {row.sales_actual !== null ? 'Actual (优先使用实际数据)' : 'Forecast (使用预测数据)'}
+        </div>
+        <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+          Formula: COALESCE(actual, forecast)
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function generateOrderPlannedTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📦</span>
+        <h4 className="text-sm font-semibold text-gray-900">下单 Order (预计)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.planned_order} units</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Planned orders (not yet implemented)</div>
+        <div className="text-xs text-gray-500 mt-1">Week: {row.week_iso}</div>
+      </div>
+    </div>
+  )
+}
+
+function generateOrderActualTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📦</span>
+          <h4 className="text-sm font-semibold text-gray-900">下单 Order (实际)</h4>
+        </div>
+        <span className="text-xs text-gray-500">{row.week_iso}</span>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.actual_order} units</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Actual purchase orders</div>
+      </div>
+
+      {row.order_details.length > 0 && (
+        <>
+          <div className="border-t border-gray-200 pt-2">
+            <div className="text-xs font-semibold text-gray-700 mb-2">Details:</div>
+            <ul className="space-y-1.5">
+              {row.order_details.map((order, idx) => (
+                <li key={idx} className="text-xs">
+                  <Link
+                    href={`/procurement/edit/${order.po_id}`}
+                    className="text-blue-600 hover:underline font-medium"
+                  >
+                    {order.po_number}
+                  </Link>
+                  {': '}
+                  <span className="text-gray-900">{order.ordered_qty} units</span>
+                  {' '}
+                  <span className="text-gray-500">
+                    ({order.fulfillment_status === 'Complete' ? '✓ Delivered' : order.fulfillment_status})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="border-t border-gray-200 pt-2">
+            <Badge variant={getCoverageBadgeVariant(row.sales_coverage_status)}>
+              {row.sales_coverage_status}
+            </Badge>
+            {row.sales_uncovered_qty > 0 && (
+              <span className="text-xs text-gray-600 ml-2">Gap: {row.sales_uncovered_qty} units</span>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function generateOrderEffectiveTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📦</span>
+        <h4 className="text-sm font-semibold text-gray-900">下单 Order (取值)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.order_effective} units</div>
+        <div className="text-xs text-gray-600 mt-1">
+          Source: {row.actual_order > 0 ? 'Actual (优先使用实际数据)' : 'Planned (使用预计数据)'}
+        </div>
+        <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+          Formula: COALESCE(actual, planned)
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function generateFactoryShipPlannedTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  const sources = row.planned_factory_ship_source || []
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🏭</span>
+        <h4 className="text-sm font-semibold text-gray-900">工厂出货 Factory Ship (预计)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.planned_factory_ship} units</div>
+        {sources.length > 0 && (
+          <div className="mt-2">
+            <div className="text-xs font-semibold text-gray-700 mb-1">Data Source:</div>
+            {sources.map((source, idx) => (
+              <div key={idx} className="text-xs text-gray-600">
+                • {getSourceTypeLabel(source.source_type)}
+                <span className="text-gray-400 ml-1">(from {source.source_week}, {getConfidenceLabel(source.confidence)} confidence)</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function generateFactoryShipActualTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🏭</span>
+          <h4 className="text-sm font-semibold text-gray-900">工厂出货 Factory Ship (实际)</h4>
+        </div>
+        <span className="text-xs text-gray-500">{row.week_iso}</span>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.actual_factory_ship} units</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Actual production deliveries</div>
+      </div>
+
+      {row.factory_ship_details.length > 0 && (
+        <div className="border-t border-gray-200 pt-2">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Details:</div>
+          <ul className="space-y-1.5">
+            {row.factory_ship_details.map((delivery, idx) => (
+              <li key={idx} className="text-xs">
+                <span className="font-medium text-gray-900">{delivery.delivery_number}</span>
+                {': '}
+                <span className="text-gray-900">{delivery.delivered_qty} units</span>
+                {' '}
+                <span className="text-gray-500">(from {delivery.po_number})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function generateFactoryShipEffectiveTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🏭</span>
+        <h4 className="text-sm font-semibold text-gray-900">工厂出货 Factory Ship (取值)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.factory_ship_effective} units</div>
+        <div className="text-xs text-gray-600 mt-1">
+          Source: {row.actual_factory_ship > 0 ? 'Actual (优先使用实际数据)' : 'Planned (使用预计数据)'}
+        </div>
+        <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+          Formula: COALESCE(actual, planned)
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function generateShipPlannedTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  const sources = row.planned_ship_source || []
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🚢</span>
+        <h4 className="text-sm font-semibold text-gray-900">物流发货 Ship (预计)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.planned_ship} units</div>
+        {sources.length > 0 && (
+          <div className="mt-2">
+            <div className="text-xs font-semibold text-gray-700 mb-1">Data Source:</div>
+            {sources.map((source, idx) => (
+              <div key={idx} className="text-xs text-gray-600">
+                • {getSourceTypeLabel(source.source_type)}
+                <span className="text-gray-400 ml-1">(from {source.source_week}, {getConfidenceLabel(source.confidence)} confidence)</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function generateShipActualTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🚢</span>
+          <h4 className="text-sm font-semibold text-gray-900">物流发货 Ship (实际)</h4>
+        </div>
+        <span className="text-xs text-gray-500">{row.week_iso}</span>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.actual_ship} units</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Actual shipment departures</div>
+      </div>
+
+      {row.ship_details.length > 0 && (
+        <div className="border-t border-gray-200 pt-2">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Details:</div>
+          <ul className="space-y-1.5">
+            {row.ship_details.map((shipment, idx) => (
+              <li key={idx} className="text-xs">
+                <Link
+                  href={`/logistics/edit/${shipment.shipment_id}`}
+                  className="text-blue-600 hover:underline font-medium"
+                >
+                  {shipment.tracking_number}
+                </Link>
+                {': '}
+                <span className="text-gray-900">{shipment.shipped_qty} units</span>
+                {' '}
+                <span className="text-gray-500">({shipment.current_status})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function generateShipEffectiveTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🚢</span>
+        <h4 className="text-sm font-semibold text-gray-900">物流发货 Ship (取值)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.ship_effective} units</div>
+        <div className="text-xs text-gray-600 mt-1">
+          Source: {row.actual_ship > 0 ? 'Actual (优先使用实际数据)' : 'Planned (使用预计数据)'}
+        </div>
+        <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+          Formula: COALESCE(actual, planned)
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function generateArrivalPlannedTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  const sources = row.planned_arrival_source || []
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📥</span>
+        <h4 className="text-sm font-semibold text-gray-900">到货 Arrival (预计)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.planned_arrival} units</div>
+        {sources.length > 0 && (
+          <div className="mt-2">
+            <div className="text-xs font-semibold text-gray-700 mb-1">Data Source:</div>
+            {sources.map((source, idx) => (
+              <div key={idx} className="text-xs text-gray-600">
+                • {getSourceTypeLabel(source.source_type)}
+                <span className="text-gray-400 ml-1">(from {source.source_week}, {getConfidenceLabel(source.confidence)} confidence)</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function generateArrivalActualTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📥</span>
+          <h4 className="text-sm font-semibold text-gray-900">到货 Arrival (实际)</h4>
+        </div>
+        <span className="text-xs text-gray-500">{row.week_iso}</span>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.actual_arrival} units</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Actual shipment arrivals</div>
+      </div>
+
+      {row.arrival_details.length > 0 && (
+        <div className="border-t border-gray-200 pt-2">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Details:</div>
+          <ul className="space-y-1.5">
+            {row.arrival_details.map((arrival, idx) => (
+              <li key={idx} className="text-xs">
+                <Link
+                  href={`/logistics/edit/${arrival.shipment_id}`}
+                  className="text-blue-600 hover:underline font-medium"
+                >
+                  {arrival.tracking_number}
+                </Link>
+                {': '}
+                <span className="text-gray-900">{arrival.arrived_qty} units</span>
+                {' '}
+                <span className="text-gray-500">({arrival.warehouse_code}, {arrival.arrival_date})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function generateArrivalEffectiveTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📥</span>
+        <h4 className="text-sm font-semibold text-gray-900">到货 Arrival (取值)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.arrival_effective} units</div>
+        <div className="text-xs text-gray-600 mt-1">
+          Source: {row.actual_arrival > 0 ? 'Actual (优先使用实际数据)' : 'Planned (使用预计数据)'}
+        </div>
+        <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+          Formula: COALESCE(actual, planned)
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function generateInventoryOpeningTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📊</span>
+        <h4 className="text-sm font-semibold text-gray-900">库存 Inventory (期初)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.opening_stock} units</div>
+        <div className="text-xs text-gray-600 mt-1">
+          Source: Previous week&apos;s closing stock
+        </div>
+        <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+          Formula: Closing stock of Week {row.week_offset - 1}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function generateInventoryClosingTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">📊</span>
+        <h4 className="text-sm font-semibold text-gray-900">库存 Inventory (期末)</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {row.closing_stock} units</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Calculation</div>
+      </div>
+
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-xs font-semibold text-gray-700 mb-2">Calculation Details:</div>
+        <ul className="space-y-1 text-xs text-gray-700">
+          <li>Opening stock: <span className="font-medium">{row.opening_stock}</span></li>
+          <li>Arrivals: <span className="font-medium text-green-700">+{row.arrival_effective}</span></li>
+          <li>Sales: <span className="font-medium text-red-700">-{row.sales_effective}</span></li>
+          <li className="pt-1 border-t border-gray-200">Closing: <span className="font-bold">{row.closing_stock}</span></li>
+        </ul>
+      </div>
+
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-xs text-gray-500">
+          Formula: Opening + Arrival - Sales
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function generateInventorySafetyTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  const safetyWeeks = row.sales_effective > 0
+    ? (row.safety_threshold / row.sales_effective).toFixed(1)
+    : '∞'
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🎯</span>
+        <h4 className="text-sm font-semibold text-gray-900">安全库存 Safety Stock</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Value: {Math.round(row.safety_threshold)} units</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Product settings (safety_stock_weeks)</div>
+        <div className="text-xs text-gray-500 mt-2">
+          Coverage: {safetyWeeks} weeks at current sales rate
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function generateInventoryStatusTooltip(row: AlgorithmAuditRowV4): React.ReactNode {
+  const coverageWeeks = row.sales_effective > 0
+    ? (row.closing_stock / row.sales_effective).toFixed(1)
+    : '∞'
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🎯</span>
+        <h4 className="text-sm font-semibold text-gray-900">库存状态 Stock Status</h4>
+      </div>
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-sm text-gray-900 font-medium">Status: {row.stock_status}</div>
+        <div className="text-xs text-gray-600 mt-1">Source: Calculated based on safety threshold</div>
+      </div>
+
+      <div className="border-t border-gray-200 pt-2">
+        <div className="text-xs font-semibold text-gray-700 mb-2">Details:</div>
+        <ul className="space-y-1 text-xs text-gray-700">
+          <li>Current stock: <span className="font-medium">{row.closing_stock} units</span></li>
+          <li>Safety threshold: <span className="font-medium">{Math.round(row.safety_threshold)} units</span></li>
+          <li>Coverage: <span className="font-medium">{coverageWeeks} weeks</span></li>
+        </ul>
+      </div>
+
+      <div className="border-t border-gray-200 pt-2">
+        <Badge variant={row.stock_status === 'OK' ? 'success' : row.stock_status === 'Risk' ? 'warning' : 'danger'}>
+          {row.stock_status === 'OK' ? '✓ Safe' : row.stock_status === 'Risk' ? '⚠ Risk' : '✗ Stockout'}
+        </Badge>
+      </div>
+    </div>
+  )
+}
+
+// Removed ExpandedDetails component - replaced with hover tooltips
 
 // ================================================================
 // MAIN COMPONENT
 // ================================================================
 
 export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-
-  const toggleRowExpansion = (weekIso: string, type: 'order' | 'factory_ship' | 'ship' | 'arrival') => {
-    const key = `${weekIso}-${type}`
-    setExpandedRows((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-      return next
-    })
-  }
-
-  const isExpanded = (weekIso: string, type: 'order' | 'factory_ship' | 'ship' | 'arrival') => {
-    return expandedRows.has(`${weekIso}-${type}`)
-  }
-
   const getStockStatusBadge = (status: 'OK' | 'Risk' | 'Stockout') => {
     const variants = {
       OK: 'success' as const,
@@ -532,43 +879,6 @@ export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
     if (row.is_current) return 'bg-blue-50'
     if (row.is_past) return 'bg-gray-50'
     return ''
-  }
-
-  const renderPlannedValueWithTooltip = (
-    value: number,
-    sources?: PropagationSource[]
-  ) => {
-    if (!sources || sources.length === 0) {
-      return <span className="text-gray-700">{formatValue(value)}</span>
-    }
-
-    const highestConfidence = sources[0]?.confidence || 'none'
-    const isLowConfidence = highestConfidence === 'low' || highestConfidence === 'none'
-
-    const tooltipContent = (
-      <div>
-        <p className="font-semibold mb-2">数据来源:</p>
-        {sources.map((source, idx) => (
-          <p key={idx} className="mb-1">
-            • {getSourceTypeLabel(source.source_type)}
-            <br />
-            <span className="text-gray-300 text-xs ml-2">(来自 {source.source_week})</span>
-          </p>
-        ))}
-        <p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-700">
-          置信度: {getConfidenceLabel(highestConfidence)}
-        </p>
-      </div>
-    )
-
-    return (
-      <Tooltip content={tooltipContent}>
-        <span className={`inline-flex items-center gap-1 ${isLowConfidence ? 'text-gray-400' : 'text-gray-700'}`}>
-          {formatValue(value)}
-          <Info className="w-3 h-3 opacity-50" />
-        </span>
-      </Tooltip>
-    )
   }
 
   return (
@@ -590,25 +900,25 @@ export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
               销售
             </th>
             <th
-              colSpan={4}
+              colSpan={3}
               className="px-3 py-2 text-center border-r border-gray-300 font-semibold"
             >
               下单
             </th>
             <th
-              colSpan={4}
+              colSpan={3}
               className="px-3 py-2 text-center border-r border-gray-300 font-semibold"
             >
               工厂出货
             </th>
             <th
-              colSpan={4}
+              colSpan={3}
               className="px-3 py-2 text-center border-r border-gray-300 font-semibold"
             >
               物流发货
             </th>
             <th
-              colSpan={4}
+              colSpan={3}
               className="px-3 py-2 text-center border-r border-gray-300 font-semibold"
             >
               到仓
@@ -631,39 +941,27 @@ export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
               覆盖
             </th>
 
-            {/* Order - 4 columns */}
+            {/* Order - 3 columns */}
             <th className="px-2 py-1 text-center text-gray-600 font-medium">预计</th>
             <th className="px-2 py-1 text-center text-gray-600 font-medium">实际</th>
-            <th className="px-2 py-1 text-center text-gray-600 font-semibold">取值</th>
-            <th className="px-2 py-1 text-center border-r border-gray-300 text-gray-600 font-medium">
-              详情
-            </th>
+            <th className="px-2 py-1 text-center border-r border-gray-300 text-gray-600 font-semibold">取值</th>
 
-            {/* Factory Ship - 4 columns */}
+            {/* Factory Ship - 3 columns */}
             <th className="px-2 py-1 text-center text-gray-600 font-medium">预计</th>
             <th className="px-2 py-1 text-center text-gray-600 font-medium">实际</th>
-            <th className="px-2 py-1 text-center text-gray-600 font-semibold">取值</th>
-            <th className="px-2 py-1 text-center border-r border-gray-300 text-gray-600 font-medium">
-              详情
-            </th>
+            <th className="px-2 py-1 text-center border-r border-gray-300 text-gray-600 font-semibold">取值</th>
 
-            {/* Ship - 4 columns */}
+            {/* Ship - 3 columns */}
             <th className="px-2 py-1 text-center text-gray-600 font-medium">预计</th>
             <th className="px-2 py-1 text-center text-gray-600 font-medium">实际</th>
-            <th className="px-2 py-1 text-center text-gray-600 font-semibold">取值</th>
-            <th className="px-2 py-1 text-center border-r border-gray-300 text-gray-600 font-medium">
-              详情
-            </th>
+            <th className="px-2 py-1 text-center border-r border-gray-300 text-gray-600 font-semibold">取值</th>
 
-            {/* Arrival - 4 columns */}
+            {/* Arrival - 3 columns */}
             <th className="px-2 py-1 text-center text-gray-600 font-medium">预计</th>
             <th className="px-2 py-1 text-center text-gray-600 font-medium">实际</th>
-            <th className="px-2 py-1 text-center text-gray-600 font-semibold">取值</th>
-            <th className="px-2 py-1 text-center border-r border-gray-300 text-gray-600 font-medium">
-              详情
-            </th>
+            <th className="px-2 py-1 text-center border-r border-gray-300 text-gray-600 font-semibold">取值</th>
 
-            {/* Inventory */}
+            {/* Inventory - 4 columns */}
             <th className="px-2 py-1 text-center text-gray-600 font-medium">期初</th>
             <th className="px-2 py-1 text-center text-gray-600 font-semibold">期末</th>
             <th className="px-2 py-1 text-center text-gray-600 font-medium">安全</th>
@@ -673,222 +971,163 @@ export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
 
         <tbody>
           {rows.map((row) => (
-            <React.Fragment key={row.week_iso}>
-              {/* Main row */}
-              <tr className={`border-b hover:bg-gray-50 ${getRowBgClass(row)}`}>
-                {/* Week (Fixed Column) */}
-                <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium border-r-2 border-gray-300">
-                  <div className="flex items-center gap-2">
-                    {row.week_iso}
-                    {row.is_current && (
-                      <Badge variant="default" className="text-xs">
-                        当前
-                      </Badge>
-                    )}
-                  </div>
-                </td>
-
-                {/* Sales Group - 4 columns */}
-                <td className="px-2 py-2 text-right text-gray-700">
-                  {formatValue(row.sales_forecast)}
-                </td>
-                <td
-                  className={`px-2 py-2 text-right ${
-                    row.sales_actual !== null
-                      ? 'bg-green-50 font-semibold text-green-900'
-                      : 'text-gray-400'
-                  }`}
-                >
-                  {formatValue(row.sales_actual)}
-                </td>
-                <td className="px-2 py-2 text-right font-bold text-gray-900">
-                  {row.sales_effective}
-                </td>
-                <td className="px-2 py-2 text-center">
-                  {row.sales_effective > 0 && (
-                    <Badge variant={getCoverageBadgeVariant(row.sales_coverage_status)}>
-                      {getCoverageLabel(row.sales_coverage_status, row.sales_uncovered_qty)}
+            <tr key={row.week_iso} className={`border-b hover:bg-gray-50 ${getRowBgClass(row)}`}>
+              {/* Week (Fixed Column) */}
+              <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium border-r-2 border-gray-300">
+                <div className="flex items-center gap-2">
+                  {row.week_iso}
+                  {row.is_current && (
+                    <Badge variant="default" className="text-xs">
+                      当前
                     </Badge>
                   )}
-                </td>
+                </div>
+              </td>
 
-                {/* Order Group - 4 columns */}
-                <td className="px-2 py-2 text-right text-gray-700">
+              {/* Sales Group - 4 columns */}
+              <td className="px-2 py-2 text-right text-gray-700">
+                <DataProvenanceTooltip columnType="sales_forecast" rowData={row}>
+                  {formatValue(row.sales_forecast)}
+                </DataProvenanceTooltip>
+              </td>
+              <td
+                className={`px-2 py-2 text-right ${
+                  row.sales_actual !== null
+                    ? 'bg-green-50 font-semibold text-green-900'
+                    : 'text-gray-400'
+                }`}
+              >
+                <DataProvenanceTooltip columnType="sales_actual" rowData={row}>
+                  {formatValue(row.sales_actual)}
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-right font-bold text-gray-900">
+                <DataProvenanceTooltip columnType="sales_effective" rowData={row}>
+                  {row.sales_effective}
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-center">
+                {row.sales_effective > 0 && (
+                  <Badge variant={getCoverageBadgeVariant(row.sales_coverage_status)}>
+                    {getCoverageLabel(row.sales_coverage_status, row.sales_uncovered_qty)}
+                  </Badge>
+                )}
+              </td>
+
+              {/* Order Group - 3 columns */}
+              <td className="px-2 py-2 text-right text-gray-700">
+                <DataProvenanceTooltip columnType="order_planned" rowData={row}>
                   {formatValue(row.planned_order)}
-                </td>
-                <td
-                  className={`px-2 py-2 text-right ${
-                    row.actual_order > 0
-                      ? 'bg-green-50 font-semibold text-green-900'
-                      : 'text-gray-400'
-                  }`}
-                >
+                </DataProvenanceTooltip>
+              </td>
+              <td
+                className={`px-2 py-2 text-right ${
+                  row.actual_order > 0
+                    ? 'bg-green-50 font-semibold text-green-900'
+                    : 'text-gray-400'
+                }`}
+              >
+                <DataProvenanceTooltip columnType="order_actual" rowData={row}>
                   {formatValue(row.actual_order)}
-                </td>
-                <td className="px-2 py-2 text-right border-r border-gray-300 font-bold text-gray-900">
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-right border-r border-gray-300 font-bold text-gray-900">
+                <DataProvenanceTooltip columnType="order_effective" rowData={row}>
                   {row.order_effective}
-                </td>
-                <td className="px-2 py-2 text-center border-r border-gray-300">
-                  {row.order_details.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleRowExpansion(row.week_iso, 'order')}
-                      className="h-6 w-6 p-0"
-                    >
-                      {isExpanded(row.week_iso, 'order') ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                </td>
+                </DataProvenanceTooltip>
+              </td>
 
-                {/* Factory Ship Group - 4 columns */}
-                <td className="px-2 py-2 text-right">
-                  {renderPlannedValueWithTooltip(row.planned_factory_ship, row.planned_factory_ship_source)}
-                </td>
-                <td
-                  className={`px-2 py-2 text-right ${
-                    row.actual_factory_ship > 0
-                      ? 'bg-green-50 font-semibold text-green-900'
-                      : 'text-gray-400'
-                  }`}
-                >
+              {/* Factory Ship Group - 3 columns */}
+              <td className="px-2 py-2 text-right">
+                <DataProvenanceTooltip columnType="factory_ship_planned" rowData={row}>
+                  {formatValue(row.planned_factory_ship)}
+                </DataProvenanceTooltip>
+              </td>
+              <td
+                className={`px-2 py-2 text-right ${
+                  row.actual_factory_ship > 0
+                    ? 'bg-green-50 font-semibold text-green-900'
+                    : 'text-gray-400'
+                }`}
+              >
+                <DataProvenanceTooltip columnType="factory_ship_actual" rowData={row}>
                   {formatValue(row.actual_factory_ship)}
-                </td>
-                <td className="px-2 py-2 text-right font-bold text-gray-900">
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-right border-r border-gray-300 font-bold text-gray-900">
+                <DataProvenanceTooltip columnType="factory_ship_effective" rowData={row}>
                   {row.factory_ship_effective}
-                </td>
-                <td className="px-2 py-2 text-center border-r border-gray-300">
-                  {row.factory_ship_details.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleRowExpansion(row.week_iso, 'factory_ship')}
-                      className="h-6 w-6 p-0"
-                    >
-                      {isExpanded(row.week_iso, 'factory_ship') ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                </td>
+                </DataProvenanceTooltip>
+              </td>
 
-                {/* Ship Group - 4 columns */}
-                <td className="px-2 py-2 text-right">
-                  {renderPlannedValueWithTooltip(row.planned_ship, row.planned_ship_source)}
-                </td>
-                <td
-                  className={`px-2 py-2 text-right ${
-                    row.actual_ship > 0
-                      ? 'bg-green-50 font-semibold text-green-900'
-                      : 'text-gray-400'
-                  }`}
-                >
+              {/* Ship Group - 3 columns */}
+              <td className="px-2 py-2 text-right">
+                <DataProvenanceTooltip columnType="ship_planned" rowData={row}>
+                  {formatValue(row.planned_ship)}
+                </DataProvenanceTooltip>
+              </td>
+              <td
+                className={`px-2 py-2 text-right ${
+                  row.actual_ship > 0
+                    ? 'bg-green-50 font-semibold text-green-900'
+                    : 'text-gray-400'
+                }`}
+              >
+                <DataProvenanceTooltip columnType="ship_actual" rowData={row}>
                   {formatValue(row.actual_ship)}
-                </td>
-                <td className="px-2 py-2 text-right font-bold text-gray-900">
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-right border-r border-gray-300 font-bold text-gray-900">
+                <DataProvenanceTooltip columnType="ship_effective" rowData={row}>
                   {row.ship_effective}
-                </td>
-                <td className="px-2 py-2 text-center border-r border-gray-300">
-                  {row.ship_details.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleRowExpansion(row.week_iso, 'ship')}
-                      className="h-6 w-6 p-0"
-                    >
-                      {isExpanded(row.week_iso, 'ship') ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                </td>
+                </DataProvenanceTooltip>
+              </td>
 
-                {/* Arrival Group - 4 columns */}
-                <td className="px-2 py-2 text-right">
-                  {renderPlannedValueWithTooltip(row.planned_arrival, row.planned_arrival_source)}
-                </td>
-                <td
-                  className={`px-2 py-2 text-right ${
-                    row.actual_arrival > 0
-                      ? 'bg-green-50 font-semibold text-green-900'
-                      : 'text-gray-400'
-                  }`}
-                >
+              {/* Arrival Group - 3 columns */}
+              <td className="px-2 py-2 text-right">
+                <DataProvenanceTooltip columnType="arrival_planned" rowData={row}>
+                  {formatValue(row.planned_arrival)}
+                </DataProvenanceTooltip>
+              </td>
+              <td
+                className={`px-2 py-2 text-right ${
+                  row.actual_arrival > 0
+                    ? 'bg-green-50 font-semibold text-green-900'
+                    : 'text-gray-400'
+                }`}
+              >
+                <DataProvenanceTooltip columnType="arrival_actual" rowData={row}>
                   {formatValue(row.actual_arrival)}
-                </td>
-                <td className="px-2 py-2 text-right font-bold text-gray-900">
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-right border-r border-gray-300 font-bold text-gray-900">
+                <DataProvenanceTooltip columnType="arrival_effective" rowData={row}>
                   {row.arrival_effective}
-                </td>
-                <td className="px-2 py-2 text-center border-r border-gray-300">
-                  {row.arrival_details.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleRowExpansion(row.week_iso, 'arrival')}
-                      className="h-6 w-6 p-0"
-                    >
-                      {isExpanded(row.week_iso, 'arrival') ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                </td>
+                </DataProvenanceTooltip>
+              </td>
 
-                {/* Inventory Group */}
-                <td className="px-2 py-2 text-right text-gray-700">
+              {/* Inventory Group - 4 columns */}
+              <td className="px-2 py-2 text-right text-gray-700">
+                <DataProvenanceTooltip columnType="inventory_opening" rowData={row}>
                   {row.opening_stock}
-                </td>
-                <td className="px-2 py-2 text-right font-bold text-gray-900">
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-right font-bold text-gray-900">
+                <DataProvenanceTooltip columnType="inventory_closing" rowData={row}>
                   {row.closing_stock}
-                </td>
-                <td className="px-2 py-2 text-right text-gray-500 text-xs">
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-right text-gray-500 text-xs">
+                <DataProvenanceTooltip columnType="inventory_safety" rowData={row}>
                   {Math.round(row.safety_threshold)}
-                </td>
-                <td className="px-2 py-2 text-center">
+                </DataProvenanceTooltip>
+              </td>
+              <td className="px-2 py-2 text-center">
+                <DataProvenanceTooltip columnType="inventory_status" rowData={row}>
                   {getStockStatusBadge(row.stock_status)}
-                </td>
-              </tr>
-
-              {/* Expanded detail rows */}
-              {isExpanded(row.week_iso, 'order') && (
-                <tr>
-                  <td colSpan={24} className="p-0 border-b">
-                    <ExpandedDetails row={row} type="order" />
-                  </td>
-                </tr>
-              )}
-              {isExpanded(row.week_iso, 'factory_ship') && (
-                <tr>
-                  <td colSpan={24} className="p-0 border-b">
-                    <ExpandedDetails row={row} type="factory_ship" />
-                  </td>
-                </tr>
-              )}
-              {isExpanded(row.week_iso, 'ship') && (
-                <tr>
-                  <td colSpan={24} className="p-0 border-b">
-                    <ExpandedDetails row={row} type="ship" />
-                  </td>
-                </tr>
-              )}
-              {isExpanded(row.week_iso, 'arrival') && (
-                <tr>
-                  <td colSpan={24} className="p-0 border-b">
-                    <ExpandedDetails row={row} type="arrival" />
-                  </td>
-                </tr>
-              )}
-            </React.Fragment>
+                </DataProvenanceTooltip>
+              </td>
+            </tr>
           ))}
         </tbody>
       </table>

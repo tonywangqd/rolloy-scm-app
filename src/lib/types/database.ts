@@ -843,6 +843,35 @@ export interface DeliveryBySKU {
   payment_status: PaymentStatus
 }
 
+// Extended type for delivery edit page context
+export interface DeliveryEditContext {
+  delivery: ProductionDelivery
+  po: {
+    id: string
+    po_number: string
+    batch_code: string
+    supplier_name: string | null
+  }
+  po_item: {
+    id: string
+    ordered_qty: number
+    delivered_qty: number // Total delivered from ALL deliveries
+  }
+  other_deliveries_qty: number // Delivered qty from OTHER deliveries (excluding current)
+  max_allowed_qty: number // ordered_qty - other_deliveries_qty
+}
+
+// Audit log entry for delivery edits
+export interface DeliveryEditAuditLog {
+  id: string
+  delivery_id: string
+  changed_by: string | null // user_id
+  changed_at: string // timestamptz
+  changed_fields: Record<string, { old: any; new: any }>
+  change_reason: string | null
+  created_at: string
+}
+
 // ================================================================
 // QUERY FILTER TYPES
 // ================================================================

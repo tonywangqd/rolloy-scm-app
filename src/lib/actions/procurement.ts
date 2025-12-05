@@ -324,3 +324,245 @@ export async function deletePurchaseOrder(
     }
   }
 }
+
+/**
+ * Update production delivery record
+ * Performs cascade updates to purchase_order_items.delivered_qty
+ * Logs changes to audit trail
+ */
+export async function updateDelivery(
+  deliveryId: string,
+  updates: import('@/lib/types/database').ProductionDeliveryUpdate
+): Promise<{ success: boolean; error?: string; data?: any }> {
+  try {
+    // 1. Authentication check
+    const authResult = await requireAuth()
+    if (authResult.error) {
+      return { success: false, error: authResult.error }
+    }
+
+    const userId = authResult.user?.id
+
+    // 2. Validate input
+    const deliveryUpdateSchema = z.object({
+      delivered_qty: z.number().int().positive().optional(),
+      actual_delivery_date: z.string().optional(), // ISO date string
+      unit_cost_usd: z.number().positive().max(10000).optional(),
+      payment_status: z.enum(['Pending', 'Scheduled', 'Paid']).optional(),
+      remarks: z.string().max(500).nullable().optional(),
+    })
+
+    const validation = deliveryUpdateSchema.safeParse(updates)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: `Validation error: ${validation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // 3. Fetch current delivery + constraints
+    const { data: currentDelivery, error: fetchError } = await supabase
+      .from('production_deliveries')
+      .select(`
+        *,
+        po_item:purchase_order_items!inner(id, po_id, ordered_qty, delivered_qty)
+      `)
+      .eq('id', deliveryId)
+      .single()
+
+    if (fetchError || !currentDelivery) {
+      return { success: false, error: 'Delivery not found' }
+    }
+
+    // 4. Calculate other deliveries qty
+    const { data: otherDeliveries } = await supabase
+      .from('production_deliveries')
+      .select('delivered_qty')
+      .eq('po_item_id', currentDelivery.po_item_id)
+      .neq('id', deliveryId)
+
+    const otherDeliveriesQty = otherDeliveries?.reduce(
+      (sum, d) => sum + d.delivered_qty,
+      0
+    ) || 0
+
+    // 5. Business rule validation
+    if (updates.delivered_qty !== undefined) {
+      const maxAllowed = currentDelivery.po_item.ordered_qty - otherDeliveriesQty
+
+      if (updates.delivered_qty > maxAllowed) {
+        return {
+          success: false,
+          error: `交付数量不能超过订单剩余量。订单量: ${currentDelivery.po_item.ordered_qty}, 其他交付: ${otherDeliveriesQty}, 最大允许: ${maxAllowed}`,
+        }
+      }
+    }
+
+    if (updates.actual_delivery_date !== undefined && updates.actual_delivery_date !== null) {
+      const deliveryDate = new Date(updates.actual_delivery_date)
+      const today = new Date()
+      today.setHours(23, 59, 59, 999) // Set to end of today
+      if (deliveryDate > today) {
+        return { success: false, error: '交付日期不能是未来日期' }
+      }
+    }
+
+    // 6. Prepare changed fields for audit log
+    const changedFields: Record<string, { old: any; new: any }> = {}
+    Object.keys(updates).forEach((key) => {
+      const oldValue = currentDelivery[key]
+      const newValue = updates[key as keyof import('@/lib/types/database').ProductionDeliveryUpdate]
+      if (oldValue !== newValue && newValue !== undefined) {
+        changedFields[key] = { old: oldValue, new: newValue }
+      }
+    })
+
+    if (Object.keys(changedFields).length === 0) {
+      return { success: false, error: '没有任何更改' }
+    }
+
+    // 7. Update delivery
+    const { data: updatedDelivery, error: updateError } = await supabase
+      .from('production_deliveries')
+      .update({
+        ...validation.data,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', deliveryId)
+      .select()
+      .single()
+
+    if (updateError) {
+      return { success: false, error: updateError.message }
+    }
+
+    // 8. Recalculate PO item delivered_qty (SUM of all deliveries for this po_item)
+    const { data: allDeliveries } = await supabase
+      .from('production_deliveries')
+      .select('delivered_qty')
+      .eq('po_item_id', currentDelivery.po_item_id)
+
+    const newTotalDeliveredQty = allDeliveries?.reduce(
+      (sum, d) => sum + d.delivered_qty,
+      0
+    ) || 0
+
+    const { error: poItemUpdateError } = await supabase
+      .from('purchase_order_items')
+      .update({
+        delivered_qty: newTotalDeliveredQty,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', currentDelivery.po_item_id)
+
+    if (poItemUpdateError) {
+      console.error('Failed to update PO item delivered_qty:', poItemUpdateError)
+      return {
+        success: false,
+        error: 'Cascade update failed. Please contact support.',
+      }
+    }
+
+    // 9. Insert audit log
+    const { error: auditError } = await supabase
+      .from('delivery_edit_audit_log')
+      .insert({
+        delivery_id: deliveryId,
+        changed_by: userId || null,
+        changed_at: new Date().toISOString(),
+        changed_fields: changedFields,
+        change_reason: updates.remarks || null,
+      })
+
+    if (auditError) {
+      console.error('Failed to log audit trail:', auditError)
+      // Don't fail the request if audit log fails, but log it
+    }
+
+    // 10. Revalidate cache
+    revalidatePath('/procurement')
+    revalidatePath(`/procurement/${currentDelivery.po_item.po_id}`)
+
+    return { success: true, data: updatedDelivery }
+  } catch (err) {
+    return {
+      success: false,
+      error: `Failed to update delivery: ${err instanceof Error ? err.message : 'Unknown error'}`,
+    }
+  }
+}
+
+/**
+ * Delete production delivery record
+ * Only allowed if payment_status = 'Pending'
+ */
+export async function deleteDelivery(
+  deliveryId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if (authResult.error) {
+      return { success: false, error: authResult.error }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Check current delivery status
+    const { data: delivery, error: fetchError } = await supabase
+      .from('production_deliveries')
+      .select('payment_status, po_item_id, delivered_qty')
+      .eq('id', deliveryId)
+      .single()
+
+    if (fetchError || !delivery) {
+      return { success: false, error: 'Delivery not found' }
+    }
+
+    // Business rule: Only allow delete if payment is pending
+    if (delivery.payment_status !== 'Pending') {
+      return {
+        success: false,
+        error: '只能删除付款状态为"待支付"的交付记录',
+      }
+    }
+
+    // Delete delivery
+    const { error: deleteError } = await supabase
+      .from('production_deliveries')
+      .delete()
+      .eq('id', deliveryId)
+
+    if (deleteError) {
+      return { success: false, error: deleteError.message }
+    }
+
+    // Recalculate PO item delivered_qty
+    const { data: remainingDeliveries } = await supabase
+      .from('production_deliveries')
+      .select('delivered_qty')
+      .eq('po_item_id', delivery.po_item_id)
+
+    const newTotalDeliveredQty = remainingDeliveries?.reduce(
+      (sum, d) => sum + d.delivered_qty,
+      0
+    ) || 0
+
+    await supabase
+      .from('purchase_order_items')
+      .update({
+        delivered_qty: newTotalDeliveredQty,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', delivery.po_item_id)
+
+    revalidatePath('/procurement')
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: `Failed to delete delivery: ${err instanceof Error ? err.message : 'Unknown error'}`,
+    }
+  }
+}
