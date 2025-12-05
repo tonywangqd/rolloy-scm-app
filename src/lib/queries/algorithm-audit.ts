@@ -1135,3 +1135,503 @@ export async function fetchAlgorithmAuditV3(
     },
   }
 }
+
+// ================================================================
+// ALGORITHM AUDIT V4.0 (Enhanced with Demand Coverage & Lineage)
+// ================================================================
+
+import type {
+  AlgorithmAuditRowV4,
+  AlgorithmAuditResultV4,
+  DemandCoverage,
+  OrderMatch,
+  OrderDetailV4,
+  DeliveryDetailV4,
+  ShipmentDetailV4,
+  ArrivalDetailV4,
+  PropagationSource,
+  PropagationConfidence,
+  CoverageStatus,
+} from '@/lib/types/database'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+/**
+ * Match sales demands to actual orders within ±1 week tolerance
+ * This function implements demand coverage analysis
+ */
+function matchSalesDemandsToOrders(
+  rows: AlgorithmAuditRowV3[],
+  leadTimes: SupplyChainLeadTimesV3
+): Map<string, DemandCoverage> {
+  const demandCoverageMap = new Map<string, DemandCoverage>()
+
+  rows.forEach((row) => {
+    const salesDemand = row.sales_effective
+    if (salesDemand <= 0) return
+
+    // Calculate target order week (backtrack from sales week)
+    const arrivalWeek = addWeeksToISOWeek(row.week_iso, -leadTimes.safety_stock_weeks)
+    const shipWeek = arrivalWeek ? addWeeksToISOWeek(arrivalWeek, -leadTimes.shipping_weeks) : null
+    const factoryShipWeek = shipWeek ? addWeeksToISOWeek(shipWeek, -leadTimes.loading_weeks) : null
+    const targetOrderWeek = factoryShipWeek
+      ? addWeeksToISOWeek(factoryShipWeek, -leadTimes.production_weeks)
+      : null
+
+    if (!targetOrderWeek) return
+
+    // Find matching orders within ±1 week tolerance
+    const matchingOrders: OrderMatch[] = []
+    for (let offset = -1; offset <= 1; offset++) {
+      const searchWeek = addWeeksToISOWeek(targetOrderWeek, offset)
+      if (!searchWeek) continue
+
+      const orderRow = rows.find((r) => r.week_iso === searchWeek)
+      if (orderRow && orderRow.actual_order > 0) {
+        matchingOrders.push({
+          po_numbers: [], // Will be filled from detailed query
+          ordered_qty: orderRow.actual_order,
+          order_week: searchWeek,
+          week_offset: offset,
+        })
+      }
+    }
+
+    // Calculate coverage
+    const totalOrderedCoverage = matchingOrders.reduce((sum, o) => sum + o.ordered_qty, 0)
+    const coverageStatus: CoverageStatus =
+      totalOrderedCoverage >= salesDemand
+        ? 'Fully Covered'
+        : totalOrderedCoverage > 0
+        ? 'Partially Covered'
+        : 'Uncovered'
+
+    demandCoverageMap.set(row.week_iso, {
+      sales_week: row.week_iso,
+      sales_demand: salesDemand,
+      target_order_week: targetOrderWeek,
+      matching_orders: matchingOrders,
+      total_ordered_coverage: totalOrderedCoverage,
+      uncovered_qty: Math.max(0, salesDemand - totalOrderedCoverage),
+      coverage_status: coverageStatus,
+    })
+  })
+
+  return demandCoverageMap
+}
+
+/**
+ * Fetch order details for specific weeks
+ */
+async function fetchOrderDetailsByWeeks(
+  supabase: SupabaseClient,
+  sku: string,
+  weeks: string[]
+): Promise<OrderDetailV4[]> {
+  if (weeks.length === 0) return []
+
+  // Convert weeks to date range for efficient DB query
+  const dateRanges = weeks.map((week) => {
+    const weekStart = parseISOWeekString(week)
+    const weekEnd = weekStart ? new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000) : weekStart
+    return { start: weekStart ? formatDateISO(weekStart) : '', end: weekEnd ? formatDateISO(weekEnd) : '' }
+  })
+
+  const minDate = dateRanges[0].start
+  const maxDate = dateRanges[dateRanges.length - 1].end
+
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .select(`
+      id,
+      po_number,
+      actual_order_date,
+      suppliers(supplier_name),
+      purchase_order_items!inner(
+        id,
+        sku,
+        ordered_qty,
+        delivered_qty
+      )
+    `)
+    .eq('purchase_order_items.sku', sku)
+    .gte('actual_order_date', minDate)
+    .lte('actual_order_date', maxDate)
+    .not('actual_order_date', 'is', null)
+
+  if (error) throw error
+
+  // Transform to OrderDetailV4 format
+  const details: OrderDetailV4[] = []
+  data?.forEach((po: any) => {
+    const items = Array.isArray(po.purchase_order_items)
+      ? po.purchase_order_items
+      : [po.purchase_order_items]
+
+    items.forEach((item: any) => {
+      if (item.sku !== sku) return
+
+      const orderWeek = getWeekFromDate(new Date(po.actual_order_date))
+      const pendingQty = item.ordered_qty - item.delivered_qty
+      const fulfillmentStatus: 'Complete' | 'Partial' | 'Pending' =
+        pendingQty === 0 ? 'Complete' : item.delivered_qty > 0 ? 'Partial' : 'Pending'
+
+      details.push({
+        po_id: po.id,
+        po_number: po.po_number,
+        ordered_qty: item.ordered_qty,
+        order_date: po.actual_order_date,
+        order_week: orderWeek,
+        fulfillment_status: fulfillmentStatus,
+        delivered_qty: item.delivered_qty,
+        pending_qty: pendingQty,
+        supplier_name: po.suppliers?.supplier_name || null,
+      })
+    })
+  })
+
+  return details
+}
+
+/**
+ * Fetch delivery details for specific weeks
+ */
+async function fetchDeliveryDetailsByWeeks(
+  supabase: SupabaseClient,
+  sku: string,
+  weeks: string[]
+): Promise<DeliveryDetailV4[]> {
+  if (weeks.length === 0) return []
+
+  const dateRanges = weeks.map((week) => {
+    const weekStart = parseISOWeekString(week)
+    const weekEnd = weekStart ? new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000) : weekStart
+    return { start: weekStart ? formatDateISO(weekStart) : '', end: weekEnd ? formatDateISO(weekEnd) : '' }
+  })
+
+  const minDate = dateRanges[0].start
+  const maxDate = dateRanges[dateRanges.length - 1].end
+
+  const { data, error } = await supabase
+    .from('production_deliveries')
+    .select(`
+      id,
+      delivery_number,
+      sku,
+      delivered_qty,
+      actual_delivery_date,
+      purchase_order_items!inner(
+        purchase_orders!inner(po_number)
+      )
+    `)
+    .eq('sku', sku)
+    .gte('actual_delivery_date', minDate)
+    .lte('actual_delivery_date', maxDate)
+    .not('actual_delivery_date', 'is', null)
+
+  if (error) throw error
+
+  // For each delivery, calculate shipped quantity from shipments
+  const details: DeliveryDetailV4[] = []
+
+  for (const delivery of data || []) {
+    const deliveryWeek = getWeekFromDate(new Date(delivery.actual_delivery_date))
+
+    // Query shipments linked to this delivery
+    const { data: shipmentData } = await supabase
+      .from('shipments')
+      .select('shipment_items!inner(sku, shipped_qty)')
+      .eq('production_delivery_id', delivery.id)
+      .eq('shipment_items.sku', sku)
+
+    let shippedQty = 0
+    shipmentData?.forEach((shipment: any) => {
+      const items = Array.isArray(shipment.shipment_items) ? shipment.shipment_items : [shipment.shipment_items]
+      items.forEach((item: any) => {
+        if (item.sku === sku) {
+          shippedQty += item.shipped_qty
+        }
+      })
+    })
+
+    const unshippedQty = delivery.delivered_qty - shippedQty
+    const shipmentStatus: 'Fully Shipped' | 'Partially Shipped' | 'Awaiting Shipment' =
+      unshippedQty === 0 ? 'Fully Shipped' : shippedQty > 0 ? 'Partially Shipped' : 'Awaiting Shipment'
+
+    // Extract PO number from nested structure
+    const poItem: any = Array.isArray(delivery.purchase_order_items)
+      ? delivery.purchase_order_items[0]
+      : delivery.purchase_order_items
+    const po: any = poItem?.purchase_orders
+    const poNumber = Array.isArray(po) ? po[0]?.po_number : po?.po_number
+
+    details.push({
+      delivery_id: delivery.id,
+      delivery_number: delivery.delivery_number,
+      po_number: poNumber || 'N/A',
+      delivered_qty: delivery.delivered_qty,
+      delivery_date: delivery.actual_delivery_date,
+      delivery_week: deliveryWeek,
+      shipment_status: shipmentStatus,
+      shipped_qty: shippedQty,
+      unshipped_qty: unshippedQty,
+    })
+  }
+
+  return details
+}
+
+/**
+ * Fetch shipment details by departure weeks
+ */
+async function fetchShipmentDetailsByDepartureWeeks(
+  supabase: SupabaseClient,
+  sku: string,
+  weeks: string[]
+): Promise<ShipmentDetailV4[]> {
+  if (weeks.length === 0) return []
+
+  const dateRanges = weeks.map((week) => {
+    const weekStart = parseISOWeekString(week)
+    const weekEnd = weekStart ? new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000) : weekStart
+    return { start: weekStart ? formatDateISO(weekStart) : '', end: weekEnd ? formatDateISO(weekEnd) : '' }
+  })
+
+  const minDate = dateRanges[0].start
+  const maxDate = dateRanges[dateRanges.length - 1].end
+
+  const { data, error } = await supabase
+    .from('shipments')
+    .select(`
+      id,
+      tracking_number,
+      actual_departure_date,
+      actual_arrival_date,
+      planned_arrival_date,
+      production_deliveries(delivery_number),
+      shipment_items!inner(sku, shipped_qty)
+    `)
+    .eq('shipment_items.sku', sku)
+    .gte('actual_departure_date', minDate)
+    .lte('actual_departure_date', maxDate)
+
+  if (error) throw error
+
+  const details: ShipmentDetailV4[] = []
+  data?.forEach((shipment: any) => {
+    const items = Array.isArray(shipment.shipment_items) ? shipment.shipment_items : [shipment.shipment_items]
+
+    items.forEach((item: any) => {
+      if (item.sku !== sku) return
+
+      const plannedArrivalWeek = shipment.planned_arrival_date
+        ? getWeekFromDate(new Date(shipment.planned_arrival_date))
+        : 'N/A'
+      const actualArrivalWeek = shipment.actual_arrival_date
+        ? getWeekFromDate(new Date(shipment.actual_arrival_date))
+        : null
+
+      const currentStatus: 'Arrived' | 'In Transit' | 'Departed' | 'Awaiting' =
+        shipment.actual_arrival_date
+          ? 'Arrived'
+          : shipment.actual_departure_date
+          ? 'In Transit'
+          : 'Awaiting'
+
+      details.push({
+        shipment_id: shipment.id,
+        tracking_number: shipment.tracking_number,
+        delivery_number: shipment.production_deliveries?.delivery_number || null,
+        shipped_qty: item.shipped_qty,
+        departure_date: shipment.actual_departure_date,
+        arrival_date: shipment.actual_arrival_date,
+        planned_arrival_week: plannedArrivalWeek,
+        actual_arrival_week: actualArrivalWeek,
+        current_status: currentStatus,
+      })
+    })
+  })
+
+  return details
+}
+
+/**
+ * Fetch shipment details by arrival weeks
+ */
+async function fetchShipmentDetailsByArrivalWeeks(
+  supabase: SupabaseClient,
+  sku: string,
+  weeks: string[]
+): Promise<ArrivalDetailV4[]> {
+  if (weeks.length === 0) return []
+
+  const dateRanges = weeks.map((week) => {
+    const weekStart = parseISOWeekString(week)
+    const weekEnd = weekStart ? new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000) : weekStart
+    return { start: weekStart ? formatDateISO(weekStart) : '', end: weekEnd ? formatDateISO(weekEnd) : '' }
+  })
+
+  const minDate = dateRanges[0].start
+  const maxDate = dateRanges[dateRanges.length - 1].end
+
+  const { data, error } = await supabase
+    .from('shipments')
+    .select(`
+      id,
+      tracking_number,
+      actual_arrival_date,
+      destination_warehouse_id,
+      warehouses!inner(warehouse_code, warehouse_name),
+      shipment_items!inner(sku, shipped_qty)
+    `)
+    .eq('shipment_items.sku', sku)
+    .gte('actual_arrival_date', minDate)
+    .lte('actual_arrival_date', maxDate)
+    .not('actual_arrival_date', 'is', null)
+
+  if (error) throw error
+
+  const details: ArrivalDetailV4[] = []
+  data?.forEach((shipment: any) => {
+    const items = Array.isArray(shipment.shipment_items) ? shipment.shipment_items : [shipment.shipment_items]
+
+    items.forEach((item: any) => {
+      if (item.sku !== sku) return
+
+      const arrivalWeek = getWeekFromDate(new Date(shipment.actual_arrival_date))
+
+      details.push({
+        shipment_id: shipment.id,
+        tracking_number: shipment.tracking_number,
+        po_number: null, // Would require complex join to get PO number
+        arrived_qty: item.shipped_qty,
+        arrival_date: shipment.actual_arrival_date,
+        arrival_week: arrivalWeek,
+        warehouse_code: shipment.warehouses?.warehouse_code || 'N/A',
+        destination_warehouse_name: shipment.warehouses?.warehouse_name || 'Unknown',
+      })
+    })
+  })
+
+  return details
+}
+
+/**
+ * Main V4 function - Integrates V3 logic with demand matching and detail queries
+ */
+export async function fetchAlgorithmAuditV4(
+  sku: string,
+  shippingWeeks: number = 5,
+  customStartWeek?: string,
+  customEndWeek?: string
+): Promise<AlgorithmAuditResultV4> {
+  // Step 1: Get V3 base data
+  const resultV3 = await fetchAlgorithmAuditV3(sku, shippingWeeks, customStartWeek, customEndWeek)
+
+  if (!resultV3.product) {
+    return {
+      product: null,
+      rows: [],
+      leadTimes: resultV3.leadTimes,
+      metadata: {
+        ...resultV3.metadata,
+        total_demand: 0,
+        total_ordered: 0,
+        overall_coverage_percentage: 0,
+      },
+    }
+  }
+
+  // Step 2: Match sales demands to orders
+  const demandCoverageMap = matchSalesDemandsToOrders(resultV3.rows, resultV3.leadTimes)
+
+  // Step 3: Identify weeks with actual data
+  const weeksWithOrders = resultV3.rows.filter((r) => r.actual_order > 0).map((r) => r.week_iso)
+  const weeksWithDeliveries = resultV3.rows.filter((r) => r.actual_factory_ship > 0).map((r) => r.week_iso)
+  const weeksWithDepartures = resultV3.rows.filter((r) => r.actual_ship > 0).map((r) => r.week_iso)
+  const weeksWithArrivals = resultV3.rows.filter((r) => r.actual_arrival > 0).map((r) => r.week_iso)
+
+  // Step 4: Fetch detailed records in parallel
+  const supabase = await createServerSupabaseClient()
+  const [orderDetails, deliveryDetails, shipmentDetails, arrivalDetails] = await Promise.all([
+    fetchOrderDetailsByWeeks(supabase, sku, weeksWithOrders),
+    fetchDeliveryDetailsByWeeks(supabase, sku, weeksWithDeliveries),
+    fetchShipmentDetailsByDepartureWeeks(supabase, sku, weeksWithDepartures),
+    fetchShipmentDetailsByArrivalWeeks(supabase, sku, weeksWithArrivals),
+  ])
+
+  // Step 5: Build detail maps
+  const orderDetailMap = new Map<string, OrderDetailV4[]>()
+  orderDetails.forEach((detail) => {
+    const existing = orderDetailMap.get(detail.order_week) || []
+    existing.push(detail)
+    orderDetailMap.set(detail.order_week, existing)
+  })
+
+  const deliveryDetailMap = new Map<string, DeliveryDetailV4[]>()
+  deliveryDetails.forEach((detail) => {
+    const existing = deliveryDetailMap.get(detail.delivery_week) || []
+    existing.push(detail)
+    deliveryDetailMap.set(detail.delivery_week, existing)
+  })
+
+  const shipmentDetailMap = new Map<string, ShipmentDetailV4[]>()
+  shipmentDetails.forEach((detail) => {
+    const departureWeek = detail.departure_date ? getWeekFromDate(new Date(detail.departure_date)) : 'N/A'
+    const existing = shipmentDetailMap.get(departureWeek) || []
+    existing.push(detail)
+    shipmentDetailMap.set(departureWeek, existing)
+  })
+
+  const arrivalDetailMap = new Map<string, ArrivalDetailV4[]>()
+  arrivalDetails.forEach((detail) => {
+    const existing = arrivalDetailMap.get(detail.arrival_week) || []
+    existing.push(detail)
+    arrivalDetailMap.set(detail.arrival_week, existing)
+  })
+
+  // Step 6: Enhance rows with V4 data
+  const rowsV4: AlgorithmAuditRowV4[] = resultV3.rows.map((row) => {
+    const demandCoverage = demandCoverageMap.get(row.week_iso)
+
+    return {
+      ...row,
+      // Sales coverage
+      sales_coverage_status: demandCoverage?.coverage_status || 'Unknown',
+      sales_uncovered_qty: demandCoverage?.uncovered_qty || 0,
+
+      // Lineage metadata (simplified - can be enhanced with actual propagation sources)
+      planned_factory_ship_source: row.actual_factory_ship > 0
+        ? [{ source_type: 'actual_factory_ship' as const, source_week: row.week_iso, confidence: 'high' as const }]
+        : undefined,
+      planned_ship_source: row.actual_ship > 0
+        ? [{ source_type: 'actual_ship' as const, source_week: row.week_iso, confidence: 'high' as const }]
+        : undefined,
+      planned_arrival_source: row.actual_arrival > 0
+        ? [{ source_type: 'actual_arrival' as const, source_week: row.week_iso, confidence: 'high' as const }]
+        : undefined,
+
+      // Detailed data (for expandable rows)
+      order_details: orderDetailMap.get(row.week_iso) || [],
+      factory_ship_details: deliveryDetailMap.get(row.week_iso) || [],
+      ship_details: shipmentDetailMap.get(row.week_iso) || [],
+      arrival_details: arrivalDetailMap.get(row.week_iso) || [],
+    }
+  })
+
+  // Step 7: Calculate V4-specific metadata
+  const totalDemand = rowsV4.reduce((sum, row) => sum + row.sales_effective, 0)
+  const totalOrdered = rowsV4.reduce((sum, row) => sum + row.actual_order, 0)
+  const overallCoveragePercentage = totalDemand > 0 ? (totalOrdered / totalDemand) * 100 : 0
+
+  return {
+    product: resultV3.product,
+    rows: rowsV4,
+    leadTimes: resultV3.leadTimes,
+    metadata: {
+      ...resultV3.metadata,
+      total_demand: totalDemand,
+      total_ordered: totalOrdered,
+      overall_coverage_percentage: Math.round(overallCoveragePercentage * 100) / 100,
+    },
+  }
+}

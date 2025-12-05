@@ -1,6 +1,6 @@
 /**
- * Algorithm Audit Page
- * 20-column reverse-calculation verification with configurable shipping weeks
+ * Algorithm Audit Page V4
+ * 24-column reverse-calculation verification with data lineage & coverage tracking
  * Path: /inventory/algorithm-audit
  */
 
@@ -8,9 +8,10 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { unstable_noStore as noStore } from 'next/cache'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { AlgorithmAuditTable } from '@/components/inventory/algorithm-audit-table'
+import { Badge } from '@/components/ui/badge'
+import { AlgorithmAuditTableV4 } from '@/components/inventory/algorithm-audit-table-v4'
 import { AlgorithmAuditFilters } from '@/components/inventory/algorithm-audit-filters'
-import { fetchAlgorithmAuditV3, fetchActiveProducts } from '@/lib/queries/algorithm-audit'
+import { fetchAlgorithmAuditV4, fetchActiveProducts } from '@/lib/queries/algorithm-audit'
 import { formatNumber, getCurrentWeek, addWeeksToISOWeek } from '@/lib/utils'
 
 interface PageProps {
@@ -53,8 +54,8 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
     )
   }
 
-  // Fetch audit data for selected SKU with custom week range
-  const auditData = await fetchAlgorithmAuditV3(selectedSku, shippingWeeks, startWeek, endWeek)
+  // Fetch audit data for selected SKU with custom week range (V4 with coverage & lineage)
+  const auditData = await fetchAlgorithmAuditV4(selectedSku, shippingWeeks, startWeek, endWeek)
 
   if (!auditData.product) {
     redirect('/inventory/algorithm-audit')
@@ -67,9 +68,9 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
     <div className="p-8 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold mb-2">算法验证 Algorithm Audit</h1>
+        <h1 className="text-2xl font-semibold mb-2">算法验证 V4 Algorithm Audit</h1>
         <p className="text-sm text-gray-500">
-          供应链反推计算验证 (20列完整视图 + 可配置物流周期)
+          供应链反推计算验证 (24列完整视图 + 数据覆盖追踪 + 数据溯源)
         </p>
       </div>
 
@@ -116,7 +117,7 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
             </div>
           </div>
 
-          <div className="mt-6 pt-6 border-t border-gray-200 grid grid-cols-2 md:grid-cols-3 gap-6">
+          <div className="mt-6 pt-6 border-t border-gray-200 grid grid-cols-2 md:grid-cols-5 gap-6">
             <div>
               <div className="text-sm text-gray-500 mb-1">当前库存</div>
               <div className="font-semibold text-blue-600 text-xl">
@@ -130,12 +131,29 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-500 mb-1">数据范围</div>
-              <div className="font-medium text-sm">
-                {metadata.start_week} 至 {metadata.end_week}
-                <span className="text-gray-500 ml-2">(共 {metadata.total_weeks} 周)</span>
+              <div className="text-sm text-gray-500 mb-1">总需求量</div>
+              <div className="font-semibold text-lg">
+                {formatNumber(metadata.total_demand)}件
               </div>
             </div>
+            <div>
+              <div className="text-sm text-gray-500 mb-1">已下单量</div>
+              <div className="font-semibold text-lg">
+                {formatNumber(metadata.total_ordered)}件
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-500 mb-1">需求覆盖率</div>
+              <div className="font-semibold text-lg">
+                <Badge variant={metadata.overall_coverage_percentage >= 95 ? 'success' : metadata.overall_coverage_percentage >= 70 ? 'warning' : 'danger'}>
+                  {metadata.overall_coverage_percentage.toFixed(1)}%
+                </Badge>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 text-sm text-gray-500">
+            数据范围: {metadata.start_week} 至 {metadata.end_week}
+            <span className="text-gray-400 ml-2">(共 {metadata.total_weeks} 周)</span>
           </div>
         </CardContent>
       </Card>
@@ -164,6 +182,18 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
                 取值列 = COALESCE(实际, 预计) - 用于库存计算
               </span>
             </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="success">✓ 全覆盖</Badge>
+              <span className="text-gray-600">需求完全被订单覆盖</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="warning">⚠ 部分</Badge>
+              <span className="text-gray-600">需求部分覆盖，点击查看缺口</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="danger">✗ 未覆盖</Badge>
+              <span className="text-gray-600">需求未被任何订单覆盖</span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -171,14 +201,14 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
       {/* Audit Table */}
       <Card>
         <CardHeader>
-          <CardTitle>算法审计表 - 20列完整视图</CardTitle>
+          <CardTitle>算法审计表 V4 - 24列完整视图</CardTitle>
           <CardDescription>
-            反推计算: 从销售需求回推到采购下单,验证供应链时间轴
+            反推计算 + 正向传播: 从销售需求回推到采购下单,验证供应链时间轴,追踪数据覆盖与溯源。点击展开按钮查看详细数据。
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Suspense fallback={<div className="p-12 text-center text-gray-500">加载中...</div>}>
-            <AlgorithmAuditTable rows={rows} />
+            <AlgorithmAuditTableV4 rows={rows} />
           </Suspense>
         </CardContent>
       </Card>

@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.7.3',
+  number: '1.9.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-05 14:36',
+  updatedAt: '2025-12-05 15:46',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '统一日期显示格式为 YYYY/MM/DD',
+  changelog: '实现算法审计表V4：24列完整视图，数据覆盖追踪，数据溯源，可展开详情',
 }
 
 // 格式化显示

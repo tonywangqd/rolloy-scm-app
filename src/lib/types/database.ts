@@ -1353,3 +1353,161 @@ export interface BalanceFilters {
   minAgeDays?: number
   maxAgeDays?: number
 }
+
+// ================================================================
+// ALGORITHM AUDIT V4 TYPES
+// ================================================================
+
+/**
+ * Coverage status for sales demand
+ */
+export type CoverageStatus = 'Fully Covered' | 'Partially Covered' | 'Uncovered' | 'Unknown'
+
+/**
+ * Confidence level for forward propagation
+ */
+export type PropagationConfidence = 'high' | 'medium' | 'low' | 'none'
+
+/**
+ * Source type for propagated quantities
+ */
+export type PropagationSourceType =
+  | 'actual_order'
+  | 'actual_factory_ship'
+  | 'actual_ship'
+  | 'actual_arrival'
+  | 'reverse_calc'
+
+/**
+ * Propagation source metadata
+ */
+export interface PropagationSource {
+  source_type: PropagationSourceType
+  source_week: string
+  confidence: PropagationConfidence
+}
+
+/**
+ * Matched order within ±1 week tolerance
+ */
+export interface OrderMatch {
+  po_numbers: string[] // e.g., ["PO-2025-001", "PO-2025-002"]
+  ordered_qty: number
+  order_week: string
+  week_offset: number // -1, 0, +1
+}
+
+/**
+ * Demand coverage analysis for a sales week
+ */
+export interface DemandCoverage {
+  sales_week: string
+  sales_demand: number
+  target_order_week: string
+  matching_orders: OrderMatch[]
+  total_ordered_coverage: number
+  uncovered_qty: number
+  coverage_status: CoverageStatus
+}
+
+/**
+ * Detailed order information for a specific week
+ */
+export interface OrderDetailV4 {
+  po_id: string
+  po_number: string
+  ordered_qty: number
+  order_date: string // YYYY-MM-DD
+  order_week: string // YYYY-WW
+  fulfillment_status: 'Complete' | 'Partial' | 'Pending'
+  delivered_qty: number
+  pending_qty: number
+  supplier_name: string | null
+}
+
+/**
+ * Detailed delivery information for a specific week
+ */
+export interface DeliveryDetailV4 {
+  delivery_id: string
+  delivery_number: string
+  po_number: string // Traceability back to order
+  delivered_qty: number
+  delivery_date: string
+  delivery_week: string
+  shipment_status: 'Fully Shipped' | 'Partially Shipped' | 'Awaiting Shipment'
+  shipped_qty: number
+  unshipped_qty: number
+}
+
+/**
+ * Detailed shipment information (departure)
+ */
+export interface ShipmentDetailV4 {
+  shipment_id: string
+  tracking_number: string
+  delivery_number: string | null // Traceability
+  shipped_qty: number
+  departure_date: string | null
+  arrival_date: string | null
+  planned_arrival_week: string
+  actual_arrival_week: string | null
+  current_status: 'Arrived' | 'In Transit' | 'Departed' | 'Awaiting'
+}
+
+/**
+ * Detailed arrival information
+ */
+export interface ArrivalDetailV4 {
+  shipment_id: string
+  tracking_number: string
+  po_number: string | null // Full traceability (if linkable)
+  arrived_qty: number
+  arrival_date: string
+  arrival_week: string
+  warehouse_code: string
+  destination_warehouse_name: string
+}
+
+/**
+ * Algorithm Audit Row V4 - Extends V3 with lineage data
+ */
+export interface AlgorithmAuditRowV4 extends AlgorithmAuditRowV3 {
+  // Sales Coverage
+  sales_coverage_status: CoverageStatus
+  sales_uncovered_qty: number
+
+  // Lineage metadata (for planned values)
+  planned_factory_ship_source?: PropagationSource[]
+  planned_ship_source?: PropagationSource[]
+  planned_arrival_source?: PropagationSource[]
+
+  // Detailed data (for expandable rows)
+  order_details: OrderDetailV4[]
+  factory_ship_details: DeliveryDetailV4[]
+  ship_details: ShipmentDetailV4[]
+  arrival_details: ArrivalDetailV4[]
+}
+
+/**
+ * Complete V4 audit result
+ */
+export interface AlgorithmAuditResultV4 {
+  product: Product | null
+  rows: AlgorithmAuditRowV4[]
+  leadTimes: SupplyChainLeadTimesV3
+  metadata: {
+    current_week: string
+    start_week: string
+    end_week: string
+    total_weeks: number
+    avg_weekly_sales: number
+    safety_stock_weeks: number
+    production_lead_weeks: number
+    shipping_weeks: number
+    // V4-specific metadata
+    total_demand: number
+    total_ordered: number
+    overall_coverage_percentage: number
+  }
+}
