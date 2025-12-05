@@ -228,3 +228,42 @@ export const VERSION = {
 - [ ] 版本号根据变更类型递增
 - [ ] 更新时间使用当前中国时间
 - [ ] changelog 填写本次更新摘要
+
+## Auto Commit & Push (自动提交推送)
+
+**重要规则：Claude 完成任何代码工作后，必须自动执行 git commit 和 git push**
+
+### 触发条件
+
+当以下任一条件满足时，自动提交推送：
+1. 完成用户请求的功能开发
+2. 完成 bug 修复
+3. 完成代码重构或优化
+4. 完成配置文件修改
+
+### 执行流程
+
+```
+1. 完成代码修改
+2. 更新 version.ts (版本号 + 时间 + changelog)
+3. git add .
+4. git commit -m "类型: 简短描述"
+5. git push
+6. 告知用户已推送完成
+```
+
+### Commit Message 格式
+
+```
+feat: 新功能描述
+fix: 修复问题描述
+refactor: 重构内容描述
+docs: 文档更新描述
+style: 样式调整描述
+```
+
+### 注意事项
+
+- 不要推送包含敏感信息的文件 (.env, credentials 等)
+- 推送前确保 `npm run build` 通过
+- 如果推送失败，告知用户具体错误
