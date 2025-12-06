@@ -336,7 +336,7 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
             <AlertDialogTrigger asChild>
               <Button
                 type="button"
-                variant="destructive"
+                variant="danger"
                 disabled={loading || isDeletionBlocked}
                 title={deletionBlockReason || undefined}
               >
@@ -389,7 +389,7 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
                   取消 Cancel
                 </AlertDialogCancel>
                 <Button
-                  variant="destructive"
+                  variant="danger"
                   onClick={handleDeleteConfirm}
                   disabled={loading || deleteConfirmText !== 'DELETE'}
                 >
