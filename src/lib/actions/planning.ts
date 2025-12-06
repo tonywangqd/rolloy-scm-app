@@ -855,3 +855,101 @@ export async function updateForecastAllocation(
     return { success: false, error: 'Failed to update allocation' }
   }
 }
+
+/**
+ * Close/finalize a sales forecast
+ * Marks the forecast as closed regardless of coverage status
+ */
+export async function closeForecast(
+  forecastId: string,
+  closeReason?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    const userId = authResult.user?.id
+
+    const supabase = await createServerSupabaseClient()
+
+    // Check if forecast exists
+    const { data: forecast, error: fetchError } = await supabase
+      .from('sales_forecasts')
+      .select('id, is_closed')
+      .eq('id', forecastId)
+      .single()
+
+    if (fetchError || !forecast) {
+      return { success: false, error: '预测记录不存在' }
+    }
+
+    if (forecast.is_closed) {
+      return { success: false, error: '该预测已经完结' }
+    }
+
+    // Close the forecast
+    const { error: updateError } = await supabase
+      .from('sales_forecasts')
+      .update({
+        is_closed: true,
+        closed_at: new Date().toISOString(),
+        closed_by: userId,
+        close_reason: closeReason || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', forecastId)
+
+    if (updateError) {
+      console.error('Close forecast error:', updateError)
+      return { success: false, error: updateError.message }
+    }
+
+    revalidatePath('/planning/forecast-coverage')
+    revalidatePath('/planning/forecasts')
+    return { success: true }
+  } catch (error) {
+    console.error('Close forecast error:', error)
+    return { success: false, error: 'Failed to close forecast' }
+  }
+}
+
+/**
+ * Reopen a closed forecast
+ */
+export async function reopenForecast(
+  forecastId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    const { error: updateError } = await supabase
+      .from('sales_forecasts')
+      .update({
+        is_closed: false,
+        closed_at: null,
+        closed_by: null,
+        close_reason: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', forecastId)
+
+    if (updateError) {
+      console.error('Reopen forecast error:', updateError)
+      return { success: false, error: updateError.message }
+    }
+
+    revalidatePath('/planning/forecast-coverage')
+    revalidatePath('/planning/forecasts')
+    return { success: true }
+  } catch (error) {
+    console.error('Reopen forecast error:', error)
+    return { success: false, error: 'Failed to reopen forecast' }
+  }
+}

@@ -24,7 +24,7 @@ export type InventoryAdjustmentType = 'cycle_count' | 'logistics_loss' | 'shippi
 export type ShipmentStatus = 'draft' | 'in_transit' | 'arrived' | 'finalized' | 'cancelled'
 
 // Forecast-Order Linkage Types
-export type ForecastCoverageStatus = 'UNCOVERED' | 'PARTIALLY_COVERED' | 'FULLY_COVERED' | 'OVER_COVERED'
+export type ForecastCoverageStatus = 'UNCOVERED' | 'PARTIALLY_COVERED' | 'FULLY_COVERED' | 'OVER_COVERED' | 'CLOSED'
 export type VarianceType = 'increase' | 'decrease'
 export type ResolutionAction =
   | 'create_supplemental_order'
@@ -413,6 +413,10 @@ export interface SalesForecast {
   week_start_date: string
   week_end_date: string
   forecast_qty: number
+  is_closed: boolean
+  closed_at: string | null
+  closed_by: string | null
+  close_reason: string | null
   created_at: string
   updated_at: string
 }
@@ -1194,10 +1198,13 @@ export interface ForecastCoverageView {
   uncovered_qty: number
   coverage_percentage: number
   coverage_status: ForecastCoverageStatus
+  is_closed: boolean
+  closed_at: string | null
+  close_reason: string | null
   linked_order_count: number
   last_allocated_at: string | null
-  product_name: string
-  spu: string
+  product_name: string | null
+  spu: string | null
   calculated_at: string
 }
 
