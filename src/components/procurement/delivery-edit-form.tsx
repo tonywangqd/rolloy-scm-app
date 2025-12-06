@@ -14,6 +14,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { updateDelivery, deleteDelivery } from '@/lib/actions/procurement'
 import { AlertCircle, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -27,6 +38,8 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
   const [formData, setFormData] = useState({
     delivered_qty: context.delivery.delivered_qty,
@@ -110,13 +123,9 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
     router.push(`/procurement/${context.po.id}`)
   }
 
-  const handleDelete = async () => {
-    const confirmed = window.prompt(
-      '确定删除此交付记录吗？此操作不可恢复。请输入 DELETE 确认。',
-      ''
-    )
-
-    if (confirmed !== 'DELETE') {
+  const handleDeleteConfirm = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      toast.error('请输入 DELETE 确认删除')
       return
     }
 
@@ -124,13 +133,23 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
     const result = await deleteDelivery(context.delivery.id)
 
     if (result.success) {
-      toast.success('交付记录已删除')
+      toast.success('交付记录已删除 Delivery deleted')
       router.push(`/procurement/${context.po.id}`)
     } else {
-      toast.error(result.error || '删除失败')
+      toast.error(result.error || '删除失败 Delete failed')
       setLoading(false)
+      setDeleteDialogOpen(false)
     }
   }
+
+  // Check if deletion is blocked
+  const isDeletionBlocked = context.delivery.payment_status !== 'Pending'
+  const deletionBlockReason =
+    context.delivery.payment_status === 'Paid'
+      ? '已支付的交付记录无法删除 Paid deliveries cannot be deleted'
+      : context.delivery.payment_status === 'Scheduled'
+      ? '已排期付款的交付记录无法删除 Scheduled deliveries cannot be deleted'
+      : null
 
   // Calculate cost variance warning
   const originalCost = context.delivery.unit_cost_usd
@@ -312,16 +331,78 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
         </Button>
 
         <div className="flex gap-3">
-          {context.delivery.payment_status === 'Pending' && (
-            <Button
-              type="button"
-              variant="danger"
-              onClick={handleDelete}
-              disabled={loading}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              删除 Delete
-            </Button>
+          {/* Delete Dialog */}
+          <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={loading || isDeletionBlocked}
+                title={deletionBlockReason || undefined}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                删除 Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                  <AlertCircle className="h-5 w-5" />
+                  确定要删除此交付记录吗？
+                </AlertDialogTitle>
+                <AlertDialogDescription className="space-y-3">
+                  <p className="text-gray-700 font-medium">
+                    此操作将执行以下操作：
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                    <li>从数据库中永久删除交付记录 #{context.delivery.delivery_number}</li>
+                    <li>回滚 PO Item 的 delivered_qty，减少 {context.delivery.delivered_qty} 单位</li>
+                    <li>创建审计日志记录以便追溯</li>
+                  </ul>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mt-3">
+                    <p className="text-sm text-yellow-800 font-medium">
+                      警告：此操作不可撤销
+                    </p>
+                  </div>
+                  <div className="mt-4">
+                    <Label htmlFor="delete-confirm" className="text-sm font-medium text-gray-700">
+                      请输入 <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">DELETE</span> 确认删除
+                    </Label>
+                    <Input
+                      id="delete-confirm"
+                      type="text"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder="输入 DELETE"
+                      className="mt-2"
+                      autoComplete="off"
+                    />
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  onClick={() => {
+                    setDeleteConfirmText('')
+                  }}
+                >
+                  取消 Cancel
+                </AlertDialogCancel>
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteConfirm}
+                  disabled={loading || deleteConfirmText !== 'DELETE'}
+                >
+                  {loading ? '删除中...' : '确认删除 Confirm Delete'}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {isDeletionBlocked && (
+            <p className="text-xs text-gray-500 self-center max-w-xs">
+              {deletionBlockReason}
+            </p>
           )}
 
           <Button type="submit" variant="primary" disabled={loading}>

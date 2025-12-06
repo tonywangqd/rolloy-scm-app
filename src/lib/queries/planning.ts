@@ -352,3 +352,322 @@ export async function fetchChannels(): Promise<Channel[]> {
 
   return data || []
 }
+
+// ================================================================
+// FORECAST-ORDER LINKAGE QUERIES
+// ================================================================
+
+/**
+ * Fetch forecast coverage list with filters
+ */
+export async function fetchForecastCoverage(filters?: {
+  sku?: string
+  channelCode?: string
+  weekIso?: string
+  status?: import('@/lib/types/database').ForecastCoverageStatus
+}): Promise<import('@/lib/types/database').ForecastCoverageView[]> {
+  const supabase = await createServerSupabaseClient()
+
+  let query = supabase.from('v_forecast_coverage').select('*').order('week_iso', { ascending: true })
+
+  if (filters?.sku) {
+    query = query.eq('sku', filters.sku)
+  }
+  if (filters?.channelCode) {
+    query = query.eq('channel_code', filters.channelCode)
+  }
+  if (filters?.weekIso) {
+    query = query.eq('week_iso', filters.weekIso)
+  }
+  if (filters?.status) {
+    query = query.eq('coverage_status', filters.status)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Error fetching forecast coverage:', error)
+    return []
+  }
+
+  return data || []
+}
+
+/**
+ * Fetch forecast coverage KPIs
+ */
+export async function fetchForecastCoverageKPIs(): Promise<{
+  total: number
+  uncovered: number
+  partially: number
+  fully: number
+  over: number
+  avgCoveragePercentage: number
+}> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase.from('v_forecast_coverage').select('coverage_status, coverage_percentage')
+
+  if (error) {
+    console.error('Error fetching coverage KPIs:', error)
+    return {
+      total: 0,
+      uncovered: 0,
+      partially: 0,
+      fully: 0,
+      over: 0,
+      avgCoveragePercentage: 0,
+    }
+  }
+
+  const kpis = {
+    total: data.length,
+    uncovered: data.filter((d) => d.coverage_status === 'UNCOVERED').length,
+    partially: data.filter((d) => d.coverage_status === 'PARTIALLY_COVERED').length,
+    fully: data.filter((d) => d.coverage_status === 'FULLY_COVERED').length,
+    over: data.filter((d) => d.coverage_status === 'OVER_COVERED').length,
+    avgCoveragePercentage:
+      data.length > 0
+        ? data.reduce((sum, d) => sum + d.coverage_percentage, 0) / data.length
+        : 0,
+  }
+
+  return kpis
+}
+
+/**
+ * Fetch pending variance resolutions
+ */
+export async function fetchPendingVariances(): Promise<
+  import('@/lib/types/database').VariancePendingActionsView[]
+> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('v_variance_pending_actions')
+    .select('*')
+    .order('priority', { ascending: true })
+    .order('detected_at', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching pending variances:', error)
+    return []
+  }
+
+  return data || []
+}
+
+/**
+ * Fetch allocatable forecasts for a PO item (for allocation selection)
+ */
+export async function fetchAllocatableForecasts(
+  sku: string,
+  channelCode: string | null,
+  targetWeek?: string
+): Promise<import('@/lib/types/database').ForecastCoverageView[]> {
+  const supabase = await createServerSupabaseClient()
+
+  let query = supabase
+    .from('v_forecast_coverage')
+    .select('*')
+    .eq('sku', sku)
+    .gt('uncovered_qty', 0)
+    .order('week_iso', { ascending: true })
+
+  if (channelCode) {
+    query = query.eq('channel_code', channelCode)
+  }
+
+  if (targetWeek) {
+    // Only show forecasts within ±2 weeks of target week
+    const { addWeeksToWeekString } = await import('@/lib/utils/date')
+    const minWeek = addWeeksToWeekString(targetWeek, -2)
+    const maxWeek = addWeeksToWeekString(targetWeek, 2)
+    if (minWeek && maxWeek) {
+      query = query.gte('week_iso', minWeek).lte('week_iso', maxWeek)
+    }
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Error fetching allocatable forecasts:', error)
+    return []
+  }
+
+  return data || []
+}
+
+/**
+ * Fetch allocations for a PO item
+ */
+export async function fetchPoItemAllocations(
+  poItemId: string
+): Promise<
+  (import('@/lib/types/database').ForecastOrderAllocation & {
+    forecast?: {
+      week_iso: string
+      forecast_qty: number
+    }
+    product_name?: string
+  })[]
+> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('forecast_order_allocations')
+    .select(
+      `
+      *,
+      forecast:sales_forecasts!forecast_id (
+        week_iso,
+        forecast_qty,
+        sku
+      )
+    `
+    )
+    .eq('po_item_id', poItemId)
+    .order('allocated_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching PO item allocations:', error)
+    return []
+  }
+
+  // Fetch product names
+  const skus = [...new Set((data || []).map((a) => a.forecast?.sku).filter(Boolean) as string[])]
+
+  if (skus.length > 0) {
+    const { data: products } = await supabase
+      .from('products')
+      .select('sku, product_name')
+      .in('sku', skus)
+
+    const productMap = new Map((products || []).map((p) => [p.sku, p.product_name]))
+
+    return (data || []).map((a) => ({
+      ...a,
+      product_name: a.forecast?.sku ? productMap.get(a.forecast.sku) : undefined,
+    }))
+  }
+
+  return data || []
+}
+
+/**
+ * Fetch allocations for a forecast
+ */
+export async function fetchForecastAllocations(
+  forecastId: string
+): Promise<
+  (import('@/lib/types/database').ForecastOrderAllocation & {
+    po_item?: {
+      id: string
+      ordered_qty: number
+      delivered_qty: number
+    }
+    po?: {
+      po_number: string
+      batch_code: string
+    }
+  })[]
+> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('forecast_order_allocations')
+    .select(
+      `
+      *,
+      po_item:purchase_order_items!po_item_id (
+        id,
+        ordered_qty,
+        delivered_qty,
+        po_id
+      )
+    `
+    )
+    .eq('forecast_id', forecastId)
+    .order('allocated_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching forecast allocations:', error)
+    return []
+  }
+
+  // Fetch PO details
+  const poIds = [...new Set((data || []).map((a) => a.po_item?.po_id).filter(Boolean) as string[])]
+
+  if (poIds.length > 0) {
+    const { data: pos } = await supabase
+      .from('purchase_orders')
+      .select('id, po_number, batch_code')
+      .in('id', poIds)
+
+    const poMap = new Map((pos || []).map((p) => [p.id, p]))
+
+    return (data || []).map((a) => ({
+      ...a,
+      po: a.po_item?.po_id ? poMap.get(a.po_item.po_id) : undefined,
+    }))
+  }
+
+  return data || []
+}
+
+/**
+ * Fetch delivery deletion audit logs
+ */
+export async function fetchDeliveryDeletionLogs(options?: {
+  deliveryId?: string
+  poItemId?: string
+  limit?: number
+}): Promise<import('@/lib/types/database').DeliveryDeletionAuditLog[]> {
+  const supabase = await createServerSupabaseClient()
+
+  let query = supabase
+    .from('delivery_deletion_audit_log')
+    .select('*')
+    .order('deleted_at', { ascending: false })
+
+  if (options?.deliveryId) {
+    query = query.eq('delivery_id', options.deliveryId)
+  }
+  if (options?.poItemId) {
+    query = query.eq('po_item_id', options.poItemId)
+  }
+  if (options?.limit) {
+    query = query.limit(options.limit)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Error fetching delivery deletion logs:', error)
+    return []
+  }
+
+  return data || []
+}
+
+/**
+ * Fetch variance resolution by ID
+ */
+export async function fetchVarianceResolution(
+  resolutionId: string
+): Promise<import('@/lib/types/database').ForecastVarianceResolution | null> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('forecast_variance_resolutions')
+    .select('*')
+    .eq('id', resolutionId)
+    .single()
+
+  if (error) {
+    console.error('Error fetching variance resolution:', error)
+    return null
+  }
+
+  return data
+}

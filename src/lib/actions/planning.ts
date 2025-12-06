@@ -404,3 +404,454 @@ export async function copyForecastsToWeek(
   revalidatePath('/planning/forecasts')
   return { success: true, count: newForecasts.length }
 }
+
+// ================================================================
+// FORECAST-ORDER LINKAGE ACTIONS
+// ================================================================
+
+/**
+ * Delete production delivery with rollback and audit
+ */
+export async function deleteProductionDelivery(
+  deliveryId: string,
+  deletionReason?: string
+): Promise<{
+  success: boolean
+  error?: string
+  errorCode?: string
+}> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    // Call stored procedure
+    const { data, error } = await supabase.rpc('delete_production_delivery', {
+      p_delivery_id: deliveryId,
+      p_deleted_by: user.id,
+      p_deletion_reason: deletionReason || null,
+    })
+
+    if (error) {
+      console.error('Delete delivery RPC error:', error)
+      return { success: false, error: error.message }
+    }
+
+    const result = data && data.length > 0 ? data[0] : null
+    if (!result || !result.success) {
+      return {
+        success: false,
+        error: result?.error_message || 'Unknown error',
+        errorCode: result?.error_code || 'UNKNOWN',
+      }
+    }
+
+    revalidatePath('/procurement')
+    revalidatePath('/procurement/deliveries')
+    return { success: true }
+  } catch (error) {
+    console.error('Delete delivery error:', error)
+    return { success: false, error: 'Database error' }
+  }
+}
+
+/**
+ * Create manual allocation between forecast and PO item
+ */
+export async function createForecastAllocation(params: {
+  forecastId: string
+  poItemId: string
+  allocatedQty: number
+  remarks?: string
+}): Promise<{
+  success: boolean
+  data?: { id: string }
+  error?: string
+}> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    // Validate: Check SKU and channel match
+    const { data: forecast, error: forecastError } = await supabase
+      .from('sales_forecasts')
+      .select('sku, channel_code')
+      .eq('id', params.forecastId)
+      .single()
+
+    if (forecastError || !forecast) {
+      return { success: false, error: 'Forecast not found' }
+    }
+
+    const { data: poItem, error: poItemError } = await supabase
+      .from('purchase_order_items')
+      .select('sku, channel_code, ordered_qty')
+      .eq('id', params.poItemId)
+      .single()
+
+    if (poItemError || !poItem) {
+      return { success: false, error: 'PO item not found' }
+    }
+
+    if (forecast.sku !== poItem.sku) {
+      return { success: false, error: 'SKU mismatch between forecast and PO item' }
+    }
+
+    if (forecast.channel_code !== poItem.channel_code && poItem.channel_code !== null) {
+      return { success: false, error: 'Channel mismatch between forecast and PO item' }
+    }
+
+    // Validate: Check total allocation doesn't exceed ordered_qty
+    const { data: existingAllocations } = await supabase
+      .from('forecast_order_allocations')
+      .select('allocated_qty')
+      .eq('po_item_id', params.poItemId)
+
+    const totalAllocated =
+      (existingAllocations || []).reduce((sum, a) => sum + a.allocated_qty, 0) +
+      params.allocatedQty
+
+    if (totalAllocated > poItem.ordered_qty) {
+      return {
+        success: false,
+        error: `Total allocation (${totalAllocated}) exceeds ordered quantity (${poItem.ordered_qty})`,
+      }
+    }
+
+    // Insert allocation
+    const { data, error } = await supabase
+      .from('forecast_order_allocations')
+      .insert({
+        forecast_id: params.forecastId,
+        po_item_id: params.poItemId,
+        allocated_qty: params.allocatedQty,
+        allocation_type: 'manual',
+        allocated_by: user.id,
+        remarks: params.remarks || null,
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error('Create allocation error:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/planning/forecast-coverage')
+    revalidatePath('/procurement')
+    return { success: true, data }
+  } catch (error) {
+    console.error('Create allocation error:', error)
+    return { success: false, error: 'Failed to create allocation' }
+  }
+}
+
+/**
+ * Create multiple forecast allocations for a PO item
+ */
+export async function createForecastAllocations(
+  poItemId: string,
+  allocations: { forecastId: string; allocatedQty: number }[]
+): Promise<{
+  success: boolean
+  count?: number
+  error?: string
+}> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    // Validate total allocation
+    const totalAllocated = allocations.reduce((sum, a) => sum + a.allocatedQty, 0)
+
+    const { data: poItem } = await supabase
+      .from('purchase_order_items')
+      .select('ordered_qty')
+      .eq('id', poItemId)
+      .single()
+
+    if (!poItem) {
+      return { success: false, error: 'PO item not found' }
+    }
+
+    if (totalAllocated > poItem.ordered_qty) {
+      return {
+        success: false,
+        error: `Total allocation (${totalAllocated}) exceeds ordered quantity (${poItem.ordered_qty})`,
+      }
+    }
+
+    // Insert all allocations
+    const allocationInserts = allocations.map((a) => ({
+      forecast_id: a.forecastId,
+      po_item_id: poItemId,
+      allocated_qty: a.allocatedQty,
+      allocation_type: 'manual' as const,
+      allocated_by: user.id,
+    }))
+
+    const { error } = await supabase
+      .from('forecast_order_allocations')
+      .insert(allocationInserts)
+
+    if (error) {
+      console.error('Batch create allocations error:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/planning/forecast-coverage')
+    revalidatePath('/procurement')
+    return { success: true, count: allocations.length }
+  } catch (error) {
+    console.error('Create allocations error:', error)
+    return { success: false, error: 'Failed to create allocations' }
+  }
+}
+
+/**
+ * Auto-allocate forecasts to PO item using FIFO algorithm
+ */
+export async function autoAllocateForecasts(poItemId: string): Promise<{
+  success: boolean
+  data?: { forecast_id: string; allocated_qty: number; week_iso: string }[]
+  error?: string
+}> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    // Call stored procedure
+    const { data, error } = await supabase.rpc('auto_allocate_forecast_to_po_item', {
+      p_po_item_id: poItemId,
+      p_allocated_by: user.id,
+    })
+
+    if (error) {
+      console.error('Auto-allocate RPC error:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/planning/forecast-coverage')
+    revalidatePath('/procurement')
+    return { success: true, data: data || [] }
+  } catch (error) {
+    console.error('Auto-allocate error:', error)
+    return { success: false, error: 'Auto-allocation failed' }
+  }
+}
+
+/**
+ * Resolve forecast variance
+ */
+export async function resolveForecastVariance(params: {
+  resolutionId: string
+  action: import('@/lib/types/database').ResolutionAction
+  notes?: string
+}): Promise<{
+  success: boolean
+  error?: string
+}> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    // Update resolution
+    const { error } = await supabase
+      .from('forecast_variance_resolutions')
+      .update({
+        resolution_action: params.action,
+        resolution_status: 'resolved',
+        resolution_notes: params.notes || null,
+        resolved_by: user.id,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq('id', params.resolutionId)
+
+    if (error) {
+      console.error('Resolve variance error:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/planning/variance-resolutions')
+    return { success: true }
+  } catch (error) {
+    console.error('Resolve variance error:', error)
+    return { success: false, error: 'Failed to resolve variance' }
+  }
+}
+
+/**
+ * Delete forecast allocation
+ */
+export async function deleteForecastAllocation(allocationId: string): Promise<{
+  success: boolean
+  error?: string
+}> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    const { error } = await supabase
+      .from('forecast_order_allocations')
+      .delete()
+      .eq('id', allocationId)
+
+    if (error) {
+      console.error('Delete allocation error:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/planning/forecast-coverage')
+    revalidatePath('/procurement')
+    return { success: true }
+  } catch (error) {
+    console.error('Delete allocation error:', error)
+    return { success: false, error: 'Failed to delete allocation' }
+  }
+}
+
+/**
+ * Update forecast allocation quantity
+ */
+export async function updateForecastAllocation(
+  allocationId: string,
+  allocatedQty: number,
+  remarks?: string
+): Promise<{
+  success: boolean
+  error?: string
+}> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    // Get allocation details
+    const { data: allocation, error: fetchError } = await supabase
+      .from('forecast_order_allocations')
+      .select('po_item_id, allocated_qty')
+      .eq('id', allocationId)
+      .single()
+
+    if (fetchError || !allocation) {
+      return { success: false, error: 'Allocation not found' }
+    }
+
+    // Validate: Check total allocation doesn't exceed ordered_qty
+    const { data: poItem } = await supabase
+      .from('purchase_order_items')
+      .select('ordered_qty')
+      .eq('id', allocation.po_item_id)
+      .single()
+
+    if (!poItem) {
+      return { success: false, error: 'PO item not found' }
+    }
+
+    const { data: otherAllocations } = await supabase
+      .from('forecast_order_allocations')
+      .select('allocated_qty')
+      .eq('po_item_id', allocation.po_item_id)
+      .neq('id', allocationId)
+
+    const otherAllocatedQty = (otherAllocations || []).reduce(
+      (sum, a) => sum + a.allocated_qty,
+      0
+    )
+    const totalAllocated = otherAllocatedQty + allocatedQty
+
+    if (totalAllocated > poItem.ordered_qty) {
+      return {
+        success: false,
+        error: `Total allocation (${totalAllocated}) exceeds ordered quantity (${poItem.ordered_qty})`,
+      }
+    }
+
+    // Update allocation
+    const { error } = await supabase
+      .from('forecast_order_allocations')
+      .update({
+        allocated_qty: allocatedQty,
+        remarks: remarks || null,
+      })
+      .eq('id', allocationId)
+
+    if (error) {
+      console.error('Update allocation error:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/planning/forecast-coverage')
+    revalidatePath('/procurement')
+    return { success: true }
+  } catch (error) {
+    console.error('Update allocation error:', error)
+    return { success: false, error: 'Failed to update allocation' }
+  }
+}

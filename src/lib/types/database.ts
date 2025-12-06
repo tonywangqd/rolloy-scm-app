@@ -23,6 +23,18 @@ export type BalanceSourceType = 'po_item' | 'delivery' | 'shipment_item'
 export type InventoryAdjustmentType = 'cycle_count' | 'logistics_loss' | 'shipping_damage' | 'quality_hold' | 'theft' | 'found' | 'system_correction' | 'supplier_overage' | 'manual'
 export type ShipmentStatus = 'draft' | 'in_transit' | 'arrived' | 'finalized' | 'cancelled'
 
+// Forecast-Order Linkage Types
+export type ForecastCoverageStatus = 'UNCOVERED' | 'PARTIALLY_COVERED' | 'FULLY_COVERED' | 'OVER_COVERED'
+export type VarianceType = 'increase' | 'decrease'
+export type ResolutionAction =
+  | 'create_supplemental_order'
+  | 'reallocate_to_future'
+  | 'accept_as_safety_stock'
+  | 'cancel_excess'
+  | 'pending_review'
+export type ResolutionStatus = 'pending' | 'resolved' | 'cancelled'
+export type AllocationType = 'manual' | 'auto'
+
 // ================================================================
 // DATABASE TYPES (for Supabase client typing)
 // ================================================================
@@ -100,6 +112,21 @@ export type Database = {
         Insert: ReplenishmentSuggestionInsert
         Update: ReplenishmentSuggestionUpdate
       }
+      forecast_order_allocations: {
+        Row: ForecastOrderAllocation
+        Insert: ForecastOrderAllocationInsert
+        Update: ForecastOrderAllocationUpdate
+      }
+      forecast_variance_resolutions: {
+        Row: ForecastVarianceResolution
+        Insert: ForecastVarianceResolutionInsert
+        Update: ForecastVarianceResolutionUpdate
+      }
+      delivery_deletion_audit_log: {
+        Row: DeliveryDeletionAuditLog
+        Insert: DeliveryDeletionAuditLogInsert
+        Update: never
+      }
     }
     Views: {
       v_inventory_summary: {
@@ -122,6 +149,12 @@ export type Database = {
       }
       v_po_deliveries_summary: {
         Row: PODeliveriesSummaryView
+      }
+      v_forecast_coverage: {
+        Row: ForecastCoverageView
+      }
+      v_variance_pending_actions: {
+        Row: VariancePendingActionsView
       }
     }
     Functions: {
@@ -193,6 +226,29 @@ export type Database = {
           success: boolean
           shipment_id: string | null
           error_message: string | null
+        }[]
+      }
+      delete_production_delivery: {
+        Args: {
+          p_delivery_id: string
+          p_deleted_by: string
+          p_deletion_reason?: string
+        }
+        Returns: {
+          success: boolean
+          error_code: string | null
+          error_message: string | null
+        }[]
+      }
+      auto_allocate_forecast_to_po_item: {
+        Args: {
+          p_po_item_id: string
+          p_allocated_by: string
+        }
+        Returns: {
+          forecast_id: string
+          allocated_qty: number
+          week_iso: string
         }[]
       }
     }
@@ -1024,6 +1080,146 @@ export interface AlgorithmAuditResultV2 {
     avg_weekly_sales: number
     safety_stock_weeks: number
   }
+}
+
+// ================================================================
+// FORECAST-ORDER LINKAGE TYPES
+// ================================================================
+
+// Table: forecast_order_allocations
+export interface ForecastOrderAllocation {
+  id: string
+  forecast_id: string
+  po_item_id: string
+  allocated_qty: number
+  allocation_type: AllocationType
+  allocated_by: string | null
+  allocated_at: string
+  remarks: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ForecastOrderAllocationInsert {
+  id?: string
+  forecast_id: string
+  po_item_id: string
+  allocated_qty: number
+  allocation_type?: AllocationType
+  allocated_by?: string | null
+  remarks?: string | null
+}
+
+export interface ForecastOrderAllocationUpdate {
+  allocated_qty?: number
+  remarks?: string | null
+}
+
+// Table: forecast_variance_resolutions
+export interface ForecastVarianceResolution {
+  id: string
+  forecast_id: string
+  original_forecast_qty: number
+  adjusted_forecast_qty: number
+  variance_qty: number
+  variance_type: VarianceType
+  variance_percentage: number
+  resolution_action: ResolutionAction | null
+  resolution_status: ResolutionStatus
+  resolution_notes: string | null
+  detected_at: string
+  resolved_at: string | null
+  resolved_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ForecastVarianceResolutionInsert {
+  id?: string
+  forecast_id: string
+  original_forecast_qty: number
+  adjusted_forecast_qty: number
+  variance_qty: number
+  variance_type: VarianceType
+  variance_percentage: number
+  resolution_action?: ResolutionAction | null
+  resolution_status?: ResolutionStatus
+  resolution_notes?: string | null
+}
+
+export interface ForecastVarianceResolutionUpdate {
+  resolution_action?: ResolutionAction | null
+  resolution_status?: ResolutionStatus
+  resolution_notes?: string | null
+  resolved_by?: string | null
+  resolved_at?: string | null
+}
+
+// Table: delivery_deletion_audit_log
+export interface DeliveryDeletionAuditLog {
+  id: string
+  delivery_id: string
+  delivery_number: string
+  delivery_snapshot: Record<string, unknown>
+  deleted_by: string | null
+  deleted_at: string
+  deletion_reason: string | null
+  po_item_id: string
+  rolled_back_qty: number
+  created_at: string
+}
+
+export interface DeliveryDeletionAuditLogInsert {
+  id?: string
+  delivery_id: string
+  delivery_number: string
+  delivery_snapshot: Record<string, unknown>
+  deleted_by?: string | null
+  deletion_reason?: string | null
+  po_item_id: string
+  rolled_back_qty: number
+}
+
+// View: v_forecast_coverage
+export interface ForecastCoverageView {
+  forecast_id: string
+  sku: string
+  channel_code: string
+  week_iso: string
+  week_start_date: string
+  week_end_date: string
+  forecast_qty: number
+  allocated_qty: number
+  covered_qty: number
+  uncovered_qty: number
+  coverage_percentage: number
+  coverage_status: ForecastCoverageStatus
+  linked_order_count: number
+  last_allocated_at: string | null
+  product_name: string
+  spu: string
+  calculated_at: string
+}
+
+// View: v_variance_pending_actions
+export interface VariancePendingActionsView {
+  resolution_id: string
+  forecast_id: string
+  sku: string
+  channel_code: string
+  week_iso: string
+  product_name: string
+  original_forecast_qty: number
+  adjusted_forecast_qty: number
+  variance_qty: number
+  variance_type: VarianceType
+  variance_percentage: number
+  resolution_status: ResolutionStatus
+  resolution_action: ResolutionAction | null
+  days_pending: number
+  priority: Priority
+  detected_at: string
+  resolved_at: string | null
 }
 
 // ================================================================

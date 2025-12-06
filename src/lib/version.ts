@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.12.0',
+  number: '1.13.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-05 18:20',
+  updatedAt: '2025-12-06 22:15',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '1.算法审计表Hover Tooltip交互 2.采购交货记录编辑页面',
+  changelog: '预测-订单关联功能后端实现: Server Actions & Query Functions',
 }
 
 // 格式化显示
