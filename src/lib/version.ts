@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.13.0',
+  number: '1.14.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-06 22:15',
+  updatedAt: '2025-12-06 22:30',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '预测-订单关联功能后端实现: Server Actions & Query Functions',
+  changelog: '预测覆盖率仪表板UI + 交货删除功能增强',
 }
 
 // 格式化显示
