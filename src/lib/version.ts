@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.15.0',
+  number: '1.15.1',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-06 20:20',
+  updatedAt: '2025-12-06 20:30',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '修复采购订单删除外键约束 + 新增交货详情页面',
+  changelog: '修复Next.js安全漏洞 (CVE-2025-66478)',
 }
 
 // 格式化显示
