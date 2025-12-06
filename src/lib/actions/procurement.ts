@@ -306,6 +306,69 @@ export async function deletePurchaseOrder(
 
     const supabase = await createServerSupabaseClient()
 
+    // Step 1: Get all PO items for this PO
+    const { data: poItems, error: poItemsError } = await supabase
+      .from('purchase_order_items')
+      .select('id')
+      .eq('po_id', id)
+
+    if (poItemsError) {
+      return { success: false, error: `获取订单明细失败: ${poItemsError.message}` }
+    }
+
+    // Step 2: Delete all production deliveries linked to these PO items
+    if (poItems && poItems.length > 0) {
+      const poItemIds = poItems.map((item) => item.id)
+
+      // Check if any deliveries have been paid
+      const { data: paidDeliveries, error: checkError } = await supabase
+        .from('production_deliveries')
+        .select('id, delivery_number, payment_status')
+        .in('po_item_id', poItemIds)
+        .eq('payment_status', 'Paid')
+
+      if (checkError) {
+        return { success: false, error: `检查交货记录失败: ${checkError.message}` }
+      }
+
+      if (paidDeliveries && paidDeliveries.length > 0) {
+        return {
+          success: false,
+          error: `无法删除：有 ${paidDeliveries.length} 条已付款的交货记录。请先联系财务处理。`,
+        }
+      }
+
+      // Delete all production deliveries for these PO items
+      const { error: deleteDeliveriesError } = await supabase
+        .from('production_deliveries')
+        .delete()
+        .in('po_item_id', poItemIds)
+
+      if (deleteDeliveriesError) {
+        return { success: false, error: `删除交货记录失败: ${deleteDeliveriesError.message}` }
+      }
+    }
+
+    // Step 3: Delete all forecast allocations linked to these PO items
+    if (poItems && poItems.length > 0) {
+      const poItemIds = poItems.map((item) => item.id)
+      await supabase
+        .from('forecast_order_allocations')
+        .delete()
+        .in('po_item_id', poItemIds)
+    }
+
+    // Step 4: Delete all PO items (this will cascade automatically if FK is set up)
+    const { error: deleteItemsError } = await supabase
+      .from('purchase_order_items')
+      .delete()
+      .eq('po_id', id)
+
+    if (deleteItemsError) {
+      return { success: false, error: `删除订单明细失败: ${deleteItemsError.message}` }
+    }
+
+    // Step 5: Delete the purchase order itself
     const { error } = await supabase
       .from('purchase_orders')
       .delete()
