@@ -38,7 +38,7 @@ CREATE TABLE supply_chain_variances (
   -- 数量数据
   planned_qty INTEGER NOT NULL CHECK (planned_qty >= 0),    -- 上游计划数量
   fulfilled_qty INTEGER NOT NULL DEFAULT 0 CHECK (fulfilled_qty >= 0), -- 已完成数量
-  pending_qty INTEGER GENERATED ALWAYS AS (planned_qty - fulfilled_qty) STORED, -- 剩余数量 (自动计算)
+  -- pending_qty will be calculated in view/trigger (cannot use generated column referencing other generated column)
 
   -- 计划解决时间 (用户可调整)
   planned_week TEXT,        -- ISO week format: YYYY-WW
@@ -54,16 +54,8 @@ CREATE TABLE supply_chain_variances (
     'overdue'       -- 已逾期 (planned_week < 当前周 且 status = scheduled)
   )),
 
-  -- 优先级 (自动计算，用于 UI 排序)
-  priority TEXT GENERATED ALWAYS AS (
-    CASE
-      WHEN status = 'overdue' THEN 'Critical'
-      WHEN pending_qty > 0 AND planned_week IS NOT NULL
-           AND planned_week <= to_char(CURRENT_DATE, 'IYYY-"W"IW') THEN 'High'
-      WHEN pending_qty > 0 THEN 'Medium'
-      ELSE 'Low'
-    END
-  ) STORED,
+  -- 优先级 (will be calculated in view)
+  priority TEXT DEFAULT 'Medium' CHECK (priority IN ('Critical', 'High', 'Medium', 'Low')),
 
   -- 备注与审计
   remarks TEXT,
@@ -87,6 +79,7 @@ CREATE INDEX idx_sc_variances_status ON supply_chain_variances(status) WHERE sta
 CREATE INDEX idx_sc_variances_planned_week ON supply_chain_variances(planned_week) WHERE planned_week IS NOT NULL;
 CREATE INDEX idx_sc_variances_source ON supply_chain_variances(source_type, source_id);
 CREATE INDEX idx_sc_variances_priority ON supply_chain_variances(priority, created_at DESC);
+CREATE INDEX idx_sc_variances_pending ON supply_chain_variances((planned_qty - fulfilled_qty)) WHERE (planned_qty - fulfilled_qty) > 0;
 
 -- =====================================================================
 -- STEP 3: Create triggers
@@ -106,29 +99,40 @@ CREATE TRIGGER trigger_sc_variance_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_sc_variance_updated_at();
 
--- Trigger 2: Auto-update status based on pending_qty and planned_week
+-- Trigger 2: Auto-update status and priority based on pending_qty and planned_week
 CREATE OR REPLACE FUNCTION auto_update_variance_status()
 RETURNS TRIGGER AS $$
 DECLARE
   v_current_week TEXT;
+  v_pending_qty INTEGER;
 BEGIN
   v_current_week := to_char(CURRENT_DATE, 'IYYY-"W"IW');
+  v_pending_qty := NEW.planned_qty - NEW.fulfilled_qty;
 
   -- 根据 pending_qty 更新状态
-  IF NEW.pending_qty = 0 THEN
+  IF v_pending_qty <= 0 THEN
     NEW.status := 'completed';
     NEW.resolved_at := NOW();
-  ELSIF NEW.pending_qty > 0 AND NEW.pending_qty < NEW.planned_qty THEN
+    NEW.priority := 'Low';
+  ELSIF v_pending_qty > 0 AND NEW.fulfilled_qty > 0 THEN
     NEW.status := 'partial';
   ELSIF NEW.status = 'cancelled' THEN
     -- 保持 cancelled 状态不变
-    NULL;
+    NEW.priority := 'Low';
   ELSIF NEW.planned_week IS NOT NULL AND NEW.planned_week < v_current_week THEN
     NEW.status := 'overdue';
+    NEW.priority := 'Critical';
   ELSIF NEW.planned_week IS NOT NULL THEN
     NEW.status := 'scheduled';
+    -- Check if planned week is current week
+    IF NEW.planned_week <= v_current_week THEN
+      NEW.priority := 'High';
+    ELSE
+      NEW.priority := 'Medium';
+    END IF;
   ELSE
     NEW.status := 'pending';
+    NEW.priority := 'Medium';
   END IF;
 
   RETURN NEW;
@@ -270,7 +274,7 @@ SELECT
   v.channel_code,
   v.planned_qty,
   v.fulfilled_qty,
-  v.pending_qty,
+  (v.planned_qty - v.fulfilled_qty) AS pending_qty,  -- Calculated field
   v.planned_week,
   v.planned_date,
   v.status,

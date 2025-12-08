@@ -223,6 +223,9 @@ export async function fetchVarianceAdjustmentsForAudit(
   variances.forEach(v => {
     if (!v.planned_week) return
 
+    // Calculate pending_qty since it's not a table column
+    const pendingQty = v.planned_qty - v.fulfilled_qty
+
     const existing = adjustmentMap.get(v.planned_week) || {
       factory_ship_adjustment: 0,
       ship_adjustment: 0,
@@ -232,13 +235,15 @@ export async function fetchVarianceAdjustmentsForAudit(
     // 根据 source_type 分类调整
     if (v.source_type === 'order_to_delivery') {
       // 下单→出货差异：调整 planned_factory_ship
-      existing.factory_ship_adjustment += v.pending_qty
+      existing.factory_ship_adjustment += pendingQty
     } else if (v.source_type === 'delivery_to_ship') {
       // 出货→发货差异：调整 planned_ship
-      existing.ship_adjustment += v.pending_qty
+      existing.ship_adjustment += pendingQty
     }
 
-    existing.variances.push(v as SupplyChainVariance)
+    // Add pending_qty to the variance object for consistency
+    const varianceWithPending = { ...v, pending_qty: pendingQty } as SupplyChainVariance
+    existing.variances.push(varianceWithPending)
     adjustmentMap.set(v.planned_week, existing)
   })
 

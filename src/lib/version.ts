@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.21.0',
+  number: '1.21.1',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-08 21:33',
+  updatedAt: '2025-12-08 21:38',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '新增差异追踪前端界面 - 支持查看/设置计划周/取消差异操作',
+  changelog: '修复差异追踪迁移脚本 - 移除generated column依赖问题',
 }
 
 // 格式化显示
