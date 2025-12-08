@@ -1632,6 +1632,9 @@ export async function fetchAlgorithmAuditV4(
         total_demand: 0,
         total_ordered: 0,
         overall_coverage_percentage: 0,
+        variance_count: 0,
+        total_factory_ship_adjustment: 0,
+        total_ship_adjustment: 0,
       },
     }
   }

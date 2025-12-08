@@ -1827,6 +1827,10 @@ export interface AlgorithmAuditResultV4 {
     total_demand: number
     total_ordered: number
     overall_coverage_percentage: number
+    // Variance statistics
+    variance_count: number
+    total_factory_ship_adjustment: number
+    total_ship_adjustment: number
   }
 }
 
