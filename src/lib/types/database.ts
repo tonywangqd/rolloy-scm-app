@@ -1930,3 +1930,114 @@ export interface ShipmentWithSourceDeliveries extends Shipment {
     remarks: string | null
   }[]
 }
+
+// ================================================================
+// SUPPLY CHAIN VARIANCE TYPES
+// ================================================================
+
+/**
+ * 差异来源类型
+ */
+export type VarianceSourceType =
+  | 'order_to_delivery'    // PO 下单 → 工厂出货
+  | 'delivery_to_ship'     // 工厂出货 → 物流发货
+  | 'ship_to_arrival'      // 物流发货 → 仓库到货
+
+/**
+ * 差异状态
+ */
+export type VarianceStatus =
+  | 'pending'      // 待处理
+  | 'scheduled'    // 已计划
+  | 'partial'      // 部分完成
+  | 'completed'    // 已完成
+  | 'cancelled'    // 已取消
+  | 'overdue'      // 已逾期
+
+/**
+ * 差异优先级 (自动计算)
+ */
+export type VariancePriority = 'Critical' | 'High' | 'Medium' | 'Low'
+
+/**
+ * 供应链差异记录
+ */
+export interface SupplyChainVariance {
+  id: string
+  source_type: VarianceSourceType
+  source_id: string
+  sku: string
+  channel_code: string | null
+  planned_qty: number
+  fulfilled_qty: number
+  pending_qty: number           // Computed (generated column)
+  planned_week: string | null   // YYYY-WW (user-adjustable)
+  planned_date: string | null   // DATE
+  status: VarianceStatus
+  priority: VariancePriority    // Computed (generated column)
+  remarks: string | null
+  created_at: string
+  updated_at: string
+  created_by: string | null
+  updated_by: string | null
+  resolved_at: string | null
+  resolved_by: string | null
+}
+
+export interface SupplyChainVarianceInsert {
+  id?: string
+  source_type: VarianceSourceType
+  source_id: string
+  sku: string
+  channel_code?: string | null
+  planned_qty: number
+  fulfilled_qty?: number
+  planned_week?: string | null
+  planned_date?: string | null
+  status?: VarianceStatus
+  remarks?: string | null
+  created_by?: string | null
+}
+
+export interface SupplyChainVarianceUpdate {
+  planned_week?: string | null
+  planned_date?: string | null
+  fulfilled_qty?: number
+  remarks?: string | null
+  status?: VarianceStatus
+  updated_by?: string | null
+}
+
+/**
+ * 差异总览 (带产品信息)
+ */
+export interface VarianceOverview extends SupplyChainVariance {
+  product_name: string
+  spu: string
+  source_reference: string  // "PO#2025-001-A (50 ordered)"
+  age_days: number
+  weeks_until_planned: number | null
+}
+
+/**
+ * 差异汇总 KPI
+ */
+export interface VarianceSummaryKPIs {
+  total_variances: number
+  total_pending_qty: number
+  critical_count: number    // priority = Critical
+  high_count: number        // priority = High
+  overdue_count: number     // status = overdue
+  scheduled_count: number   // status = scheduled
+  avg_age_days: number
+  oldest_variance_days: number
+}
+
+/**
+ * 差异调整数据 (用于算法审计)
+ */
+export interface VarianceAdjustment {
+  factory_ship_adjustment: number  // 工厂出货调整量
+  ship_adjustment: number          // 物流发货调整量
+  variances: SupplyChainVariance[] // 关联的差异记录
+}
