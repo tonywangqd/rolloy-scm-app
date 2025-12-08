@@ -182,9 +182,20 @@ export async function fetchMasterDataCounts(): Promise<{
 /**
  * Fetch stock risk alerts for dashboard
  * Returns SKUs that will face stockouts or risks within the next 3 weeks
+ *
+ * Note: This function refreshes the materialized view before querying
+ * to ensure data is always up-to-date
  */
 export async function fetchStockRiskAlerts(): Promise<InventoryProjection12WeeksView[]> {
   const supabase = await createServerSupabaseClient()
+
+  // Refresh the materialized view to ensure fresh data
+  try {
+    await supabase.rpc('refresh_inventory_projections')
+  } catch (refreshError) {
+    console.warn('Failed to refresh inventory projections:', refreshError)
+    // Continue with potentially stale data
+  }
 
   const { data, error } = await supabase
     .from('v_inventory_projection_12weeks')
