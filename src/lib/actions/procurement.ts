@@ -90,8 +90,38 @@ export async function createPurchaseOrder(
       return { success: false, error: result.error_message || 'Unknown error' }
     }
 
+    const poId = result.po_id
+
+    // Auto-allocate forecasts for each PO item
+    try {
+      // Fetch PO items that were just created
+      const { data: poItems } = await supabase
+        .from('purchase_order_items')
+        .select('id, sku, channel_code, ordered_qty')
+        .eq('po_id', poId)
+
+      if (poItems && poItems.length > 0) {
+        // Auto-allocate each item to matching forecasts
+        for (const item of poItems) {
+          try {
+            await supabase.rpc('auto_allocate_forecast_to_po_item', {
+              p_po_item_id: item.id,
+              p_allocated_by: null, // System allocation
+            })
+          } catch (allocError) {
+            // Log but don't fail the PO creation
+            console.warn(`Auto-allocation failed for PO item ${item.id}:`, allocError)
+          }
+        }
+      }
+    } catch (autoAllocError) {
+      // Log but don't fail the PO creation
+      console.warn('Auto-allocation post-processing failed:', autoAllocError)
+    }
+
     revalidatePath('/procurement')
-    return { success: true, id: result.po_id }
+    revalidatePath('/planning/forecast-coverage')
+    return { success: true, id: poId }
   } catch (err) {
     return {
       success: false,

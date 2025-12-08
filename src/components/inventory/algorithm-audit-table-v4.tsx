@@ -237,8 +237,19 @@ interface TooltipProps {
 function Tooltip({ content, children }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false)
   const [delayTimeout, setDelayTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [position, setPosition] = useState<'top' | 'bottom'>('top')
+  const triggerRef = React.useRef<HTMLDivElement>(null)
 
   const handleMouseEnter = () => {
+    // Calculate best position for tooltip
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const spaceAbove = rect.top
+      const spaceBelow = window.innerHeight - rect.bottom
+      // If not enough space above (< 200px), show below
+      setPosition(spaceAbove < 200 && spaceBelow > spaceAbove ? 'bottom' : 'top')
+    }
+
     const timeout = setTimeout(() => {
       setIsVisible(true)
     }, 300)
@@ -253,7 +264,7 @@ function Tooltip({ content, children }: TooltipProps) {
   }
 
   return (
-    <div className="relative inline-block">
+    <div className="relative inline-block" ref={triggerRef}>
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -263,12 +274,21 @@ function Tooltip({ content, children }: TooltipProps) {
       </div>
       {isVisible && (
         <div
-          className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-4 bg-white border border-gray-200 rounded-lg shadow-xl"
+          className={`fixed z-[9999] w-80 max-w-[90vw] p-4 bg-white border border-gray-200 rounded-lg shadow-xl ${
+            position === 'top' ? 'transform -translate-x-1/2' : 'transform -translate-x-1/2'
+          }`}
+          style={{
+            left: triggerRef.current ? triggerRef.current.getBoundingClientRect().left + triggerRef.current.offsetWidth / 2 : 0,
+            ...(position === 'top'
+              ? { bottom: window.innerHeight - (triggerRef.current?.getBoundingClientRect().top || 0) + 8 }
+              : { top: (triggerRef.current?.getBoundingClientRect().bottom || 0) + 8 }
+            ),
+          }}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
-            <div className="border-8 border-transparent border-t-white"></div>
+          <div className={`absolute left-1/2 -translate-x-1/2 ${position === 'top' ? 'top-full -mt-1' : 'bottom-full -mb-1'}`}>
+            <div className={`border-8 border-transparent ${position === 'top' ? 'border-t-white' : 'border-b-white'}`}></div>
           </div>
           {content}
         </div>

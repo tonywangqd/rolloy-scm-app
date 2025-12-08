@@ -36,7 +36,7 @@ export default function NewPurchaseOrderPage() {
     po_number: '',
     batch_code: '',
     planned_order_date: new Date().toISOString().split('T')[0],
-    actual_order_date: '',
+    actual_order_date: new Date().toISOString().split('T')[0], // 默认为今天，确保PO出现在算法审计中
     planned_ship_date: '',
     remarks: '',
   })
