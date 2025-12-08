@@ -24,6 +24,7 @@ import {
   addWeeksToISOWeek,
   formatDateISO,
 } from '@/lib/utils'
+import { fetchVarianceAdjustmentsForAudit } from './supply-chain-variances'
 
 // ================================================================
 // TYPE DEFINITIONS
@@ -1635,6 +1636,10 @@ export async function fetchAlgorithmAuditV4(
     }
   }
 
+  // Step 1.5: Fetch variance adjustments for the week range
+  const weekRange = resultV3.rows.map((row) => row.week_iso)
+  const varianceAdjustments = await fetchVarianceAdjustmentsForAudit(sku, weekRange)
+
   // Step 2: Match sales demands to orders
   const demandCoverageMap = matchSalesDemandsToOrders(resultV3.rows, resultV3.leadTimes)
 
@@ -1683,12 +1688,28 @@ export async function fetchAlgorithmAuditV4(
     arrivalDetailMap.set(detail.arrival_week, existing)
   })
 
-  // Step 6: Enhance rows with V4 data
+  // Step 6: Enhance rows with V4 data and apply variance adjustments
   const rowsV4: AlgorithmAuditRowV4[] = resultV3.rows.map((row) => {
     const demandCoverage = demandCoverageMap.get(row.week_iso)
+    const varianceAdjustment = varianceAdjustments.get(row.week_iso)
+
+    // Apply variance adjustments to planned quantities
+    let adjusted_planned_factory_ship = row.planned_factory_ship
+    let adjusted_planned_ship = row.planned_ship
+
+    if (varianceAdjustment) {
+      adjusted_planned_factory_ship += varianceAdjustment.factory_ship_adjustment
+      adjusted_planned_ship += varianceAdjustment.ship_adjustment
+    }
 
     return {
       ...row,
+      // Apply variance adjustments
+      planned_factory_ship: adjusted_planned_factory_ship,
+      planned_ship: adjusted_planned_ship,
+      factory_ship_effective: row.actual_factory_ship || adjusted_planned_factory_ship,
+      ship_effective: row.actual_ship || adjusted_planned_ship,
+
       // Sales coverage
       sales_coverage_status: demandCoverage?.coverage_status || 'Unknown',
       sales_uncovered_qty: demandCoverage?.uncovered_qty || 0,
@@ -1717,6 +1738,17 @@ export async function fetchAlgorithmAuditV4(
   const totalOrdered = rowsV4.reduce((sum, row) => sum + row.actual_order, 0)
   const overallCoveragePercentage = totalDemand > 0 ? (totalOrdered / totalDemand) * 100 : 0
 
+  // Calculate variance statistics
+  let varianceCount = 0
+  let totalFactoryShipAdjustment = 0
+  let totalShipAdjustment = 0
+
+  varianceAdjustments.forEach((adjustment) => {
+    varianceCount += adjustment.variances.length
+    totalFactoryShipAdjustment += adjustment.factory_ship_adjustment
+    totalShipAdjustment += adjustment.ship_adjustment
+  })
+
   return {
     product: resultV3.product,
     rows: rowsV4,
@@ -1726,6 +1758,9 @@ export async function fetchAlgorithmAuditV4(
       total_demand: totalDemand,
       total_ordered: totalOrdered,
       overall_coverage_percentage: Math.round(overallCoveragePercentage * 100) / 100,
+      variance_count: varianceCount,
+      total_factory_ship_adjustment: totalFactoryShipAdjustment,
+      total_ship_adjustment: totalShipAdjustment,
     },
   }
 }
