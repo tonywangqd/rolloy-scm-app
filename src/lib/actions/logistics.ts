@@ -382,3 +382,160 @@ export async function deleteShipment(
     }
   }
 }
+
+/**
+ * Validate delivery allocation
+ * Checks if the requested quantity can be allocated from the delivery
+ */
+export async function validateDeliveryAllocation(
+  deliveryId: string,
+  requestedQty: number,
+  excludeShipmentId?: string
+): Promise<{ valid: boolean; availableQty: number; error?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { valid: false, availableQty: 0, error: authResult.error }
+    }
+
+    // Validate inputs
+    if (!deliveryId || requestedQty <= 0) {
+      return { valid: false, availableQty: 0, error: 'Invalid input parameters' }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Call validation RPC function
+    const { data, error } = await supabase.rpc('validate_delivery_allocation', {
+      p_delivery_id: deliveryId,
+      p_new_shipped_qty: requestedQty,
+      p_exclude_shipment_id: excludeShipmentId || null,
+    })
+
+    if (error) {
+      console.error('Error validating delivery allocation:', error)
+      return { valid: false, availableQty: 0, error: error.message }
+    }
+
+    if (!data || data.length === 0) {
+      return { valid: false, availableQty: 0, error: 'No validation result returned' }
+    }
+
+    const result = data[0]
+    return {
+      valid: result.is_valid,
+      availableQty: result.available_qty,
+      error: result.is_valid ? undefined : result.error_message,
+    }
+  } catch (error) {
+    console.error('Error validating delivery allocation:', error)
+    return { valid: false, availableQty: 0, error: 'Failed to validate allocation' }
+  }
+}
+
+/**
+ * Allocation item for creating shipment with deliveries
+ */
+interface ShipmentAllocationInput {
+  delivery_id: string
+  shipped_qty: number
+  remarks?: string | null
+}
+
+/**
+ * Create a new shipment with delivery allocations
+ * Uses atomic RPC function to ensure data consistency
+ * This replaces the legacy single-delivery shipment creation
+ */
+export async function createShipmentWithAllocations(
+  shipmentData: ShipmentData,
+  allocations: ShipmentAllocationInput[]
+): Promise<{ success: boolean; error?: string; data?: { id: string } }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate shipment data
+    const shipmentValidation = shipmentInsertSchema.safeParse(shipmentData)
+    if (!shipmentValidation.success) {
+      return {
+        success: false,
+        error: `Shipment validation error: ${shipmentValidation.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+      }
+    }
+
+    // Validate allocations
+    if (!allocations || allocations.length === 0) {
+      return {
+        success: false,
+        error: 'At least one delivery allocation is required',
+      }
+    }
+
+    // Validate each allocation
+    for (const allocation of allocations) {
+      if (!allocation.delivery_id || allocation.shipped_qty <= 0) {
+        return {
+          success: false,
+          error: 'Invalid allocation: delivery_id and shipped_qty must be valid',
+        }
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Convert allocations to JSONB format expected by the function
+    const allocationsJson = allocations.map((a) => ({
+      delivery_id: a.delivery_id,
+      shipped_qty: a.shipped_qty,
+      remarks: a.remarks || null,
+    }))
+
+    // Call RPC function for atomic operation
+    const { data, error } = await supabase.rpc('create_shipment_with_delivery_allocations', {
+      p_tracking_number: shipmentValidation.data.tracking_number,
+      p_batch_code: shipmentValidation.data.batch_code || null,
+      p_logistics_batch_code: shipmentValidation.data.logistics_batch_code || null,
+      p_destination_warehouse_id: shipmentValidation.data.destination_warehouse_id,
+      p_customs_clearance: shipmentValidation.data.customs_clearance,
+      p_logistics_plan: shipmentValidation.data.logistics_plan || null,
+      p_logistics_region: shipmentValidation.data.logistics_region || null,
+      p_planned_departure_date: shipmentValidation.data.planned_departure_date || null,
+      p_actual_departure_date: shipmentValidation.data.actual_departure_date || null,
+      p_planned_arrival_days: shipmentValidation.data.planned_arrival_days || null,
+      p_planned_arrival_date: shipmentValidation.data.planned_arrival_date || null,
+      p_actual_arrival_date: shipmentValidation.data.actual_arrival_date || null,
+      p_weight_kg: shipmentValidation.data.weight_kg || null,
+      p_unit_count: shipmentValidation.data.unit_count || null,
+      p_cost_per_kg_usd: shipmentValidation.data.cost_per_kg_usd || null,
+      p_surcharge_usd: shipmentValidation.data.surcharge_usd || 0,
+      p_tax_refund_usd: shipmentValidation.data.tax_refund_usd || 0,
+      p_remarks: shipmentValidation.data.remarks || null,
+      p_allocations: allocationsJson,
+    })
+
+    if (error) {
+      console.error('Error creating shipment with allocations:', error)
+      return { success: false, error: error.message }
+    }
+
+    // Check RPC function result
+    if (!data || data.length === 0) {
+      return { success: false, error: 'No response from database function' }
+    }
+
+    const result = data[0]
+    if (!result.success) {
+      return { success: false, error: result.error_message || 'Unknown error' }
+    }
+
+    revalidatePath('/logistics')
+    revalidatePath('/procurement/deliveries')
+    return { success: true, data: { id: result.shipment_id } }
+  } catch (error) {
+    console.error('Error creating shipment with allocations:', error)
+    return { success: false, error: 'Failed to create shipment' }
+  }
+}

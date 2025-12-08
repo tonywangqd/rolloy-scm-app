@@ -115,3 +115,107 @@ export async function getNextTrackingNumber(): Promise<string> {
   const nextNumber = (count || 0) + 1
   return `SHIP-${new Date().getFullYear()}-${nextNumber.toString().padStart(4, '0')}`
 }
+
+/**
+ * Fetch unshipped production deliveries
+ * Shows deliveries with remaining unshipped quantity
+ */
+export async function fetchUnshippedDeliveries(): Promise<
+  Array<{
+    delivery_id: string
+    delivery_number: string
+    sku: string
+    channel_code: string | null
+    po_number: string
+    batch_code: string
+    supplier_name: string | null
+    delivered_qty: number
+    shipped_qty: number
+    unshipped_qty: number
+    actual_delivery_date: string | null
+    days_since_delivery: number | null
+    product_name: string | null
+    spu: string | null
+    shipment_status: string
+    payment_status: string
+    created_at: string
+    updated_at: string
+  }>
+> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('v_unshipped_deliveries')
+    .select('*')
+    .order('actual_delivery_date', { ascending: false })
+    .order('delivery_number', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching unshipped deliveries:', error)
+    return []
+  }
+
+  return data || []
+}
+
+/**
+ * Fetch delivery allocations (shipment history for a delivery)
+ * Shows which shipments this delivery has been allocated to
+ */
+export async function fetchDeliveryAllocations(deliveryId: string): Promise<
+  Array<{
+    shipment_id: string
+    tracking_number: string
+    shipped_qty: number
+    allocated_at: string
+    actual_departure_date: string | null
+    planned_arrival_date: string | null
+    actual_arrival_date: string | null
+    remarks: string | null
+  }>
+> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase.rpc('get_delivery_allocations', {
+    p_delivery_id: deliveryId,
+  })
+
+  if (error) {
+    console.error('Error fetching delivery allocations:', error)
+    return []
+  }
+
+  return data || []
+}
+
+/**
+ * Fetch shipment source deliveries (delivery sources for a shipment)
+ * Shows which deliveries were combined into this shipment
+ */
+export async function fetchShipmentSourceDeliveries(shipmentId: string): Promise<
+  Array<{
+    delivery_id: string
+    delivery_number: string
+    po_number: string
+    batch_code: string
+    sku: string
+    shipped_qty: number
+    delivered_qty: number
+    delivery_date: string | null
+    supplier_name: string | null
+    remarks: string | null
+  }>
+> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase.rpc('get_shipment_source_deliveries', {
+    p_shipment_id: shipmentId,
+  })
+
+  if (error) {
+    console.error('Error fetching shipment source deliveries:', error)
+    return []
+  }
+
+  return data || []
+}

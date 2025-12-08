@@ -22,6 +22,7 @@ export type BalanceResolutionAction = 'defer' | 'create_carryover' | 'short_clos
 export type BalanceSourceType = 'po_item' | 'delivery' | 'shipment_item'
 export type InventoryAdjustmentType = 'cycle_count' | 'logistics_loss' | 'shipping_damage' | 'quality_hold' | 'theft' | 'found' | 'system_correction' | 'supplier_overage' | 'manual'
 export type ShipmentStatus = 'draft' | 'in_transit' | 'arrived' | 'finalized' | 'cancelled'
+export type DeliveryShipmentStatus = 'unshipped' | 'partial' | 'fully_shipped'
 
 // Forecast-Order Linkage Types
 export type ForecastCoverageStatus = 'UNCOVERED' | 'PARTIALLY_COVERED' | 'FULLY_COVERED' | 'OVER_COVERED' | 'CLOSED'
@@ -127,6 +128,11 @@ export type Database = {
         Insert: DeliveryDeletionAuditLogInsert
         Update: never
       }
+      delivery_shipment_allocations: {
+        Row: DeliveryShipmentAllocation
+        Insert: DeliveryShipmentAllocationInsert
+        Update: DeliveryShipmentAllocationUpdate
+      }
     }
     Views: {
       v_inventory_summary: {
@@ -155,6 +161,9 @@ export type Database = {
       }
       v_variance_pending_actions: {
         Row: VariancePendingActionsView
+      }
+      v_unshipped_deliveries: {
+        Row: UnshippedDeliveriesView
       }
     }
     Functions: {
@@ -249,6 +258,80 @@ export type Database = {
           forecast_id: string
           allocated_qty: number
           week_iso: string
+        }[]
+      }
+      validate_delivery_allocation: {
+        Args: {
+          p_delivery_id: string
+          p_new_shipped_qty: number
+          p_exclude_shipment_id?: string | null
+        }
+        Returns: {
+          is_valid: boolean
+          error_message: string
+          delivered_qty: number
+          existing_shipped_qty: number
+          available_qty: number
+        }[]
+      }
+      create_shipment_with_delivery_allocations: {
+        Args: {
+          p_tracking_number: string
+          p_batch_code?: string | null
+          p_logistics_batch_code?: string | null
+          p_destination_warehouse_id?: string | null
+          p_customs_clearance?: boolean
+          p_logistics_plan?: string | null
+          p_logistics_region?: string | null
+          p_planned_departure_date?: string | null
+          p_actual_departure_date?: string | null
+          p_planned_arrival_days?: number | null
+          p_planned_arrival_date?: string | null
+          p_actual_arrival_date?: string | null
+          p_weight_kg?: number | null
+          p_unit_count?: number | null
+          p_cost_per_kg_usd?: number | null
+          p_surcharge_usd?: number
+          p_tax_refund_usd?: number
+          p_remarks?: string | null
+          p_allocations?: unknown
+        }
+        Returns: {
+          success: boolean
+          shipment_id: string | null
+          error_message: string | null
+        }[]
+      }
+      get_delivery_allocations: {
+        Args: {
+          p_delivery_id: string
+        }
+        Returns: {
+          shipment_id: string
+          tracking_number: string
+          shipped_qty: number
+          allocated_at: string
+          actual_departure_date: string | null
+          planned_arrival_date: string | null
+          actual_arrival_date: string | null
+          remarks: string | null
+        }[]
+      }
+      get_shipment_source_deliveries: {
+        Args: {
+          p_shipment_id: string
+        }
+        Returns: {
+          delivery_id: string
+          delivery_number: string
+          po_number: string
+          batch_code: string
+          sku: string
+          shipped_qty: number
+          delivered_qty: number
+          delivery_date: string | null
+          supplier_name: string | null
+          remarks: string | null
         }[]
       }
     }
@@ -567,6 +650,9 @@ export interface ProductionDelivery {
   payment_month: string | null
   payment_status: PaymentStatus
   remarks: string | null
+  // Shipment tracking fields (new)
+  shipped_qty: number
+  shipment_status: DeliveryShipmentStatus
   created_at: string
   updated_at: string
 }
@@ -1742,4 +1828,105 @@ export interface AlgorithmAuditResultV4 {
     total_ordered: number
     overall_coverage_percentage: number
   }
+}
+
+// ================================================================
+// DELIVERY-SHIPMENT LINKAGE TYPES
+// ================================================================
+
+/**
+ * N:N junction table linking production_deliveries to shipments
+ * Enables flexible allocation: multiple deliveries -> one shipment, or one delivery -> multiple shipments
+ */
+export interface DeliveryShipmentAllocation {
+  id: string
+  delivery_id: string
+  shipment_id: string
+  shipped_qty: number
+  allocated_at: string
+  remarks: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DeliveryShipmentAllocationInsert {
+  id?: string
+  delivery_id: string
+  shipment_id: string
+  shipped_qty: number
+  remarks?: string | null
+}
+
+export interface DeliveryShipmentAllocationUpdate {
+  shipped_qty?: number
+  remarks?: string | null
+}
+
+/**
+ * View of unshipped production deliveries
+ * Shows deliveries with remaining unshipped quantity
+ */
+export interface UnshippedDeliveriesView {
+  delivery_id: string
+  delivery_number: string
+  sku: string
+  channel_code: string | null
+  po_number: string
+  batch_code: string
+  supplier_name: string | null
+  delivered_qty: number
+  shipped_qty: number
+  unshipped_qty: number
+  actual_delivery_date: string | null
+  days_since_delivery: number | null
+  product_name: string | null
+  spu: string | null
+  shipment_status: DeliveryShipmentStatus
+  payment_status: PaymentStatus
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Allocation request item for creating shipment with deliveries
+ */
+export interface ShipmentAllocationItem {
+  delivery_id: string
+  shipped_qty: number
+  remarks?: string | null
+}
+
+/**
+ * Extended delivery info with allocation details
+ */
+export interface DeliveryWithAllocations extends ProductionDelivery {
+  allocations: {
+    shipment_id: string
+    tracking_number: string
+    shipped_qty: number
+    allocated_at: string
+    actual_departure_date: string | null
+    planned_arrival_date: string | null
+    actual_arrival_date: string | null
+    remarks: string | null
+  }[]
+  unshipped_qty: number
+}
+
+/**
+ * Extended shipment info with source delivery details
+ */
+export interface ShipmentWithSourceDeliveries extends Shipment {
+  source_deliveries: {
+    delivery_id: string
+    delivery_number: string
+    po_number: string
+    batch_code: string
+    sku: string
+    shipped_qty: number
+    delivered_qty: number
+    delivery_date: string | null
+    supplier_name: string | null
+    remarks: string | null
+  }[]
 }

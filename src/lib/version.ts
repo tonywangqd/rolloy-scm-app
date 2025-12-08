@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.17.2',
+  number: '1.18.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-08 23:15',
+  updatedAt: '2025-12-08 23:45',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '修复算法审计表V3/V4重复计算问题 - 计划数据现反映待履行数量',
+  changelog: '实现物流发货与交货关联的后端逻辑 - N:N灵活分配',
 }
 
 // 格式化显示
