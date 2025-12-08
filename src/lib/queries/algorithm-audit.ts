@@ -1126,38 +1126,35 @@ export async function fetchAlgorithmAuditV3(
       plannedFactoryShipMapV3.set(factoryShipWeek, current + fulfillment.pending_qty)
     }
 
-    // Calculate planned ship week (after loading)
-    const shipWeek = factoryShipWeek
-      ? addWeeksToISOWeek(factoryShipWeek, leadTimesV3.loading_weeks)
-      : null
+    // ❌ 移除：不再从PO层计算planned_ship
+    // PO层的pending_qty代表"未生产"的数量，不是"待发货"数量
+    // planned_ship应该从Delivery层获取（工厂已出货但物流未发货）
+  })
+
+  // ================================================================
+  // ✅ CRITICAL FIX: 使用Delivery层计算planned_ship
+  // planned_ship = 工厂已出货但物流未发货的数量
+  // 来源：deliveryFulfillmentMap.pending_ship_qty (delivered_qty - shipped_qty)
+  // ================================================================
+  deliveryFulfillmentMap.forEach((fulfillment) => {
+    if (fulfillment.pending_ship_qty <= 0) return // 跳过已全部发货的
+
+    // 基于出货周 + loading_weeks 计算计划发货周
+    const shipWeek = addWeeksToISOWeek(fulfillment.delivery_week, leadTimesV3.loading_weeks)
     if (shipWeek) {
       const current = plannedShipMapV3.get(shipWeek) || 0
-      plannedShipMapV3.set(shipWeek, current + fulfillment.pending_qty)
+      plannedShipMapV3.set(shipWeek, current + fulfillment.pending_ship_qty)
     }
 
-    // Calculate planned arrival week (after shipping)
+    // 基于发货周 + shipping_weeks 计算计划到仓周
     const arrivalWeek = shipWeek
       ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
       : null
     if (arrivalWeek) {
       const current = plannedArrivalMapV3.get(arrivalWeek) || 0
-      plannedArrivalMapV3.set(arrivalWeek, current + fulfillment.pending_qty)
+      plannedArrivalMapV3.set(arrivalWeek, current + fulfillment.pending_ship_qty)
     }
   })
-
-  // ✅ FIX #1: 删除Delivery层的重复计划发货逻辑
-  // 说明：从PO层的pending_qty已经计算了planned_ship，不需要从Delivery层再次计算
-  // 这样避免了工厂已出货但物流未发货时的重复计数
-  // 原逻辑会导致：PO pending产生planned_ship + Delivery pending产生planned_ship = 重复
-
-  // ❌ 删除以下逻辑（已被注释）：
-  // deliveryFulfillmentMap.forEach((fulfillment) => {
-  //   if (fulfillment.pending_ship_qty <= 0) return
-  //   const shipWeek = addWeeksToISOWeek(fulfillment.delivery_week, leadTimesV3.loading_weeks)
-  //   // ... 这段逻辑会导致重复计算
-  // })
-
-  // 保持PO层的planned_ship计算（Lines 1119-1147）为唯一来源
 
   // ✅ FIX #2: 修正在途shipment的到仓时间计算逻辑
   // 说明：对于已发货但未到仓的shipment，应该基于实际发货周 + shipping_weeks计算到仓周
