@@ -995,15 +995,17 @@ export async function fetchAlgorithmAuditV3(
 
   // ================================================================
   // CRITICAL FIX: Calculate shipment fulfillment to prevent double-counting
-  // For each shipment, track: shipped_qty, arrived_qty, pending_arrival_qty
+  // For each shipment, track: shipped_qty, arrived status
+  // ✅ FIX #4: ShipmentFulfillment不再使用planned_arrival_week
+  // 说明：到仓周应该基于departure_week + shipping_weeks计算，而非planned_arrival_week
   // ================================================================
 
   interface ShipmentFulfillment {
     shipped_qty: number
-    arrived: boolean
-    departure_week: string
-    planned_arrival_week: string | null
-    actual_arrival_week: string | null
+    arrived: boolean          // 是否已到达
+    departure_week: string    // 实际发货周（用于计算到仓周）
+    // ✅ 移除planned_arrival_week和actual_arrival_week字段
+    // 到仓周通过 departure_week + shipping_weeks 动态计算
   }
   const shipmentFulfillmentMap = new Map<string, ShipmentFulfillment>()
 
@@ -1023,30 +1025,26 @@ export async function fetchAlgorithmAuditV3(
     const departureWeek = shipment.actual_departure_date
       ? getWeekFromDate(new Date(shipment.actual_departure_date))
       : null
-    const plannedArrivalWeek = shipment.planned_arrival_date
-      ? getWeekFromDate(new Date(shipment.planned_arrival_date))
-      : null
-    const actualArrivalWeek = shipment.actual_arrival_date
-      ? getWeekFromDate(new Date(shipment.actual_arrival_date))
-      : null
 
     if (departureWeek) {
       shipmentFulfillmentMap.set(shipment.id, {
         shipped_qty: totalShippedQty,
         arrived: !!shipment.actual_arrival_date,
         departure_week: departureWeek,
-        planned_arrival_week: plannedArrivalWeek,
-        actual_arrival_week: actualArrivalWeek,
+        // ✅ 不再存储planned/actual_arrival_week，由计算逻辑动态推导
       })
     }
   })
 
-  // Aggregate actual arrivals
+  // ✅ FIX #3: 分离actual_arrival的定义，只统计真正已到达的shipment
+  // 说明：原逻辑混用了actual_arrival_date和planned_arrival_date，导致actual_arrival包含了计划数据
+  // 修正后：actual_arrival只统计已到达的shipment（有actual_arrival_date的）
   const actualArrivalMapV3 = new Map<string, number>()
   shipmentsV3.forEach((shipment: any) => {
-    const arrivalDate = shipment.actual_arrival_date || shipment.planned_arrival_date
-    if (!arrivalDate) return
-    const arrivalWeek = getWeekFromDate(new Date(arrivalDate))
+    // ✅ 只使用actual_arrival_date，不再混用planned_arrival_date
+    if (!shipment.actual_arrival_date) return  // 跳过未到达的shipment
+
+    const arrivalWeek = getWeekFromDate(new Date(shipment.actual_arrival_date))
     const items = Array.isArray(shipment.shipment_items)
       ? shipment.shipment_items
       : [shipment.shipment_items]
@@ -1146,46 +1144,36 @@ export async function fetchAlgorithmAuditV3(
     }
   })
 
-  // For each delivery, calculate planned ship week based on pending_ship_qty
-  deliveryFulfillmentMap.forEach((fulfillment) => {
-    if (fulfillment.pending_ship_qty <= 0) return // Skip if fully shipped
+  // ✅ FIX #1: 删除Delivery层的重复计划发货逻辑
+  // 说明：从PO层的pending_qty已经计算了planned_ship，不需要从Delivery层再次计算
+  // 这样避免了工厂已出货但物流未发货时的重复计数
+  // 原逻辑会导致：PO pending产生planned_ship + Delivery pending产生planned_ship = 重复
 
-    // Calculate when this pending delivery should depart
-    const shipWeek = addWeeksToISOWeek(fulfillment.delivery_week, leadTimesV3.loading_weeks)
-    if (shipWeek) {
-      const existingPlanned = plannedShipMapV3.get(shipWeek) || 0
-      // Check if this shipWeek is already covered by PO-based planning
-      // If not, add the pending delivery quantity
-      // (This handles cases where delivery exists but no PO order tracking)
-      const existingFactoryPlan = plannedFactoryShipMapV3.get(fulfillment.delivery_week) || 0
-      if (existingFactoryPlan === 0) {
-        plannedShipMapV3.set(shipWeek, existingPlanned + fulfillment.pending_ship_qty)
+  // ❌ 删除以下逻辑（已被注释）：
+  // deliveryFulfillmentMap.forEach((fulfillment) => {
+  //   if (fulfillment.pending_ship_qty <= 0) return
+  //   const shipWeek = addWeeksToISOWeek(fulfillment.delivery_week, leadTimesV3.loading_weeks)
+  //   // ... 这段逻辑会导致重复计算
+  // })
 
-        // Also plan arrival
-        const arrivalWeek = addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
-        if (arrivalWeek) {
-          const existingArrival = plannedArrivalMapV3.get(arrivalWeek) || 0
-          plannedArrivalMapV3.set(arrivalWeek, existingArrival + fulfillment.pending_ship_qty)
-        }
-      }
-    }
-  })
+  // 保持PO层的planned_ship计算（Lines 1119-1147）为唯一来源
 
-  // For each in-transit shipment (departed but not arrived), plan arrival
+  // ✅ FIX #2: 修正在途shipment的到仓时间计算逻辑
+  // 说明：对于已发货但未到仓的shipment，应该基于实际发货周 + shipping_weeks计算到仓周
+  // 不应该使用planned_arrival_week，因为那是基于计划的，不是基于实际发货的
   shipmentFulfillmentMap.forEach((fulfillment) => {
-    if (fulfillment.arrived) return // Skip if already arrived
+    if (fulfillment.arrived) return // 跳过已到达的shipment
 
-    // Use planned arrival week if available, otherwise calculate from departure
-    const arrivalWeek = fulfillment.planned_arrival_week ||
-      addWeeksToISOWeek(fulfillment.departure_week, leadTimesV3.shipping_weeks)
+    // ✅ 始终基于实际发货周计算到仓周（而非使用planned_arrival_week）
+    const arrivalWeek = addWeeksToISOWeek(
+      fulfillment.departure_week,  // 使用实际发货周
+      leadTimesV3.shipping_weeks   // 加上运输周期
+    )
 
     if (arrivalWeek) {
-      // Check if this arrival is already covered by earlier planning stages
-      const existingShipPlan = plannedShipMapV3.get(fulfillment.departure_week) || 0
-      if (existingShipPlan === 0) {
-        const existingArrival = plannedArrivalMapV3.get(arrivalWeek) || 0
-        plannedArrivalMapV3.set(arrivalWeek, existingArrival + fulfillment.shipped_qty)
-      }
+      // 添加到计划到仓（planned_arrival）
+      const existing = plannedArrivalMapV3.get(arrivalWeek) || 0
+      plannedArrivalMapV3.set(arrivalWeek, existing + fulfillment.shipped_qty)
     }
   })
 
