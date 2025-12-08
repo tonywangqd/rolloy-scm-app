@@ -822,13 +822,13 @@ export async function fetchAlgorithmAuditV3(
         id,
         po_number,
         actual_order_date,
-        purchase_order_items!inner(sku, ordered_qty)
+        purchase_order_items!inner(id, sku, ordered_qty)
       `)
       .eq('purchase_order_items.sku', sku)
       .not('actual_order_date', 'is', null),
     supabase
       .from('production_deliveries')
-      .select('sku, delivered_qty, actual_delivery_date')
+      .select('id, sku, po_item_id, delivered_qty, actual_delivery_date')
       .eq('sku', sku)
       .not('actual_delivery_date', 'is', null),
     supabase
@@ -836,6 +836,7 @@ export async function fetchAlgorithmAuditV3(
       .select(`
         id,
         tracking_number,
+        production_delivery_id,
         planned_departure_date,
         actual_departure_date,
         planned_arrival_date,
@@ -869,7 +870,31 @@ export async function fetchAlgorithmAuditV3(
     actualSalesMapV3.set(a.week_iso, current + a.actual_qty)
   })
 
-  const actualOrderMapV3 = new Map<string, number>()
+  // ================================================================
+  // CRITICAL FIX: Calculate PO fulfillment status to prevent double-counting
+  // For each PO item, track: ordered_qty, delivered_qty, pending_qty
+  // Planned weeks should only show pending_qty (not yet fulfilled)
+  // ================================================================
+
+  // Build PO item fulfillment map: po_item_id -> { ordered, delivered, pending, order_week }
+  interface POItemFulfillment {
+    ordered_qty: number
+    delivered_qty: number
+    pending_qty: number
+    order_week: string
+    order_date: string
+  }
+  const poItemFulfillmentMap = new Map<string, POItemFulfillment>()
+
+  // Calculate delivered quantities per PO item from production_deliveries
+  const deliveriesByPOItem = new Map<string, number>()
+  productionDeliveriesV3.forEach((delivery: any) => {
+    if (!delivery.po_item_id) return
+    const current = deliveriesByPOItem.get(delivery.po_item_id) || 0
+    deliveriesByPOItem.set(delivery.po_item_id, current + delivery.delivered_qty)
+  })
+
+  // Build fulfillment status for each PO item
   purchaseOrdersV3.forEach((po) => {
     if (!po.actual_order_date) return
     const orderWeek = getWeekFromDate(new Date(po.actual_order_date))
@@ -879,11 +904,28 @@ export async function fetchAlgorithmAuditV3(
     items.forEach((item: any) => {
       if (!item || typeof item !== 'object' || !('sku' in item) || !('ordered_qty' in item)) return
       if (item.sku !== sku) return
-      const current = actualOrderMapV3.get(orderWeek) || 0
-      actualOrderMapV3.set(orderWeek, current + item.ordered_qty)
+
+      const delivered = deliveriesByPOItem.get(item.id) || 0
+      const pending = item.ordered_qty - delivered
+
+      poItemFulfillmentMap.set(item.id, {
+        ordered_qty: item.ordered_qty,
+        delivered_qty: delivered,
+        pending_qty: Math.max(0, pending), // Ensure non-negative
+        order_week: orderWeek,
+        order_date: po.actual_order_date,
+      })
     })
   })
 
+  // Aggregate actual orders (for order week display)
+  const actualOrderMapV3 = new Map<string, number>()
+  poItemFulfillmentMap.forEach((fulfillment) => {
+    const current = actualOrderMapV3.get(fulfillment.order_week) || 0
+    actualOrderMapV3.set(fulfillment.order_week, current + fulfillment.ordered_qty)
+  })
+
+  // Aggregate actual factory shipments (deliveries)
   const actualFactoryShipMapV3 = new Map<string, number>()
   productionDeliveriesV3.forEach((delivery) => {
     if (!delivery.actual_delivery_date) return
@@ -892,6 +934,50 @@ export async function fetchAlgorithmAuditV3(
     actualFactoryShipMapV3.set(deliveryWeek, current + delivery.delivered_qty)
   })
 
+  // ================================================================
+  // CRITICAL FIX: Calculate delivery fulfillment to prevent double-counting
+  // For each delivery, track: delivered_qty, shipped_qty, pending_ship_qty
+  // ================================================================
+
+  interface DeliveryFulfillment {
+    delivered_qty: number
+    shipped_qty: number
+    pending_ship_qty: number
+    delivery_week: string
+  }
+  const deliveryFulfillmentMap = new Map<string, DeliveryFulfillment>()
+
+  // Calculate shipped quantities per delivery from shipments
+  const shippedByDelivery = new Map<string, number>()
+  shipmentsV3.forEach((shipment: any) => {
+    if (!shipment.production_delivery_id) return
+    const items = Array.isArray(shipment.shipment_items)
+      ? shipment.shipment_items
+      : [shipment.shipment_items]
+    items.forEach((item: any) => {
+      if (!item || typeof item !== 'object' || !('sku' in item) || !('shipped_qty' in item)) return
+      if (item.sku !== sku) return
+      const current = shippedByDelivery.get(shipment.production_delivery_id) || 0
+      shippedByDelivery.set(shipment.production_delivery_id, current + item.shipped_qty)
+    })
+  })
+
+  // Build fulfillment status for each delivery
+  productionDeliveriesV3.forEach((delivery) => {
+    if (!delivery.actual_delivery_date) return
+    const deliveryWeek = getWeekFromDate(new Date(delivery.actual_delivery_date))
+    const shipped = shippedByDelivery.get(delivery.id) || 0
+    const pending = delivery.delivered_qty - shipped
+
+    deliveryFulfillmentMap.set(delivery.id, {
+      delivered_qty: delivery.delivered_qty,
+      shipped_qty: shipped,
+      pending_ship_qty: Math.max(0, pending),
+      delivery_week: deliveryWeek,
+    })
+  })
+
+  // Aggregate actual shipments (departures)
   const actualShipMapV3 = new Map<string, number>()
   shipmentsV3.forEach((shipment: any) => {
     if (!shipment.actual_departure_date) return
@@ -907,6 +993,55 @@ export async function fetchAlgorithmAuditV3(
     })
   })
 
+  // ================================================================
+  // CRITICAL FIX: Calculate shipment fulfillment to prevent double-counting
+  // For each shipment, track: shipped_qty, arrived_qty, pending_arrival_qty
+  // ================================================================
+
+  interface ShipmentFulfillment {
+    shipped_qty: number
+    arrived: boolean
+    departure_week: string
+    planned_arrival_week: string | null
+    actual_arrival_week: string | null
+  }
+  const shipmentFulfillmentMap = new Map<string, ShipmentFulfillment>()
+
+  shipmentsV3.forEach((shipment: any) => {
+    const items = Array.isArray(shipment.shipment_items)
+      ? shipment.shipment_items
+      : [shipment.shipment_items]
+
+    const totalShippedQty = items.reduce((sum: number, item: any) => {
+      if (!item || typeof item !== 'object' || !('sku' in item) || !('shipped_qty' in item)) return sum
+      if (item.sku !== sku) return sum
+      return sum + item.shipped_qty
+    }, 0)
+
+    if (totalShippedQty === 0) return
+
+    const departureWeek = shipment.actual_departure_date
+      ? getWeekFromDate(new Date(shipment.actual_departure_date))
+      : null
+    const plannedArrivalWeek = shipment.planned_arrival_date
+      ? getWeekFromDate(new Date(shipment.planned_arrival_date))
+      : null
+    const actualArrivalWeek = shipment.actual_arrival_date
+      ? getWeekFromDate(new Date(shipment.actual_arrival_date))
+      : null
+
+    if (departureWeek) {
+      shipmentFulfillmentMap.set(shipment.id, {
+        shipped_qty: totalShippedQty,
+        arrived: !!shipment.actual_arrival_date,
+        departure_week: departureWeek,
+        planned_arrival_week: plannedArrivalWeek,
+        actual_arrival_week: actualArrivalWeek,
+      })
+    }
+  })
+
+  // Aggregate actual arrivals
   const actualArrivalMapV3 = new Map<string, number>()
   shipmentsV3.forEach((shipment: any) => {
     const arrivalDate = shipment.actual_arrival_date || shipment.planned_arrival_date
@@ -970,126 +1105,97 @@ export async function fetchAlgorithmAuditV3(
     }
   })
 
-  // STEP 7: Reverse Calculation for Planned Quantities (from sales demand)
+  // STEP 7: Calculate Planned Quantities Based on Fulfillment Status
+  // ================================================================
+  // CRITICAL FIX: Planned quantities should reflect PENDING (unfulfilled) portions only
+  // This prevents double-counting when actual data exists
+  // ================================================================
+
   const plannedOrderMapV3 = new Map<string, number>()
   const plannedFactoryShipMapV3 = new Map<string, number>()
   const plannedShipMapV3 = new Map<string, number>()
   const plannedArrivalMapV3 = new Map<string, number>()
 
-  rowsV3.forEach((row) => {
-    const salesDemand = row.sales_effective
-    if (salesDemand <= 0) return
+  // For each PO item, calculate planned factory ship week based on pending_qty
+  poItemFulfillmentMap.forEach((fulfillment) => {
+    if (fulfillment.pending_qty <= 0) return // Skip if fully fulfilled
 
-    const arrivalWeek = addWeeksToISOWeek(row.week_iso, -leadTimesV3.safety_stock_weeks)
-    const shipWeek = arrivalWeek ? addWeeksToISOWeek(arrivalWeek, -leadTimesV3.shipping_weeks) : null
-    const factoryShipWeek = shipWeek ? addWeeksToISOWeek(shipWeek, -leadTimesV3.loading_weeks) : null
-    const orderWeek = factoryShipWeek
-      ? addWeeksToISOWeek(factoryShipWeek, -leadTimesV3.production_weeks)
-      : null
-
-    if (arrivalWeek) {
-      const current = plannedArrivalMapV3.get(arrivalWeek) || 0
-      plannedArrivalMapV3.set(arrivalWeek, current + salesDemand)
-    }
-    if (shipWeek) {
-      const current = plannedShipMapV3.get(shipWeek) || 0
-      plannedShipMapV3.set(shipWeek, current + salesDemand)
-    }
+    // Calculate when this pending order should ship from factory
+    const factoryShipWeek = addWeeksToISOWeek(fulfillment.order_week, leadTimesV3.production_weeks)
     if (factoryShipWeek) {
       const current = plannedFactoryShipMapV3.get(factoryShipWeek) || 0
-      plannedFactoryShipMapV3.set(factoryShipWeek, current + salesDemand)
+      plannedFactoryShipMapV3.set(factoryShipWeek, current + fulfillment.pending_qty)
     }
-    if (orderWeek) {
-      const current = plannedOrderMapV3.get(orderWeek) || 0
-      plannedOrderMapV3.set(orderWeek, current + salesDemand)
+
+    // Calculate planned ship week (after loading)
+    const shipWeek = factoryShipWeek
+      ? addWeeksToISOWeek(factoryShipWeek, leadTimesV3.loading_weeks)
+      : null
+    if (shipWeek) {
+      const current = plannedShipMapV3.get(shipWeek) || 0
+      plannedShipMapV3.set(shipWeek, current + fulfillment.pending_qty)
+    }
+
+    // Calculate planned arrival week (after shipping)
+    const arrivalWeek = shipWeek
+      ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
+      : null
+    if (arrivalWeek) {
+      const current = plannedArrivalMapV3.get(arrivalWeek) || 0
+      plannedArrivalMapV3.set(arrivalWeek, current + fulfillment.pending_qty)
     }
   })
 
-  // STEP 7.5: Forward Propagation from Actual Orders
-  // When an actual order is placed, propagate it forward through the supply chain
-  const forwardFactoryShipMapV3 = new Map<string, number>()
-  const forwardShipMapV3 = new Map<string, number>()
-  const forwardArrivalMapV3 = new Map<string, number>()
+  // For each delivery, calculate planned ship week based on pending_ship_qty
+  deliveryFulfillmentMap.forEach((fulfillment) => {
+    if (fulfillment.pending_ship_qty <= 0) return // Skip if fully shipped
 
-  rowsV3.forEach((row) => {
-    // Forward propagate from actual orders
-    if (row.actual_order > 0) {
-      // Order placed → factory ships after production_weeks
-      const factoryShipWeek = addWeeksToISOWeek(row.week_iso, leadTimesV3.production_weeks)
-      if (factoryShipWeek) {
-        const current = forwardFactoryShipMapV3.get(factoryShipWeek) || 0
-        forwardFactoryShipMapV3.set(factoryShipWeek, current + row.actual_order)
-      }
+    // Calculate when this pending delivery should depart
+    const shipWeek = addWeeksToISOWeek(fulfillment.delivery_week, leadTimesV3.loading_weeks)
+    if (shipWeek) {
+      const existingPlanned = plannedShipMapV3.get(shipWeek) || 0
+      // Check if this shipWeek is already covered by PO-based planning
+      // If not, add the pending delivery quantity
+      // (This handles cases where delivery exists but no PO order tracking)
+      const existingFactoryPlan = plannedFactoryShipMapV3.get(fulfillment.delivery_week) || 0
+      if (existingFactoryPlan === 0) {
+        plannedShipMapV3.set(shipWeek, existingPlanned + fulfillment.pending_ship_qty)
 
-      // Factory ships → departs port after loading_weeks
-      const shipWeek = factoryShipWeek
-        ? addWeeksToISOWeek(factoryShipWeek, leadTimesV3.loading_weeks)
-        : null
-      if (shipWeek) {
-        const current = forwardShipMapV3.get(shipWeek) || 0
-        forwardShipMapV3.set(shipWeek, current + row.actual_order)
-      }
-
-      // Departs → arrives after shipping_weeks
-      const arrivalWeek = shipWeek
-        ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
-        : null
-      if (arrivalWeek) {
-        const current = forwardArrivalMapV3.get(arrivalWeek) || 0
-        forwardArrivalMapV3.set(arrivalWeek, current + row.actual_order)
-      }
-    }
-
-    // Forward propagate from actual factory shipments (if no order tracking)
-    if (row.actual_factory_ship > 0) {
-      // Factory ships → departs port after loading_weeks
-      const shipWeek = addWeeksToISOWeek(row.week_iso, leadTimesV3.loading_weeks)
-      if (shipWeek) {
-        const existingForward = forwardShipMapV3.get(shipWeek) || 0
-        // Only add if not already tracked from orders
-        if (existingForward === 0) {
-          forwardShipMapV3.set(shipWeek, row.actual_factory_ship)
-        }
-      }
-
-      // Departs → arrives after shipping_weeks
-      const arrivalWeek = shipWeek
-        ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
-        : null
-      if (arrivalWeek) {
-        const existingForward = forwardArrivalMapV3.get(arrivalWeek) || 0
-        if (existingForward === 0) {
-          forwardArrivalMapV3.set(arrivalWeek, row.actual_factory_ship)
-        }
-      }
-    }
-
-    // Forward propagate from actual shipments (departures)
-    if (row.actual_ship > 0) {
-      const arrivalWeek = addWeeksToISOWeek(row.week_iso, leadTimesV3.shipping_weeks)
-      if (arrivalWeek) {
-        const existingForward = forwardArrivalMapV3.get(arrivalWeek) || 0
-        // Only add if not already tracked from earlier stages
-        if (existingForward === 0) {
-          forwardArrivalMapV3.set(arrivalWeek, row.actual_ship)
+        // Also plan arrival
+        const arrivalWeek = addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
+        if (arrivalWeek) {
+          const existingArrival = plannedArrivalMapV3.get(arrivalWeek) || 0
+          plannedArrivalMapV3.set(arrivalWeek, existingArrival + fulfillment.pending_ship_qty)
         }
       }
     }
   })
 
+  // For each in-transit shipment (departed but not arrived), plan arrival
+  shipmentFulfillmentMap.forEach((fulfillment) => {
+    if (fulfillment.arrived) return // Skip if already arrived
+
+    // Use planned arrival week if available, otherwise calculate from departure
+    const arrivalWeek = fulfillment.planned_arrival_week ||
+      addWeeksToISOWeek(fulfillment.departure_week, leadTimesV3.shipping_weeks)
+
+    if (arrivalWeek) {
+      // Check if this arrival is already covered by earlier planning stages
+      const existingShipPlan = plannedShipMapV3.get(fulfillment.departure_week) || 0
+      if (existingShipPlan === 0) {
+        const existingArrival = plannedArrivalMapV3.get(arrivalWeek) || 0
+        plannedArrivalMapV3.set(arrivalWeek, existingArrival + fulfillment.shipped_qty)
+      }
+    }
+  })
+
+  // STEP 7.5: Apply Planned Values to Rows
   rowsV3.forEach((row) => {
-    // Set planned values from reverse calculation (sales demand based)
+    // Set planned values from fulfillment-based calculation
     row.planned_order = plannedOrderMapV3.get(row.week_iso) || 0
-
-    // For factory_ship, ship, and arrival: use forward propagation from actuals if available
-    // Otherwise fall back to reverse calculation from sales demand
-    const forwardFactoryShip = forwardFactoryShipMapV3.get(row.week_iso) || 0
-    const forwardShip = forwardShipMapV3.get(row.week_iso) || 0
-    const forwardArrival = forwardArrivalMapV3.get(row.week_iso) || 0
-
-    row.planned_factory_ship = forwardFactoryShip || plannedFactoryShipMapV3.get(row.week_iso) || 0
-    row.planned_ship = forwardShip || plannedShipMapV3.get(row.week_iso) || 0
-    row.planned_arrival = forwardArrival || plannedArrivalMapV3.get(row.week_iso) || 0
+    row.planned_factory_ship = plannedFactoryShipMapV3.get(row.week_iso) || 0
+    row.planned_ship = plannedShipMapV3.get(row.week_iso) || 0
+    row.planned_arrival = plannedArrivalMapV3.get(row.week_iso) || 0
 
     // Effective values: use actual if available, otherwise planned
     row.order_effective = row.actual_order || row.planned_order

@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.17.1',
+  number: '1.17.2',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-08 10:31',
+  updatedAt: '2025-12-08 23:15',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '决策总览风险预警自动刷新物化视图',
+  changelog: '修复算法审计表V3/V4重复计算问题 - 计划数据现反映待履行数量',
 }
 
 // 格式化显示
