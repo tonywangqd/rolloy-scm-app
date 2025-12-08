@@ -99,8 +99,7 @@ export function VarianceTable({ data }: VarianceTableProps) {
     for (let i = 0; i < 12; i++) {
       const date = new Date(now)
       date.setDate(date.getDate() + i * 7)
-      const year = date.getFullYear()
-      const week = getISOWeek(date)
+      const { year, week } = getISOWeekAndYear(date)
       options.push(`${year}-W${String(week).padStart(2, '0')}`)
     }
     return options
@@ -363,11 +362,15 @@ export function VarianceTable({ data }: VarianceTableProps) {
   )
 }
 
-// Helper function to get ISO week number
-function getISOWeek(date: Date): number {
+// Helper function to get ISO week number and ISO week year
+// Note: ISO week year can differ from calendar year at year boundaries
+// e.g., Dec 31, 2024 might be Week 1 of 2025
+function getISOWeekAndYear(date: Date): { year: number; week: number } {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
   const dayNum = d.getUTCDay() || 7
   d.setUTCDate(d.getUTCDate() + 4 - dayNum)
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  const week = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  const year = d.getUTCFullYear() // Use the year from the Thursday of the week
+  return { year, week }
 }

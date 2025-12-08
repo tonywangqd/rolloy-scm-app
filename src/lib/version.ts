@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.22.0',
+  number: '1.22.1',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-08 22:30',
+  updatedAt: '2025-12-08 22:15',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '算法审计V4集成差异追踪数据 - 自动调整计划发货量',
+  changelog: '修复ISO周次跨年计算Bug - 使用ISO周年份避免年末周次错误',
 }
 
 // 格式化显示
