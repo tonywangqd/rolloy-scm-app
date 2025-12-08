@@ -1,6 +1,172 @@
-# Algorithm Audit V4 Implementation Summary
+# Implementation Summary
 
-## Date: 2025-12-05
+## Latest Update: 2025-12-08 - Algorithm Audit V3/V4 Double-Counting Fix
+
+### Critical Bug Fix
+
+**Problem**: Planned quantities were not deducted when actual data existed, causing supply chain quantities to be counted twice.
+
+**Example**:
+```
+PO-001: Ordered 50 units, planned factory ship W52
+Actual:
+  - W01: 45 units shipped
+  - W02: 5 units shipped
+
+Before Fix:
+  W52 planned_factory_ship: 50 units
+  W01 actual_factory_ship: 45 units
+  W02 actual_factory_ship: 5 units
+  Total: 50 + 45 + 5 = 100 units ❌ (double counting)
+
+After Fix:
+  W52 planned_factory_ship: 0 units (fully fulfilled)
+  W01 actual_factory_ship: 45 units
+  W02 actual_factory_ship: 5 units
+  Total: 0 + 45 + 5 = 50 units ✅ (correct)
+```
+
+### Root Cause
+
+Original V3 logic had three issues:
+1. Order aggregation (lines 872-885): Aggregated `ordered_qty` directly without considering fulfilled portions
+2. Planned calculation (lines 974-1006): Calculated planned quantities from sales demand independently
+3. Data merging (lines 1082-1099): Added planned and actual quantities directly, causing duplication
+
+### Solution
+
+**Core Principle**: Planned Qty = Pending Qty (unfulfilled portion only), not original ordered qty.
+
+#### Implementation Steps
+
+**1. Enhanced Data Queries (STEP 4, lines 819-846)**
+
+Added relationship ID fields:
+```typescript
+// Purchase Orders: add purchase_order_items.id
+purchase_order_items!inner(id, sku, ordered_qty)
+
+// Production Deliveries: add id, po_item_id
+select('id, sku, po_item_id, delivered_qty, actual_delivery_date')
+
+// Shipments: add production_delivery_id
+select('id, tracking_number, production_delivery_id, ...')
+```
+
+**2. PO Fulfillment Tracking (STEP 5, lines 872-925)**
+
+```typescript
+interface POItemFulfillment {
+  ordered_qty: number       // Original order quantity
+  delivered_qty: number     // Actually delivered quantity
+  pending_qty: number       // Pending delivery ← KEY
+  order_week: string
+  order_date: string
+}
+
+// Calculate pending_qty = ordered_qty - delivered_qty
+// Only pending_qty shows in planned factory ship week
+```
+
+**3. Delivery Fulfillment Tracking (STEP 5, lines 936-977)**
+
+```typescript
+interface DeliveryFulfillment {
+  delivered_qty: number     // Factory shipped quantity
+  shipped_qty: number       // Actually loaded quantity
+  pending_ship_qty: number  // Pending shipment ← KEY
+  delivery_week: string
+}
+```
+
+**4. Shipment Fulfillment Tracking (STEP 5, lines 995-1058)**
+
+```typescript
+interface ShipmentFulfillment {
+  shipped_qty: number               // Shipped quantity
+  arrived: boolean                  // Already arrived ← KEY
+  departure_week: string
+  planned_arrival_week: string | null
+  actual_arrival_week: string | null
+}
+```
+
+**5. Recalculated Planned Quantities (STEP 7, lines 1107-1189)**
+
+Old logic (deleted):
+```typescript
+// Problem: Calculated from sales demand, ignored fulfillment
+plannedFactoryShipMapV3.set(factoryShipWeek, current + salesDemand)
+```
+
+New logic:
+```typescript
+// 1. Calculate from PO pending_qty
+poItemFulfillmentMap.forEach((fulfillment) => {
+  if (fulfillment.pending_qty <= 0) return  // Skip if fully fulfilled
+  plannedFactoryShipMapV3.set(
+    factoryShipWeek,
+    current + fulfillment.pending_qty  // Use pending_qty, not ordered_qty
+  )
+})
+
+// 2. Calculate from delivery pending_ship_qty
+deliveryFulfillmentMap.forEach((fulfillment) => {
+  if (fulfillment.pending_ship_qty <= 0) return
+  // ...
+})
+
+// 3. Calculate from in-transit shipments
+shipmentFulfillmentMap.forEach((fulfillment) => {
+  if (fulfillment.arrived) return  // Skip if arrived
+  // ...
+})
+```
+
+### Impact
+
+**Direct Impact**:
+- Algorithm Audit V3 page: Data display fixed
+- Algorithm Audit V4 page: Automatically inherits fix (built on V3)
+
+**Indirect Impact**:
+- Inventory projection accuracy improved
+- Replenishment suggestions accuracy improved
+
+**No Impact**:
+- Purchase order management
+- Logistics management
+- Other pages not using algorithm audit data
+
+### Files Changed
+
+```
+Commit: 31382eb
+Date: 2025-12-08 23:15 CST
+Files:
+  - src/lib/queries/algorithm-audit.ts (+368 -103)
+  - src/lib/version.ts (v1.17.2)
+  - docs/algorithm-audit-v3-fix-validation.md (new)
+```
+
+### Testing
+
+✅ Build successful: `npm run build` passed
+✅ TypeScript compilation passed
+✅ No breaking changes
+✅ Data consistency validated
+
+### Validation Document
+
+See `/Users/tony/Desktop/rolloy-scm/docs/algorithm-audit-v3-fix-validation.md` for:
+- Detailed test scenarios
+- Validation methods
+- Regression checklist
+- Frontend tooltip enhancement suggestions
+
+---
+
+## Previous Implementation: Algorithm Audit V4 (2025-12-05)
 
 ## Implementation Overview
 
