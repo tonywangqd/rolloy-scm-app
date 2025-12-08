@@ -403,10 +403,10 @@ ON CONFLICT (source_type, source_id) DO NOTHING;
 
 COMMENT ON TABLE supply_chain_variances IS 'Migration 20251208000002: Supply chain variance tracking system - 供应链差异追踪系统';
 COMMENT ON COLUMN supply_chain_variances.source_type IS '差异类型：order_to_delivery (下单→出货) | delivery_to_ship (出货→发货) | ship_to_arrival (发货→到货)';
-COMMENT ON COLUMN supply_chain_variances.pending_qty IS '剩余待解决数量 (自动计算 = planned_qty - fulfilled_qty)';
+-- Note: pending_qty is calculated in view as (planned_qty - fulfilled_qty)
 COMMENT ON COLUMN supply_chain_variances.planned_week IS '用户可调整的预计处理周 (ISO format: YYYY-WW)';
 COMMENT ON COLUMN supply_chain_variances.status IS '状态：pending | scheduled | partial | completed | cancelled | overdue';
-COMMENT ON COLUMN supply_chain_variances.priority IS '优先级 (自动计算)：Critical | High | Medium | Low';
+COMMENT ON COLUMN supply_chain_variances.priority IS '优先级 (由trigger自动计算)：Critical | High | Medium | Low';
 
 -- =====================================================================
 -- Migration complete
