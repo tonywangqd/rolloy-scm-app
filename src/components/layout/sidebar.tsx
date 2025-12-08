@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Calculator,
   Target,
+  AlertTriangle,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -32,6 +33,18 @@ const navigation = [
     href: '/procurement',
     icon: ShoppingCart,
     description: 'Procurement',
+    subItems: [
+      {
+        name: '订单管理',
+        href: '/procurement',
+        icon: ShoppingCart,
+      },
+      {
+        name: '差异追踪',
+        href: '/procurement/variances',
+        icon: AlertTriangle,
+      },
+    ],
   },
   {
     name: '物流管理',
@@ -106,7 +119,7 @@ interface NavItem {
 export function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['库存管理', '计划管理']))
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['库存管理', '计划管理', '采购管理']))
 
   const toggleExpand = (itemName: string) => {
     const newExpanded = new Set(expandedItems)
