@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.18.0',
+  number: '1.19.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-08 23:45',
+  updatedAt: '2025-12-09 00:30',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '实现物流发货与交货关联的后端逻辑 - N:N灵活分配',
+  changelog: '改造物流发货新建页面支持从交货记录创建 - 三步向导流程',
 }
 
 // 格式化显示
