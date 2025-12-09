@@ -78,19 +78,19 @@ ON CONFLICT (sku, channel_code, week_iso) DO UPDATE SET
 -- ============================================================
 -- 假设 W47 期初库存 50台
 INSERT INTO inventory_snapshots (
-  sku, channel_code, warehouse_id, qty_on_hand, snapshot_date
+  sku, warehouse_id, qty_on_hand, last_counted_at
 )
 SELECT
   'MRP-TEST-SKU',
-  'AMZ-US',
   w.id,
   50,  -- 期初库存 50台
-  '2025-11-17'  -- W47 周一
+  '2025-11-17'::timestamp  -- W47 周一
 FROM warehouses w
 WHERE w.warehouse_code = 'FBA-ONT8'  -- 使用 Ontario 仓库
 LIMIT 1
-ON CONFLICT (sku, channel_code, warehouse_id, snapshot_date) DO UPDATE SET
-  qty_on_hand = EXCLUDED.qty_on_hand;
+ON CONFLICT (sku, warehouse_id) DO UPDATE SET
+  qty_on_hand = EXCLUDED.qty_on_hand,
+  last_counted_at = EXCLUDED.last_counted_at;
 
 -- ============================================================
 -- 4. 创建采购订单 (PO - Purchase Order)
@@ -360,7 +360,7 @@ SELECT
   '库存' AS type,
   sku,
   qty_on_hand,
-  snapshot_date
+  last_counted_at
 FROM inventory_snapshots WHERE sku = 'MRP-TEST-SKU';
 
 -- ============================================================
