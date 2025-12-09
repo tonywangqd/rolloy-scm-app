@@ -54,7 +54,7 @@ INSERT INTO sales_forecasts (
   forecast_qty, is_closed, close_reason
 ) VALUES (
   'MRP-TEST-SKU',
-  'FBA',
+  'AMZ-US',
   '2025-W50',
   '2025-12-08',  -- W50 周一
   '2025-12-14',  -- W50 周日
@@ -67,9 +67,9 @@ INSERT INTO sales_forecasts (
 -- 额外添加 W49-W52 的预测，便于观察周转周数
 INSERT INTO sales_forecasts (sku, channel_code, week_iso, week_start_date, week_end_date, forecast_qty, is_closed)
 VALUES
-  ('MRP-TEST-SKU', 'FBA', '2025-W49', '2025-12-01', '2025-12-07', 80, false),
-  ('MRP-TEST-SKU', 'FBA', '2025-W51', '2025-12-15', '2025-12-21', 90, false),
-  ('MRP-TEST-SKU', 'FBA', '2025-W52', '2025-12-22', '2025-12-28', 85, false)
+  ('MRP-TEST-SKU', 'AMZ-US', '2025-W49', '2025-12-01', '2025-12-07', 80, false),
+  ('MRP-TEST-SKU', 'AMZ-US', '2025-W51', '2025-12-15', '2025-12-21', 90, false),
+  ('MRP-TEST-SKU', 'AMZ-US', '2025-W52', '2025-12-22', '2025-12-28', 85, false)
 ON CONFLICT (sku, channel_code, week_iso) DO UPDATE SET
   forecast_qty = EXCLUDED.forecast_qty;
 
@@ -82,7 +82,7 @@ INSERT INTO inventory_snapshots (
 )
 SELECT
   'MRP-TEST-SKU',
-  'FBA',
+  'AMZ-US',
   w.id,
   50,  -- 期初库存 50台
   '2025-11-17'  -- W47 周一
@@ -134,7 +134,7 @@ BEGIN
   ) VALUES (
     v_po_id,
     'MRP-TEST-SKU',
-    'FBA',
+    'AMZ-US',
     60,   -- 实际下单量
     60,   -- 已全部交付 (35 + 25 = 60)
     10.00
@@ -173,7 +173,7 @@ BEGIN
     'MRP-TEST-OF1-2025W44',
     v_po_item_id,
     'MRP-TEST-SKU',
-    'FBA',
+    'AMZ-US',
     35,
     '2025-10-27',  -- W44 计划 (W38 + 6周 = W44)
     '2025-10-27',  -- W44 实际完工
@@ -195,7 +195,7 @@ BEGIN
     'MRP-TEST-OF2-2025W45',
     v_po_item_id,
     'MRP-TEST-SKU',
-    'FBA',
+    'AMZ-US',
     25,
     '2025-11-03',  -- W45 计划
     '2025-11-03',  -- W45 实际完工
