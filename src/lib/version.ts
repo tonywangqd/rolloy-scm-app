@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.23.2',
+  number: '1.23.4',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-09 19:17',
+  updatedAt: '2025-12-09 20:30',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '修复V4重复计算 - 移除variance adjustment避免与shipment数据重叠',
+  changelog: 'style: 算法审计页面UI优化 - 改进数据溯源视觉标识和库存状态颜色编码',
 }
 
 // 格式化显示

@@ -1058,9 +1058,22 @@ export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
               </td>
 
               {/* Factory Ship Group - 3 columns */}
-              <td className="px-2 py-2 text-right">
+              <td
+                className={`px-2 py-2 text-right ${
+                  row.planned_factory_ship > 0 && row.planned_factory_ship_source && row.planned_factory_ship_source.length > 0
+                    ? 'bg-blue-50 text-blue-900'
+                    : 'text-gray-700'
+                }`}
+              >
                 <DataProvenanceTooltip columnType="factory_ship_planned" rowData={row}>
-                  {formatValue(row.planned_factory_ship)}
+                  <span className="flex items-center justify-end gap-1">
+                    {formatValue(row.planned_factory_ship)}
+                    {row.planned_factory_ship > 0 && row.planned_factory_ship_source && row.planned_factory_ship_source.length > 0 && (
+                      <span className="text-[10px] text-blue-600" title="基于数据传播计算">
+                        ⓘ
+                      </span>
+                    )}
+                  </span>
                 </DataProvenanceTooltip>
               </td>
               <td
@@ -1081,9 +1094,22 @@ export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
               </td>
 
               {/* Ship Group - 3 columns */}
-              <td className="px-2 py-2 text-right">
+              <td
+                className={`px-2 py-2 text-right ${
+                  row.planned_ship > 0 && row.planned_ship_source && row.planned_ship_source.length > 0
+                    ? 'bg-blue-50 text-blue-900'
+                    : 'text-gray-700'
+                }`}
+              >
                 <DataProvenanceTooltip columnType="ship_planned" rowData={row}>
-                  {formatValue(row.planned_ship)}
+                  <span className="flex items-center justify-end gap-1">
+                    {formatValue(row.planned_ship)}
+                    {row.planned_ship > 0 && row.planned_ship_source && row.planned_ship_source.length > 0 && (
+                      <span className="text-[10px] text-blue-600" title="基于数据传播计算">
+                        ⓘ
+                      </span>
+                    )}
+                  </span>
                 </DataProvenanceTooltip>
               </td>
               <td
@@ -1104,9 +1130,22 @@ export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
               </td>
 
               {/* Arrival Group - 3 columns */}
-              <td className="px-2 py-2 text-right">
+              <td
+                className={`px-2 py-2 text-right ${
+                  row.planned_arrival > 0 && row.planned_arrival_source && row.planned_arrival_source.length > 0
+                    ? 'bg-blue-50 text-blue-900'
+                    : 'text-gray-700'
+                }`}
+              >
                 <DataProvenanceTooltip columnType="arrival_planned" rowData={row}>
-                  {formatValue(row.planned_arrival)}
+                  <span className="flex items-center justify-end gap-1">
+                    {formatValue(row.planned_arrival)}
+                    {row.planned_arrival > 0 && row.planned_arrival_source && row.planned_arrival_source.length > 0 && (
+                      <span className="text-[10px] text-blue-600" title="基于数据传播计算">
+                        ⓘ
+                      </span>
+                    )}
+                  </span>
                 </DataProvenanceTooltip>
               </td>
               <td
@@ -1127,19 +1166,29 @@ export function AlgorithmAuditTableV4({ rows }: AlgorithmAuditTableV4Props) {
               </td>
 
               {/* Inventory Group - 4 columns */}
-              <td className="px-2 py-2 text-right text-gray-700">
+              <td className="px-2 py-2 text-right">
                 <DataProvenanceTooltip columnType="inventory_opening" rowData={row}>
-                  {row.opening_stock}
+                  <span className="text-gray-700">{row.opening_stock}</span>
                 </DataProvenanceTooltip>
               </td>
-              <td className="px-2 py-2 text-right font-bold text-gray-900">
+              <td className="px-2 py-2 text-right">
                 <DataProvenanceTooltip columnType="inventory_closing" rowData={row}>
-                  {row.closing_stock}
+                  <span
+                    className={`font-bold ${
+                      row.closing_stock < row.safety_threshold
+                        ? row.stock_status === 'Stockout'
+                          ? 'text-red-600'
+                          : 'text-orange-600'
+                        : 'text-green-600'
+                    }`}
+                  >
+                    {row.closing_stock}
+                  </span>
                 </DataProvenanceTooltip>
               </td>
-              <td className="px-2 py-2 text-right text-gray-500 text-xs">
+              <td className="px-2 py-2 text-right">
                 <DataProvenanceTooltip columnType="inventory_safety" rowData={row}>
-                  {Math.round(row.safety_threshold)}
+                  <span className="text-xs text-gray-500">{Math.round(row.safety_threshold)}</span>
                 </DataProvenanceTooltip>
               </td>
               <td className="px-2 py-2 text-center">

@@ -253,38 +253,51 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
       {/* Legend Card */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-wrap gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-gray-50 border border-gray-300 rounded"></div>
-              <span className="text-gray-600">过去周次</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-50 border border-blue-300 rounded"></div>
-              <span className="text-gray-600">当前周</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-green-50 border border-green-300 rounded"></div>
-              <span className="text-gray-600">实际数据</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="px-2 py-1 bg-white border border-gray-300 rounded font-bold text-xs">
-                取值
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-gray-50 border border-gray-300 rounded"></div>
+                <span className="text-gray-600">过去周次</span>
               </div>
-              <span className="text-gray-600">
-                取值列 = COALESCE(实际, 预计) - 用于库存计算
-              </span>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-blue-50 border border-blue-300 rounded"></div>
+                <span className="text-gray-600">当前周</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-green-50 border border-green-300 rounded"></div>
+                <span className="text-gray-600">实际数据 (绿色背景)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-blue-50 border border-blue-300 rounded flex items-center justify-center">
+                  <span className="text-[8px] text-blue-600">ⓘ</span>
+                </div>
+                <span className="text-gray-600">计算数据 (蓝色背景 + ⓘ图标)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="px-2 py-1 bg-white border border-gray-300 rounded font-bold text-xs">
+                  取值
+                </div>
+                <span className="text-gray-600">
+                  取值列 = COALESCE(实际, 预计) - 用于库存计算
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="success">✓ 全覆盖</Badge>
-              <span className="text-gray-600">需求完全被订单覆盖</span>
+            <div className="flex flex-wrap gap-6 text-sm border-t border-gray-200 pt-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="success">✓ 全覆盖</Badge>
+                <span className="text-gray-600">需求完全被订单覆盖</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="warning">⚠ 部分</Badge>
+                <span className="text-gray-600">需求部分覆盖，点击查看缺口</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="danger">✗ 未覆盖</Badge>
+                <span className="text-gray-600">需求未被任何订单覆盖</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="warning">⚠ 部分</Badge>
-              <span className="text-gray-600">需求部分覆盖，点击查看缺口</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="danger">✗ 未覆盖</Badge>
-              <span className="text-gray-600">需求未被任何订单覆盖</span>
+            <div className="text-xs text-gray-500 border-t border-gray-200 pt-3">
+              提示：悬停在数值上可查看详细的数据来源和计算逻辑。"预计"列带有 ⓘ 图标表示该数据通过算法传播计算得出。
             </div>
           </div>
         </CardContent>

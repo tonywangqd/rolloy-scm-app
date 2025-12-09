@@ -1759,38 +1759,60 @@ export async function fetchAlgorithmAuditV4(
   })
 
   // Step 6: Enhance rows with V4 data
-  // ✅ FIX: 不再应用 variance adjustment，因为 V3 已经从 shipment 正确计算了 pending 数量
-  // variance adjustment 会导致重复计算（variance 数据和实际 shipment 数据重叠）
+  // ✅ CRITICAL FIX: 直接使用 V3 的正确计算结果，不应用 variance adjustment
+  //
+  // 修复说明：
+  // 1. V3 已经从 shipment_items 正确计算了 planned_ship = totalDelivered - totalShippedFromShipments
+  // 2. variance adjustment 是差异追踪工具，不应用于修正 planned 数量
+  // 3. 应用 variance 会导致重复计算，因为 V3 的计算已经包含了实际的 pending 数量
+  //
+  // PSI 核心逻辑：
+  // - 期初库存 = 上周期末库存
+  // - 到仓取值 = COALESCE(actual_arrival, planned_arrival)
+  // - 销售取值 = COALESCE(actual_sales, forecast_sales)
+  // - 期末库存 = 期初 + 到仓 - 销售
   const rowsV4: AlgorithmAuditRowV4[] = resultV3.rows.map((row) => {
     const demandCoverage = demandCoverageMap.get(row.week_iso)
-    const varianceAdjustment = varianceAdjustments.get(row.week_iso)
 
-    // ❌ 不再应用 variance adjustments，直接使用 V3 的计算结果
-    // 之前的代码会导致重复计算：
-    // - V3 已经计算了 planned_ship = totalDelivered - totalShipped (待发货)
-    // - variance 又会加上 ship_adjustment (差异数量)
-    // - 结果：planned_ship 被重复加
+    // ✅ 直接使用 V3 的值，不做任何 adjustment
+    // V3 的计算逻辑已经正确：
+    // - actual_factory_ship: 从 production_deliveries 统计
+    // - actual_ship: 从 shipments (actual_departure_date) 统计
+    // - actual_arrival: 从 shipments (actual_arrival_date) 统计
+    // - planned_ship: totalDelivered - totalShippedFromShipments (待发货)
+    // - planned_arrival: 在途货物 (已发货但未到仓) + planned_ship (预计发货后到仓)
+
+    // ✅ Effective 值使用 COALESCE 逻辑 (PSI 标准算法)
+    const factory_ship_effective = row.actual_factory_ship || row.planned_factory_ship
+    const ship_effective = row.actual_ship || row.planned_ship
+    const arrival_effective = row.actual_arrival || row.planned_arrival
 
     return {
       ...row,
-      // 直接使用 V3 的 planned 值，不做 adjustment
-      // V3 的 planned_ship 已经基于 shipment_items 正确计算
-      factory_ship_effective: row.actual_factory_ship || row.planned_factory_ship,
-      ship_effective: row.actual_ship || row.planned_ship,
+      // 使用 COALESCE 逻辑计算 effective 值
+      factory_ship_effective,
+      ship_effective,
+      arrival_effective,
 
-      // Sales coverage
+      // Sales coverage analysis
       sales_coverage_status: demandCoverage?.coverage_status || 'Unknown',
       sales_uncovered_qty: demandCoverage?.uncovered_qty || 0,
 
-      // Lineage metadata (simplified - can be enhanced with actual propagation sources)
+      // Lineage metadata (追踪数据来源)
       planned_factory_ship_source: row.actual_factory_ship > 0
         ? [{ source_type: 'actual_factory_ship' as const, source_week: row.week_iso, confidence: 'high' as const }]
+        : row.planned_factory_ship > 0
+        ? [{ source_type: 'reverse_calc' as const, source_week: row.week_iso, confidence: 'medium' as const }]
         : undefined,
       planned_ship_source: row.actual_ship > 0
         ? [{ source_type: 'actual_ship' as const, source_week: row.week_iso, confidence: 'high' as const }]
+        : row.planned_ship > 0
+        ? [{ source_type: 'reverse_calc' as const, source_week: row.week_iso, confidence: 'medium' as const }]
         : undefined,
       planned_arrival_source: row.actual_arrival > 0
         ? [{ source_type: 'actual_arrival' as const, source_week: row.week_iso, confidence: 'high' as const }]
+        : row.planned_arrival > 0
+        ? [{ source_type: 'reverse_calc' as const, source_week: row.week_iso, confidence: 'medium' as const }]
         : undefined,
 
       // Detailed data (for expandable rows)
