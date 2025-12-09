@@ -25,6 +25,17 @@
 -- DELETE FROM products WHERE sku = 'MRP-TEST-SKU';
 
 -- ============================================================
+-- 0.5 确保基础数据存在 (仓库和供应商)
+-- ============================================================
+INSERT INTO warehouses (warehouse_code, warehouse_name, warehouse_type, region, is_active)
+VALUES ('FBA-ONT8', 'FBA Ontario 8', 'FBA', 'West', true)
+ON CONFLICT (warehouse_code) DO NOTHING;
+
+INSERT INTO suppliers (supplier_code, supplier_name, is_active)
+VALUES ('SUP-001', 'Shenzhen Factory A', true)
+ON CONFLICT (supplier_code) DO NOTHING;
+
+-- ============================================================
 -- 1. 创建测试产品
 -- ============================================================
 INSERT INTO products (
@@ -223,12 +234,19 @@ DECLARE
   v_delivery_id_1 UUID;
   v_delivery_id_2 UUID;
 BEGIN
-  -- 获取仓库ID
+  -- 获取仓库ID (必须存在)
   SELECT id INTO v_warehouse_id FROM warehouses WHERE warehouse_code = 'FBA-ONT8' LIMIT 1;
+  IF v_warehouse_id IS NULL THEN
+    RAISE EXCEPTION 'Warehouse FBA-ONT8 not found! Please ensure warehouse exists.';
+  END IF;
 
   -- 获取 delivery IDs
   SELECT id INTO v_delivery_id_1 FROM production_deliveries WHERE delivery_number = 'MRP-TEST-OF1-2025W44';
   SELECT id INTO v_delivery_id_2 FROM production_deliveries WHERE delivery_number = 'MRP-TEST-OF2-2025W45';
+
+  IF v_delivery_id_1 IS NULL OR v_delivery_id_2 IS NULL THEN
+    RAISE EXCEPTION 'Delivery records not found! Please ensure deliveries were created.';
+  END IF;
 
   -- 创建 Shipment (OS)
   INSERT INTO shipments (
