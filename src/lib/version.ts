@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.23.1',
+  number: '1.23.2',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-09 19:11',
+  updatedAt: '2025-12-09 19:17',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '修复planned_ship重复计算 - 从shipment_items反向计算真正的pending_ship数量',
+  changelog: '修复V4重复计算 - 移除variance adjustment避免与shipment数据重叠',
 }
 
 // 格式化显示

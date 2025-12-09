@@ -1195,32 +1195,24 @@ export async function fetchAlgorithmAuditV3(
   // 计算真正的待发货总量
   const actualPendingShipTotal = Math.max(0, totalDelivered - totalShippedFromShipments)
 
-  // 如果有待发货数量，按最晚出货的 delivery 分配预计发货周
+  // 如果有待发货数量，基于当前周计算预计发货周和到仓周
+  // 注意：只放到 planned_ship，不放到 planned_arrival
+  // 因为 planned_arrival 会由已发货的 shipment 单独计算（在途货物）
   if (actualPendingShipTotal > 0) {
-    // 找到最晚的 delivery（假设未发货的都在最后一批）
-    let latestDeliveryWeek: string | null = null
-    deliveryFulfillmentMap.forEach((fulfillment) => {
-      if (!latestDeliveryWeek || fulfillment.delivery_week > latestDeliveryWeek) {
-        latestDeliveryWeek = fulfillment.delivery_week
-      }
-    })
+    // 基于当前周 + loading_weeks 计算计划发货周（假设尽快发货）
+    const shipWeek = addWeeksToISOWeek(currentWeekV3, leadTimesV3.loading_weeks)
+    if (shipWeek) {
+      const current = plannedShipMapV3.get(shipWeek) || 0
+      plannedShipMapV3.set(shipWeek, current + actualPendingShipTotal)
+    }
 
-    if (latestDeliveryWeek) {
-      // 基于最晚出货周 + loading_weeks 计算计划发货周
-      const shipWeek = addWeeksToISOWeek(latestDeliveryWeek, leadTimesV3.loading_weeks)
-      if (shipWeek) {
-        const current = plannedShipMapV3.get(shipWeek) || 0
-        plannedShipMapV3.set(shipWeek, current + actualPendingShipTotal)
-      }
-
-      // 基于发货周 + shipping_weeks 计算计划到仓周
-      const arrivalWeek = shipWeek
-        ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
-        : null
-      if (arrivalWeek) {
-        const current = plannedArrivalMapV3.get(arrivalWeek) || 0
-        plannedArrivalMapV3.set(arrivalWeek, current + actualPendingShipTotal)
-      }
+    // 基于发货周 + shipping_weeks 计算计划到仓周
+    const arrivalWeek = shipWeek
+      ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
+      : null
+    if (arrivalWeek) {
+      const current = plannedArrivalMapV3.get(arrivalWeek) || 0
+      plannedArrivalMapV3.set(arrivalWeek, current + actualPendingShipTotal)
     }
   }
 
@@ -1766,27 +1758,25 @@ export async function fetchAlgorithmAuditV4(
     arrivalDetailMap.set(detail.arrival_week, existing)
   })
 
-  // Step 6: Enhance rows with V4 data and apply variance adjustments
+  // Step 6: Enhance rows with V4 data
+  // ✅ FIX: 不再应用 variance adjustment，因为 V3 已经从 shipment 正确计算了 pending 数量
+  // variance adjustment 会导致重复计算（variance 数据和实际 shipment 数据重叠）
   const rowsV4: AlgorithmAuditRowV4[] = resultV3.rows.map((row) => {
     const demandCoverage = demandCoverageMap.get(row.week_iso)
     const varianceAdjustment = varianceAdjustments.get(row.week_iso)
 
-    // Apply variance adjustments to planned quantities
-    let adjusted_planned_factory_ship = row.planned_factory_ship
-    let adjusted_planned_ship = row.planned_ship
-
-    if (varianceAdjustment) {
-      adjusted_planned_factory_ship += varianceAdjustment.factory_ship_adjustment
-      adjusted_planned_ship += varianceAdjustment.ship_adjustment
-    }
+    // ❌ 不再应用 variance adjustments，直接使用 V3 的计算结果
+    // 之前的代码会导致重复计算：
+    // - V3 已经计算了 planned_ship = totalDelivered - totalShipped (待发货)
+    // - variance 又会加上 ship_adjustment (差异数量)
+    // - 结果：planned_ship 被重复加
 
     return {
       ...row,
-      // Apply variance adjustments
-      planned_factory_ship: adjusted_planned_factory_ship,
-      planned_ship: adjusted_planned_ship,
-      factory_ship_effective: row.actual_factory_ship || adjusted_planned_factory_ship,
-      ship_effective: row.actual_ship || adjusted_planned_ship,
+      // 直接使用 V3 的 planned 值，不做 adjustment
+      // V3 的 planned_ship 已经基于 shipment_items 正确计算
+      factory_ship_effective: row.actual_factory_ship || row.planned_factory_ship,
+      ship_effective: row.actual_ship || row.planned_ship,
 
       // Sales coverage
       sales_coverage_status: demandCoverage?.coverage_status || 'Unknown',
