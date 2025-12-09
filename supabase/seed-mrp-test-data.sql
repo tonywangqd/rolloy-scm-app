@@ -28,24 +28,19 @@
 -- 1. 创建测试产品
 -- ============================================================
 INSERT INTO products (
-  sku, spu, color_code, product_name, category,
-  unit_cost_usd, unit_weight_kg, safety_stock_weeks,
-  production_lead_weeks, is_active
+  sku, spu, color_code, product_name,
+  unit_cost_usd, safety_stock_weeks, is_active
 ) VALUES (
   'MRP-TEST-SKU',
   'MRP-TEST',
   'BLK',
   'MRP算法验证测试产品',
-  'TEST',
   10.00,
-  0.5,
   2,       -- 安全库存 2周
-  5,       -- 生产周期 5周 (基准值, 实际案例中变更为6周)
   true
 ) ON CONFLICT (sku) DO UPDATE SET
   product_name = EXCLUDED.product_name,
-  safety_stock_weeks = EXCLUDED.safety_stock_weeks,
-  production_lead_weeks = EXCLUDED.production_lead_weeks;
+  safety_stock_weeks = EXCLUDED.safety_stock_weeks;
 
 -- ============================================================
 -- 2. 创建销售预测 (FO - Forecast Order)
@@ -299,8 +294,7 @@ SELECT
   '产品' AS type,
   sku,
   product_name,
-  safety_stock_weeks,
-  production_lead_weeks
+  safety_stock_weeks
 FROM products WHERE sku = 'MRP-TEST-SKU';
 
 -- 7.2 销售预测 (FO)
