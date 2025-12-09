@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.22.3',
+  number: '1.23.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-08 23:22',
+  updatedAt: '2025-12-09 18:15',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: '修复算法审计planned_ship计算逻辑 - 使用Delivery层pending_ship_qty而非PO层pending_qty',
+  changelog: '修复算法审计重复计算BUG - 使用delivery_shipment_allocations表替代production_delivery_id，添加供应链数据校验功能',
 }
 
 // 格式化显示

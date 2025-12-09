@@ -1808,6 +1808,65 @@ export interface AlgorithmAuditRowV4 extends AlgorithmAuditRowV3 {
 }
 
 /**
+ * Supply Chain Data Validation - 供应链数据校验
+ * Ensures quantities flow correctly through the supply chain
+ */
+export interface SupplyChainValidation {
+  // 是否通过校验
+  is_valid: boolean
+
+  // 各层累计数量
+  totals: {
+    ordered: number           // 下单总量
+    factory_shipped: number   // 工厂出货总量 (actual + planned pending)
+    shipped: number           // 物流发货总量 (actual + planned pending)
+    arrived: number           // 到仓总量 (actual + planned pending)
+  }
+
+  // 各层实际数量
+  actuals: {
+    ordered: number           // 实际下单
+    factory_shipped: number   // 实际工厂出货
+    shipped: number           // 实际物流发货
+    arrived: number           // 实际到仓
+  }
+
+  // 各层待处理数量 (pending)
+  pending: {
+    factory_ship: number      // 工厂待出货 (ordered - factory_shipped)
+    ship: number              // 物流待发货 (factory_shipped - shipped)
+    arrival: number           // 在途待到仓 (shipped - arrived)
+  }
+
+  // 校验错误列表
+  errors: SupplyChainValidationError[]
+
+  // 校验警告列表
+  warnings: SupplyChainValidationWarning[]
+}
+
+/**
+ * 校验错误类型
+ */
+export interface SupplyChainValidationError {
+  code: 'OVERFLOW_FACTORY_SHIP' | 'OVERFLOW_SHIP' | 'OVERFLOW_ARRIVAL' | 'NEGATIVE_PENDING' | 'DATA_MISMATCH'
+  message: string
+  layer: 'factory_ship' | 'ship' | 'arrival'
+  expected: number
+  actual: number
+  diff: number
+}
+
+/**
+ * 校验警告类型
+ */
+export interface SupplyChainValidationWarning {
+  code: 'PARTIAL_FULFILLMENT' | 'DELAYED_SHIPMENT' | 'MISSING_ALLOCATION'
+  message: string
+  details: string
+}
+
+/**
  * Complete V4 audit result
  */
 export interface AlgorithmAuditResultV4 {
@@ -1832,6 +1891,8 @@ export interface AlgorithmAuditResultV4 {
     total_factory_ship_adjustment: number
     total_ship_adjustment: number
   }
+  // 数据校验结果
+  validation: SupplyChainValidation
 }
 
 // ================================================================

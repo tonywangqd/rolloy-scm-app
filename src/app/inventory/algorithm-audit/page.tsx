@@ -61,7 +61,7 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
     redirect('/inventory/algorithm-audit')
   }
 
-  const { product, rows, leadTimes, metadata } = auditData
+  const { product, rows, leadTimes, metadata, validation } = auditData
   const currentStock = rows.find((r) => r.is_current)?.opening_stock || 0
 
   return (
@@ -155,6 +155,98 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
             数据范围: {metadata.start_week} 至 {metadata.end_week}
             <span className="text-gray-400 ml-2">(共 {metadata.total_weeks} 周)</span>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Data Validation Card - 数据校验结果 */}
+      <Card className={validation.is_valid ? 'border-green-200 bg-green-50/30' : 'border-red-200 bg-red-50/30'}>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            {validation.is_valid ? (
+              <>
+                <span className="text-green-600">✓</span>
+                <span>数据校验通过</span>
+              </>
+            ) : (
+              <>
+                <span className="text-red-600">✗</span>
+                <span>数据校验异常</span>
+              </>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {/* 数量汇总 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="bg-white rounded-lg p-3 border">
+              <div className="text-xs text-gray-500 mb-1">下单总量</div>
+              <div className="font-semibold">{formatNumber(validation.actuals.ordered)}</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 border">
+              <div className="text-xs text-gray-500 mb-1">工厂出货</div>
+              <div className="font-semibold">
+                {formatNumber(validation.actuals.factory_shipped)}
+                {validation.pending.factory_ship > 0 && (
+                  <span className="text-orange-500 text-xs ml-1">
+                    (+{validation.pending.factory_ship}待出)
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-3 border">
+              <div className="text-xs text-gray-500 mb-1">物流发货</div>
+              <div className="font-semibold">
+                {formatNumber(validation.actuals.shipped)}
+                {validation.pending.ship > 0 && (
+                  <span className="text-orange-500 text-xs ml-1">
+                    (+{validation.pending.ship}待发)
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-3 border">
+              <div className="text-xs text-gray-500 mb-1">到仓</div>
+              <div className="font-semibold">
+                {formatNumber(validation.actuals.arrived)}
+                {validation.pending.arrival > 0 && (
+                  <span className="text-blue-500 text-xs ml-1">
+                    (+{validation.pending.arrival}在途)
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 错误列表 */}
+          {validation.errors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+              <div className="text-sm font-medium text-red-800 mb-2">错误 ({validation.errors.length})</div>
+              {validation.errors.map((error, idx) => (
+                <div key={idx} className="text-sm text-red-700 mb-1 last:mb-0">
+                  • {error.message} (差异: {error.diff})
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 警告列表 */}
+          {validation.warnings.length > 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <div className="text-sm font-medium text-yellow-800 mb-2">警告 ({validation.warnings.length})</div>
+              {validation.warnings.map((warning, idx) => (
+                <div key={idx} className="text-sm text-yellow-700 mb-1 last:mb-0">
+                  • {warning.message}: {warning.details}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 通过时显示 */}
+          {validation.is_valid && validation.warnings.length === 0 && (
+            <div className="text-sm text-green-600">
+              供应链数据流正确：下单 → 工厂出货 → 物流发货 → 到仓，各层数量传播无异常
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -17,6 +17,9 @@ import type {
   AlgorithmAuditRowV3,
   AlgorithmAuditResultV3,
   SupplyChainLeadTimesV3,
+  SupplyChainValidation,
+  SupplyChainValidationError,
+  SupplyChainValidationWarning,
 } from '@/lib/types/database'
 import {
   getISOWeekString,
@@ -799,6 +802,7 @@ export async function fetchAlgorithmAuditV3(
   }
 
   // STEP 4: Fetch All Data Sources in Parallel
+  // ✅ FIX: 新增 delivery_shipment_allocations 查询，用于正确计算已发货数量
   const [
     forecastsResultV3,
     actualsResultV3,
@@ -806,6 +810,7 @@ export async function fetchAlgorithmAuditV3(
     productionDeliveriesResultV3,
     shipmentsResultV3,
     inventorySnapshotsResultV3,
+    deliveryAllocationsResultV3,
   ] = await Promise.all([
     supabase
       .from('sales_forecasts')
@@ -829,7 +834,7 @@ export async function fetchAlgorithmAuditV3(
       .not('actual_order_date', 'is', null),
     supabase
       .from('production_deliveries')
-      .select('id, sku, po_item_id, delivered_qty, actual_delivery_date')
+      .select('id, sku, po_item_id, delivered_qty, actual_delivery_date, shipped_qty, shipment_status')
       .eq('sku', sku)
       .not('actual_delivery_date', 'is', null),
     supabase
@@ -849,6 +854,17 @@ export async function fetchAlgorithmAuditV3(
       .from('inventory_snapshots')
       .select('qty_on_hand')
       .eq('sku', sku),
+    // ✅ NEW: 查询 delivery_shipment_allocations 表（N:N 关联）
+    supabase
+      .from('delivery_shipment_allocations')
+      .select(`
+        id,
+        delivery_id,
+        shipment_id,
+        shipped_qty,
+        production_deliveries!inner(sku)
+      `)
+      .eq('production_deliveries.sku', sku),
   ])
 
   const forecastsV3 = forecastsResultV3.data || []
@@ -857,6 +873,8 @@ export async function fetchAlgorithmAuditV3(
   const productionDeliveriesV3 = productionDeliveriesResultV3.data || []
   const shipmentsV3 = shipmentsResultV3.data || []
   const snapshotsV3 = inventorySnapshotsResultV3.data || []
+  // ✅ NEW: delivery_shipment_allocations 数据（N:N 关联表）
+  const deliveryAllocationsV3 = deliveryAllocationsResultV3.data || []
 
   // STEP 5: Build Weekly Aggregation Maps
   const forecastMapV3 = new Map<string, number>()
@@ -936,7 +954,8 @@ export async function fetchAlgorithmAuditV3(
   })
 
   // ================================================================
-  // CRITICAL FIX: Calculate delivery fulfillment to prevent double-counting
+  // ✅ CRITICAL FIX: Calculate delivery fulfillment using N:N allocations table
+  // 使用 delivery_shipment_allocations 表来计算已发货数量，而非旧的 production_delivery_id
   // For each delivery, track: delivered_qty, shipped_qty, pending_ship_qty
   // ================================================================
 
@@ -948,19 +967,23 @@ export async function fetchAlgorithmAuditV3(
   }
   const deliveryFulfillmentMap = new Map<string, DeliveryFulfillment>()
 
-  // Calculate shipped quantities per delivery from shipments
+  // ✅ FIX: 使用 delivery_shipment_allocations 表计算已发货数量
+  // 这是正确的 N:N 关联方式，替代旧的 production_delivery_id 字段
   const shippedByDelivery = new Map<string, number>()
-  shipmentsV3.forEach((shipment: any) => {
-    if (!shipment.production_delivery_id) return
-    const items = Array.isArray(shipment.shipment_items)
-      ? shipment.shipment_items
-      : [shipment.shipment_items]
-    items.forEach((item: any) => {
-      if (!item || typeof item !== 'object' || !('sku' in item) || !('shipped_qty' in item)) return
-      if (item.sku !== sku) return
-      const current = shippedByDelivery.get(shipment.production_delivery_id) || 0
-      shippedByDelivery.set(shipment.production_delivery_id, current + item.shipped_qty)
-    })
+
+  // 优先使用 N:N 关联表的数据
+  deliveryAllocationsV3.forEach((allocation: any) => {
+    if (!allocation.delivery_id) return
+    const current = shippedByDelivery.get(allocation.delivery_id) || 0
+    shippedByDelivery.set(allocation.delivery_id, current + allocation.shipped_qty)
+  })
+
+  // 如果没有 N:N 关联数据，回退到使用 delivery 表中的 shipped_qty 字段（数据库触发器自动维护）
+  // 这是一个备用方案，确保即使没有 allocation 记录也能正确显示
+  productionDeliveriesV3.forEach((delivery: any) => {
+    if (!shippedByDelivery.has(delivery.id) && delivery.shipped_qty > 0) {
+      shippedByDelivery.set(delivery.id, delivery.shipped_qty)
+    }
   })
 
   // Build fulfillment status for each delivery
@@ -1620,6 +1643,15 @@ export async function fetchAlgorithmAuditV4(
   const resultV3 = await fetchAlgorithmAuditV3(sku, shippingWeeks, customStartWeek, customEndWeek)
 
   if (!resultV3.product) {
+    // 返回空的校验结果
+    const emptyValidation: SupplyChainValidation = {
+      is_valid: true,
+      totals: { ordered: 0, factory_shipped: 0, shipped: 0, arrived: 0 },
+      actuals: { ordered: 0, factory_shipped: 0, shipped: 0, arrived: 0 },
+      pending: { factory_ship: 0, ship: 0, arrival: 0 },
+      errors: [],
+      warnings: [],
+    }
     return {
       product: null,
       rows: [],
@@ -1633,6 +1665,7 @@ export async function fetchAlgorithmAuditV4(
         total_factory_ship_adjustment: 0,
         total_ship_adjustment: 0,
       },
+      validation: emptyValidation,
     }
   }
 
@@ -1749,6 +1782,12 @@ export async function fetchAlgorithmAuditV4(
     totalShipAdjustment += adjustment.ship_adjustment
   })
 
+  // ================================================================
+  // ✅ Step 8: Supply Chain Data Validation (数据校验)
+  // 确保各层数量传播正确，不会出现重复计算或数量溢出
+  // ================================================================
+  const validation = validateSupplyChainData(rowsV4, totalOrdered)
+
   return {
     product: resultV3.product,
     rows: rowsV4,
@@ -1762,5 +1801,145 @@ export async function fetchAlgorithmAuditV4(
       total_factory_ship_adjustment: totalFactoryShipAdjustment,
       total_ship_adjustment: totalShipAdjustment,
     },
+    validation,
+  }
+}
+
+// ================================================================
+// SUPPLY CHAIN DATA VALIDATION FUNCTION
+// 供应链数据校验函数
+// ================================================================
+
+/**
+ * Validate supply chain data flow
+ * 校验供应链数据流是否正确
+ *
+ * 规则：
+ * 1. 工厂出货累计 ≤ 下单总量
+ * 2. 物流发货累计 ≤ 工厂出货累计
+ * 3. 到仓累计 ≤ 物流发货累计
+ * 4. 各层 pending 数量不能为负数
+ */
+function validateSupplyChainData(
+  rows: AlgorithmAuditRowV4[],
+  totalOrdered: number
+): SupplyChainValidation {
+  const errors: SupplyChainValidationError[] = []
+  const warnings: SupplyChainValidationWarning[] = []
+
+  // 计算各层累计实际数量
+  const actualOrdered = rows.reduce((sum, row) => sum + row.actual_order, 0)
+  const actualFactoryShipped = rows.reduce((sum, row) => sum + row.actual_factory_ship, 0)
+  const actualShipped = rows.reduce((sum, row) => sum + row.actual_ship, 0)
+  const actualArrived = rows.reduce((sum, row) => sum + row.actual_arrival, 0)
+
+  // 计算各层累计计划数量（只计算 pending 部分）
+  const plannedFactoryShip = rows.reduce((sum, row) => sum + row.planned_factory_ship, 0)
+  const plannedShip = rows.reduce((sum, row) => sum + row.planned_ship, 0)
+  const plannedArrival = rows.reduce((sum, row) => sum + row.planned_arrival, 0)
+
+  // 计算各层总量（实际 + 计划 pending）
+  const totalFactoryShipped = actualFactoryShipped + plannedFactoryShip
+  const totalShipped = actualShipped + plannedShip
+  const totalArrived = actualArrived + plannedArrival
+
+  // 计算各层 pending 数量
+  const pendingFactoryShip = actualOrdered - actualFactoryShipped
+  const pendingShip = actualFactoryShipped - actualShipped
+  const pendingArrival = actualShipped - actualArrived
+
+  // 校验规则 1: 工厂出货累计 ≤ 下单总量
+  if (totalFactoryShipped > actualOrdered && actualOrdered > 0) {
+    errors.push({
+      code: 'OVERFLOW_FACTORY_SHIP',
+      message: `工厂出货总量(${totalFactoryShipped})超过下单总量(${actualOrdered})`,
+      layer: 'factory_ship',
+      expected: actualOrdered,
+      actual: totalFactoryShipped,
+      diff: totalFactoryShipped - actualOrdered,
+    })
+  }
+
+  // 校验规则 2: 物流发货累计 ≤ 工厂出货累计
+  if (totalShipped > actualFactoryShipped && actualFactoryShipped > 0) {
+    errors.push({
+      code: 'OVERFLOW_SHIP',
+      message: `物流发货总量(${totalShipped})超过工厂出货总量(${actualFactoryShipped})`,
+      layer: 'ship',
+      expected: actualFactoryShipped,
+      actual: totalShipped,
+      diff: totalShipped - actualFactoryShipped,
+    })
+  }
+
+  // 校验规则 3: 到仓累计 ≤ 物流发货累计
+  if (totalArrived > actualShipped && actualShipped > 0) {
+    errors.push({
+      code: 'OVERFLOW_ARRIVAL',
+      message: `到仓总量(${totalArrived})超过物流发货总量(${actualShipped})`,
+      layer: 'arrival',
+      expected: actualShipped,
+      actual: totalArrived,
+      diff: totalArrived - actualShipped,
+    })
+  }
+
+  // 校验规则 4: pending 不能为负数（但允许为负数的情况是数据修正）
+  if (pendingFactoryShip < 0) {
+    warnings.push({
+      code: 'PARTIAL_FULFILLMENT',
+      message: '工厂出货超出下单数量',
+      details: `工厂已出货 ${actualFactoryShipped}，但下单只有 ${actualOrdered}，超出 ${-pendingFactoryShip}`,
+    })
+  }
+
+  if (pendingShip < 0) {
+    warnings.push({
+      code: 'PARTIAL_FULFILLMENT',
+      message: '物流发货超出工厂出货数量',
+      details: `物流已发货 ${actualShipped}，但工厂出货只有 ${actualFactoryShipped}，超出 ${-pendingShip}`,
+    })
+  }
+
+  if (pendingArrival < 0) {
+    warnings.push({
+      code: 'PARTIAL_FULFILLMENT',
+      message: '到仓数量超出物流发货数量',
+      details: `已到仓 ${actualArrived}，但物流发货只有 ${actualShipped}，超出 ${-pendingArrival}`,
+    })
+  }
+
+  // 校验是否有未关联的数据
+  if (plannedShip > 0 && actualFactoryShipped === 0) {
+    warnings.push({
+      code: 'MISSING_ALLOCATION',
+      message: '存在计划物流发货但无工厂出货记录',
+      details: `计划物流发货 ${plannedShip}，但工厂实际出货为 0`,
+    })
+  }
+
+  const isValid = errors.length === 0
+
+  return {
+    is_valid: isValid,
+    totals: {
+      ordered: actualOrdered,
+      factory_shipped: totalFactoryShipped,
+      shipped: totalShipped,
+      arrived: totalArrived,
+    },
+    actuals: {
+      ordered: actualOrdered,
+      factory_shipped: actualFactoryShipped,
+      shipped: actualShipped,
+      arrived: actualArrived,
+    },
+    pending: {
+      factory_ship: Math.max(0, pendingFactoryShip),
+      ship: Math.max(0, pendingShip),
+      arrival: Math.max(0, pendingArrival),
+    },
+    errors,
+    warnings,
   }
 }
