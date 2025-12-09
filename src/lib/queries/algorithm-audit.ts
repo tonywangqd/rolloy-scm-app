@@ -967,24 +967,49 @@ export async function fetchAlgorithmAuditV3(
   }
   const deliveryFulfillmentMap = new Map<string, DeliveryFulfillment>()
 
-  // ✅ FIX: 使用 delivery_shipment_allocations 表计算已发货数量
-  // 这是正确的 N:N 关联方式，替代旧的 production_delivery_id 字段
+  // ✅ FIX V3: 计算每个 delivery 的已发货数量
+  // 使用多种数据源确保准确性
   const shippedByDelivery = new Map<string, number>()
 
-  // 优先使用 N:N 关联表的数据
-  deliveryAllocationsV3.forEach((allocation: any) => {
-    if (!allocation.delivery_id) return
-    const current = shippedByDelivery.get(allocation.delivery_id) || 0
-    shippedByDelivery.set(allocation.delivery_id, current + allocation.shipped_qty)
-  })
-
-  // 如果没有 N:N 关联数据，回退到使用 delivery 表中的 shipped_qty 字段（数据库触发器自动维护）
-  // 这是一个备用方案，确保即使没有 allocation 记录也能正确显示
+  // 方案1: 优先使用 production_deliveries.shipped_qty（触发器维护的字段）
   productionDeliveriesV3.forEach((delivery: any) => {
-    if (!shippedByDelivery.has(delivery.id) && delivery.shipped_qty > 0) {
+    if (delivery.shipped_qty != null && delivery.shipped_qty > 0) {
       shippedByDelivery.set(delivery.id, delivery.shipped_qty)
     }
   })
+
+  // 方案2: 使用 N:N 关联表 delivery_shipment_allocations 的数据
+  // 如果 allocation 表有更多的数据，使用较大值
+  deliveryAllocationsV3.forEach((allocation: any) => {
+    if (!allocation.delivery_id) return
+    const existingShipped = shippedByDelivery.get(allocation.delivery_id) || 0
+    const newShipped = existingShipped + allocation.shipped_qty
+    // 使用较大值（allocation 表可能有更完整的数据）
+    shippedByDelivery.set(allocation.delivery_id, Math.max(existingShipped, newShipped))
+  })
+
+  // ✅ 方案3 (新增): 从 shipment_items 反向计算总发货量
+  // 如果通过旧方式创建的 shipment 没有关联 delivery，我们需要用另一种方式处理
+  // 计算所有已发货的总量，用于校验
+  const totalShippedFromShipments = shipmentsV3.reduce((total: number, shipment: any) => {
+    if (!shipment.actual_departure_date) return total // 只计算已发货的
+    const items = Array.isArray(shipment.shipment_items) ? shipment.shipment_items : [shipment.shipment_items]
+    return total + items.reduce((sum: number, item: any) => {
+      if (!item || item.sku !== sku) return sum
+      return sum + (item.shipped_qty || 0)
+    }, 0)
+  }, 0)
+
+  // 计算 delivery 层的总出货量
+  const totalDelivered = productionDeliveriesV3.reduce((sum, d) => sum + d.delivered_qty, 0)
+
+  // 计算 delivery 层认为的已发货总量
+  let totalShippedFromDeliveries = 0
+  shippedByDelivery.forEach((qty) => { totalShippedFromDeliveries += qty })
+
+  // ⚠️ 如果 shipment 发货总量 > delivery 记录的发货量，说明有未关联的 shipment
+  // 这种情况下，我们需要减少 pending_ship_qty 的计算
+  const unlinkedShipmentQty = Math.max(0, totalShippedFromShipments - totalShippedFromDeliveries)
 
   // Build fulfillment status for each delivery
   productionDeliveriesV3.forEach((delivery) => {
@@ -1155,29 +1180,49 @@ export async function fetchAlgorithmAuditV3(
   })
 
   // ================================================================
-  // ✅ CRITICAL FIX: 使用Delivery层计算planned_ship
-  // planned_ship = 工厂已出货但物流未发货的数量
-  // 来源：deliveryFulfillmentMap.pending_ship_qty (delivered_qty - shipped_qty)
+  // ✅ CRITICAL FIX V2: 计算真正的待发货数量 (pending_ship)
+  //
+  // 问题背景：
+  // - 旧方式创建的 shipment 没有关联 delivery (production_delivery_id = NULL)
+  // - 导致 delivery.shipped_qty = 0，系统认为全部未发
+  // - 实际上 shipment_items 已经记录了发货，造成重复计算
+  //
+  // 解决方案：
+  // - 从 shipment_items 计算总发货量 (最准确)
+  // - 真正的 pending_ship = totalDelivered - totalShippedFromShipments
   // ================================================================
-  deliveryFulfillmentMap.forEach((fulfillment) => {
-    if (fulfillment.pending_ship_qty <= 0) return // 跳过已全部发货的
 
-    // 基于出货周 + loading_weeks 计算计划发货周
-    const shipWeek = addWeeksToISOWeek(fulfillment.delivery_week, leadTimesV3.loading_weeks)
-    if (shipWeek) {
-      const current = plannedShipMapV3.get(shipWeek) || 0
-      plannedShipMapV3.set(shipWeek, current + fulfillment.pending_ship_qty)
-    }
+  // 计算真正的待发货总量
+  const actualPendingShipTotal = Math.max(0, totalDelivered - totalShippedFromShipments)
 
-    // 基于发货周 + shipping_weeks 计算计划到仓周
-    const arrivalWeek = shipWeek
-      ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
-      : null
-    if (arrivalWeek) {
-      const current = plannedArrivalMapV3.get(arrivalWeek) || 0
-      plannedArrivalMapV3.set(arrivalWeek, current + fulfillment.pending_ship_qty)
+  // 如果有待发货数量，按最晚出货的 delivery 分配预计发货周
+  if (actualPendingShipTotal > 0) {
+    // 找到最晚的 delivery（假设未发货的都在最后一批）
+    let latestDeliveryWeek: string | null = null
+    deliveryFulfillmentMap.forEach((fulfillment) => {
+      if (!latestDeliveryWeek || fulfillment.delivery_week > latestDeliveryWeek) {
+        latestDeliveryWeek = fulfillment.delivery_week
+      }
+    })
+
+    if (latestDeliveryWeek) {
+      // 基于最晚出货周 + loading_weeks 计算计划发货周
+      const shipWeek = addWeeksToISOWeek(latestDeliveryWeek, leadTimesV3.loading_weeks)
+      if (shipWeek) {
+        const current = plannedShipMapV3.get(shipWeek) || 0
+        plannedShipMapV3.set(shipWeek, current + actualPendingShipTotal)
+      }
+
+      // 基于发货周 + shipping_weeks 计算计划到仓周
+      const arrivalWeek = shipWeek
+        ? addWeeksToISOWeek(shipWeek, leadTimesV3.shipping_weeks)
+        : null
+      if (arrivalWeek) {
+        const current = plannedArrivalMapV3.get(arrivalWeek) || 0
+        plannedArrivalMapV3.set(arrivalWeek, current + actualPendingShipTotal)
+      }
     }
-  })
+  }
 
   // ✅ FIX #2: 修正在途shipment的到仓时间计算逻辑
   // 说明：对于已发货但未到仓的shipment，应该基于实际发货周 + shipping_weeks计算到仓周
