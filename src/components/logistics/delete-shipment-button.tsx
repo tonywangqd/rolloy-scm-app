@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { deleteShipment, forceDeleteShipment } from '@/lib/actions/logistics'
-import { Trash2, AlertTriangle } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface DeleteShipmentButtonProps {
@@ -106,12 +106,7 @@ export function DeleteShipmentButton({
       <ConfirmDialog
         open={forceDeleteOpen}
         onOpenChange={setForceDeleteOpen}
-        title={
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-orange-500" />
-            <span>强制删除已到货运单</span>
-          </div>
-        }
+        title="⚠️ 强制删除已到货运单"
         description={`您即将强制删除运单 ${trackingNumber}，此操作将：
 
 • 自动回滚库存（扣减到货时增加的库存数量）
