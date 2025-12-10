@@ -13,10 +13,10 @@ export const VERSION = {
   updatedAt: '2025-12-10 17:30',
 
   // 版本标签
-  tag: '正式版' as const,
+  tag: 'V2升级版' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: SCM V2 升级 - 添加进销存PSI、倒排排程、到仓单核心后端功能',
+  changelog: 'feat: SCM V2 前端UI重构 - 新增PSI周报表/到仓管理/系统参数设置/导航重构',
 }
 
 // 格式化显示
