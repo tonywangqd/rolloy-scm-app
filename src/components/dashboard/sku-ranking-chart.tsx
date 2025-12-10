@@ -141,22 +141,23 @@ export function SkuRankingChart({ data }: SkuRankingChartProps) {
         </ResponsiveContainer>
 
         {/* Top 3 Highlight */}
-        <div className={`mt-4 grid gap-3 border-t border-gray-100 pt-4 ${data.length === 1 ? 'grid-cols-1' : data.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        <div className={`mt-4 grid gap-4 border-t border-gray-100 pt-6 ${data.length === 1 ? 'grid-cols-1' : data.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
           {data.slice(0, 3).map((item, index) => (
             <div
               key={item.sku}
-              className="rounded-lg border border-gray-200 bg-gradient-to-br from-blue-50 to-white p-3"
+              className="relative rounded-lg border border-gray-200 bg-gradient-to-br from-blue-50 to-white p-3"
             >
-              <div className="mb-1 flex items-center justify-between">
+              {/* 排名徽章 - 绝对定位在右上角 */}
+              <div
+                className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm"
+                style={{ backgroundColor: getBarColor(index, data.length) }}
+              >
+                {index + 1}
+              </div>
+              <div className="mb-1">
                 <span className="text-xs font-semibold text-gray-500">
                   NO.{index + 1}
                 </span>
-                <div
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white"
-                  style={{ backgroundColor: getBarColor(index, data.length) }}
-                >
-                  {index + 1}
-                </div>
               </div>
               <p className="truncate text-xs font-medium text-gray-600">{item.sku}</p>
               <p className="mt-1 text-lg font-bold text-gray-900">

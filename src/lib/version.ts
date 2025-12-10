@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.25.1',
+  number: '1.25.2',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-10 09:33',
+  updatedAt: '2025-12-10 15:39',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 修复删除按钮组件类型错误 - ConfirmDialog title属性需要string类型',
+  changelog: 'fix: 修复SKU销量排名卡片排名徽章显示被截断的问题',
 }
 
 // 格式化显示
