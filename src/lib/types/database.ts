@@ -2106,3 +2106,215 @@ export interface VarianceAdjustment {
   ship_adjustment: number          // 物流发货调整量
   variances: SupplyChainVariance[] // 关联的差异记录
 }
+
+// ================================================================
+// SCM V2 UPGRADE TYPES
+// ================================================================
+
+/**
+ * System Parameters - 系统参数配置
+ */
+export interface SystemParameter {
+  id: string
+  param_key: string
+  param_value: any // JSONB
+  description: string | null
+  updated_at: string
+  updated_by: string | null
+  created_at: string
+}
+
+export interface SystemParameterInsert {
+  id?: string
+  param_key: string
+  param_value: any
+  description?: string | null
+  updated_by?: string | null
+}
+
+export interface SystemParameterUpdate {
+  param_value?: any
+  description?: string | null
+  updated_by?: string | null
+}
+
+/**
+ * Order Arrivals - 到仓单 (OA)
+ */
+export interface OrderArrival {
+  id: string
+  arrival_number: string
+  shipment_id: string | null
+  warehouse_id: string
+  planned_arrival_date: string | null // DATE
+  actual_arrival_date: string | null // DATE
+  arrival_week_iso: string | null // Computed
+  expected_qty: number
+  received_qty: number
+  variance_qty: number // Computed
+  variance_reason: string | null
+  status: 'pending' | 'partial' | 'completed' | 'cancelled'
+  remarks: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface OrderArrivalInsert {
+  id?: string
+  arrival_number: string
+  shipment_id?: string | null
+  warehouse_id: string
+  planned_arrival_date?: string | null
+  actual_arrival_date?: string | null
+  expected_qty?: number
+  received_qty?: number
+  variance_reason?: string | null
+  status?: 'pending' | 'partial' | 'completed' | 'cancelled'
+  remarks?: string | null
+}
+
+export interface OrderArrivalUpdate {
+  received_qty?: number
+  actual_arrival_date?: string | null
+  variance_reason?: string | null
+  status?: 'pending' | 'partial' | 'completed' | 'cancelled'
+  remarks?: string | null
+}
+
+/**
+ * PSI Weekly Snapshots - 进销存周报表
+ */
+export interface PSIWeeklySnapshot {
+  id: string
+  sku: string
+  warehouse_id: string
+  week_iso: string
+  week_start_date: string // DATE
+  week_end_date: string // DATE
+  opening_stock: number
+  planned_arrival_qty: number
+  actual_arrival_qty: number
+  effective_arrival_qty: number // Computed
+  forecast_sales_qty: number
+  actual_sales_qty: number | null
+  effective_sales_qty: number // Computed
+  closing_stock: number // Computed
+  safety_stock_threshold: number
+  stock_status: 'OK' | 'Risk' | 'Stockout' // Computed
+  calculated_at: string
+}
+
+export interface PSIWeeklySnapshotInsert {
+  id?: string
+  sku: string
+  warehouse_id: string
+  week_iso: string
+  week_start_date: string
+  week_end_date: string
+  opening_stock: number
+  planned_arrival_qty?: number
+  actual_arrival_qty?: number
+  forecast_sales_qty?: number
+  actual_sales_qty?: number | null
+  safety_stock_threshold: number
+}
+
+export interface PSIWeeklySnapshotUpdate {
+  opening_stock?: number
+  planned_arrival_qty?: number
+  actual_arrival_qty?: number
+  forecast_sales_qty?: number
+  actual_sales_qty?: number | null
+  safety_stock_threshold?: number
+}
+
+/**
+ * PSI Weekly Projection View - PSI周预测视图
+ */
+export interface PSIWeeklyProjectionView {
+  sku: string
+  product_name: string
+  warehouse_id: string
+  warehouse_name: string
+  week_iso: string
+  week_start_date: string
+  week_end_date: string
+  week_offset: number
+  opening_stock: number
+  planned_arrival_qty: number
+  actual_arrival_qty: number
+  effective_arrival_qty: number
+  forecast_sales_qty: number
+  actual_sales_qty: number | null
+  effective_sales_qty: number
+  closing_stock: number
+  safety_stock_threshold: number
+  stock_status: 'OK' | 'Risk' | 'Stockout'
+  calculated_at: string
+}
+
+/**
+ * Reverse Schedule Suggestions View - 倒排排程建议视图
+ */
+export interface ReverseScheduleSuggestion {
+  sku: string
+  product_name: string
+  spu: string
+  sales_week: string
+  forecast_qty: number
+  covered_qty: number
+  suggested_order_qty: number
+  suggested_order_week: string
+  suggested_order_date: string
+  suggested_fulfillment_week: string
+  suggested_ship_week: string
+  suggested_arrival_week: string
+  priority: 'Critical' | 'High' | 'Medium' | 'Low'
+  is_overdue: boolean
+  lead_time_breakdown: {
+    target_sales_week: string
+    target_sales_qty: number
+    production_lead_weeks: number
+    loading_buffer_weeks: number
+    transit_time_weeks: number
+    inbound_buffer_weeks: number
+    total_lead_time_weeks: number
+  }
+  calculated_at: string
+}
+
+/**
+ * Supply Chain Lead Times Configuration
+ */
+export interface SupplyChainLeadTimes {
+  production_weeks: number
+  loading_weeks: number
+  shipping_weeks: number
+  inbound_weeks: number
+}
+
+/**
+ * Extended Sales Forecast (with V2 fields)
+ */
+export interface SalesForecastV2 extends SalesForecast {
+  coverage_status?: 'UNCOVERED' | 'PARTIALLY_COVERED' | 'FULLY_COVERED' | 'CLOSED'
+  covered_qty?: number
+  target_order_week?: string | null
+}
+
+/**
+ * Extended Purchase Order (with V2 fields)
+ */
+export interface PurchaseOrderV2 extends PurchaseOrder {
+  expected_fulfillment_week?: string | null
+  is_closed?: boolean
+  closed_reason?: string | null
+}
+
+/**
+ * Extended Shipment (with V2 fields)
+ */
+export interface ShipmentV2 extends Shipment {
+  channel_allocation?: Record<string, number> // JSONB: {"Amazon": 90, "Shopify": 10}
+  shipment_status?: 'draft' | 'in_transit' | 'arrived' | 'finalized'
+}

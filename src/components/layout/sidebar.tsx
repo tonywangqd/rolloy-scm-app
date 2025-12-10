@@ -18,6 +18,13 @@ import {
   Calculator,
   Target,
   AlertTriangle,
+  TrendingUp,
+  Boxes,
+  ShipIcon,
+  ClipboardCheck,
+  Sliders,
+  TableProperties,
+  PackageOpen,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -29,19 +36,47 @@ const navigation = [
     description: 'Dashboard',
   },
   {
+    name: '计划管理',
+    href: '/planning',
+    icon: BarChart3,
+    description: 'Planning',
+    subItems: [
+      {
+        name: '销量预测',
+        href: '/planning/forecasts',
+        icon: TrendingUp,
+      },
+      {
+        name: '需求覆盖',
+        href: '/planning/demand-coverage',
+        icon: Target,
+      },
+      {
+        name: '补货建议',
+        href: '/planning/replenishment',
+        icon: Boxes,
+      },
+    ],
+  },
+  {
     name: '采购管理',
     href: '/procurement',
     icon: ShoppingCart,
     description: 'Procurement',
     subItems: [
       {
-        name: '订单管理',
+        name: '采购订单',
         href: '/procurement',
         icon: ShoppingCart,
       },
       {
-        name: '差异追踪',
-        href: '/procurement/variances',
+        name: '完工管理',
+        href: '/procurement/fulfillment',
+        icon: ClipboardCheck,
+      },
+      {
+        name: '履约追踪',
+        href: '/procurement/fulfillment-variance',
         icon: AlertTriangle,
       },
     ],
@@ -51,22 +86,39 @@ const navigation = [
     href: '/logistics',
     icon: Truck,
     description: 'Logistics',
-  },
-  {
-    name: '计划管理',
-    href: '/planning',
-    icon: BarChart3,
-    description: 'Planning',
     subItems: [
       {
-        name: '预测覆盖',
-        href: '/planning/forecast-coverage',
-        icon: Target,
+        name: '发货管理',
+        href: '/logistics/shipments',
+        icon: ShipIcon,
       },
       {
-        name: '销量预测',
-        href: '/planning/forecasts',
-        icon: BarChart3,
+        name: '到仓管理',
+        href: '/logistics/arrivals',
+        icon: PackageOpen,
+      },
+    ],
+  },
+  {
+    name: '库存管理',
+    href: '/inventory',
+    icon: Package,
+    description: 'Inventory',
+    subItems: [
+      {
+        name: '库存总览',
+        href: '/inventory',
+        icon: Package,
+      },
+      {
+        name: 'PSI周报表',
+        href: '/inventory/psi-table',
+        icon: TableProperties,
+      },
+      {
+        name: '算法验证',
+        href: '/inventory/algorithm-audit',
+        icon: Calculator,
       },
     ],
   },
@@ -77,28 +129,22 @@ const navigation = [
     description: 'Finance',
   },
   {
-    name: '库存管理',
-    href: '/inventory',
-    icon: Package,
-    description: 'Inventory',
-    subItems: [
-      {
-        name: '库存概览',
-        href: '/inventory',
-        icon: Package,
-      },
-      {
-        name: '算法验证',
-        href: '/inventory/algorithm-audit',
-        icon: Calculator,
-      },
-    ],
-  },
-  {
     name: '系统设置',
     href: '/settings',
     icon: Settings,
     description: 'Settings',
+    subItems: [
+      {
+        name: '主数据',
+        href: '/settings',
+        icon: Settings,
+      },
+      {
+        name: '系统参数',
+        href: '/settings/parameters',
+        icon: Sliders,
+      },
+    ],
   },
 ]
 
@@ -119,7 +165,7 @@ interface NavItem {
 export function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['库存管理', '计划管理', '采购管理']))
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['库存管理', '计划管理', '采购管理', '物流管理', '系统设置']))
 
   const toggleExpand = (itemName: string) => {
     const newExpanded = new Set(expandedItems)
