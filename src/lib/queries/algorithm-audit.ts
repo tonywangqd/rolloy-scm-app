@@ -578,7 +578,9 @@ export async function fetchAlgorithmAuditV2(sku: string): Promise<AlgorithmAudit
 
   // Aggregate shipments by departure and arrival week
   const shipmentsByDepartureWeek = new Map<string, number>()
-  const shipmentsByArrivalWeek = new Map<string, number>()
+  const shipmentsByPlannedArrivalWeek = new Map<string, number>() // Planned arrivals (未到货)
+  const shipmentsByActualArrivalWeek = new Map<string, number>() // Actual arrivals (已到货)
+  const shipmentsByArrivalWeek = new Map<string, number>() // Combined (for effective calculation)
   const shipmentDetailsByArrivalWeek = new Map<string, ShipmentDetailV2[]>()
 
   shipments.forEach(shipment => {
@@ -597,7 +599,21 @@ export async function fetchAlgorithmAuditV2(sku: string): Promise<AlgorithmAudit
         shipmentsByDepartureWeek.set(departureWeek, current + item.shipped_qty)
       }
 
-      // Track by arrival week (for inventory calculation)
+      // Track planned arrivals (shipments without actual_arrival_date but with planned_arrival_date)
+      if (!shipment.actual_arrival_date && shipment.planned_arrival_date) {
+        const plannedArrivalWeek = getWeekFromDate(new Date(shipment.planned_arrival_date))
+        const current = shipmentsByPlannedArrivalWeek.get(plannedArrivalWeek) || 0
+        shipmentsByPlannedArrivalWeek.set(plannedArrivalWeek, current + item.shipped_qty)
+      }
+
+      // Track actual arrivals
+      if (shipment.actual_arrival_date) {
+        const actualArrivalWeek = getWeekFromDate(new Date(shipment.actual_arrival_date))
+        const current = shipmentsByActualArrivalWeek.get(actualArrivalWeek) || 0
+        shipmentsByActualArrivalWeek.set(actualArrivalWeek, current + item.shipped_qty)
+      }
+
+      // Track by arrival week (for inventory calculation - use actual if available, else planned)
       const arrivalDate = shipment.actual_arrival_date || shipment.planned_arrival_date
       if (arrivalDate) {
         const arrivalWeek = getWeekFromDate(new Date(arrivalDate))
@@ -635,13 +651,16 @@ export async function fetchAlgorithmAuditV2(sku: string): Promise<AlgorithmAudit
 
     // Backtrack timeline calculation
     const timeline = calculateBacktrackTimeline(week, leadTimes)
-    const planned_arrival_qty = sales_effective * leadTimes.safety_stock_weeks
+    // Note: planned_arrival_qty will be set from actual shipments data (shipmentsByPlannedArrivalWeek)
 
     // Actual data (aggregated quantities)
     const actual_order_qty = ordersByWeek.get(week) || 0
     const actual_factory_ship_qty = factoryShipsByWeek.get(week) || 0
     const actual_ship_qty = shipmentsByDepartureWeek.get(week) || 0
-    const actual_arrival_qty = shipmentsByArrivalWeek.get(week) || 0
+
+    // Arrival quantities - separate planned vs actual
+    const planned_arrival_from_shipments = shipmentsByPlannedArrivalWeek.get(week) || 0 // 在途货物预计到仓
+    const actual_arrival_qty = shipmentsByActualArrivalWeek.get(week) || 0 // 实际已到仓
 
     // Determine actual weeks (only if qty > 0)
     const actual_order_week = actual_order_qty > 0 ? week : null
@@ -652,9 +671,9 @@ export async function fetchAlgorithmAuditV2(sku: string): Promise<AlgorithmAudit
     // Shipment details for this week
     const weekShipments = shipmentDetailsByArrivalWeek.get(week) || []
 
-    // Inventory calculation
+    // Inventory calculation - use actual arrival if available, else planned from in-transit shipments
     const opening_stock = runningStock
-    const arrival_effective = actual_arrival_qty // Use actual arrivals only
+    const arrival_effective = actual_arrival_qty > 0 ? actual_arrival_qty : planned_arrival_from_shipments
     const closing_stock = opening_stock + arrival_effective - sales_effective
 
     // Update running stock for next iteration
@@ -690,7 +709,7 @@ export async function fetchAlgorithmAuditV2(sku: string): Promise<AlgorithmAudit
       planned_ship_week: timeline.planned_ship_week,
       planned_factory_ship_week: timeline.planned_factory_ship_week,
       planned_order_week: timeline.planned_order_week,
-      planned_arrival_qty,
+      planned_arrival_qty: planned_arrival_from_shipments, // From in-transit shipments
       actual_order_week,
       actual_order_qty,
       actual_factory_ship_week,

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Download, Info } from 'lucide-react'
+import { Download, Info, RefreshCw, AlertCircle } from 'lucide-react'
+import { calculatePSI, type PSIRow } from '@/lib/actions/psi'
 
 interface PSIWeekData {
   weekIso: string
@@ -25,164 +26,6 @@ interface PSITableProps {
   sku?: string
   warehouseId?: string
 }
-
-// Mock data for demonstration - will be replaced with real API call
-const mockPSIData: PSIWeekData[] = [
-  {
-    weekIso: '2025-W48',
-    weekStartDate: '2025-11-25',
-    openingStock: 100,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 20,
-    actualSalesQty: 20,
-    effectiveSalesQty: 20,
-    closingStock: 80,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2025-W49',
-    weekStartDate: '2025-12-02',
-    openingStock: 80,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 20,
-    actualSalesQty: 20,
-    effectiveSalesQty: 20,
-    closingStock: 60,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2025-W50',
-    weekStartDate: '2025-12-09',
-    openingStock: 60,
-    plannedArrivalQty: 50,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 50,
-    forecastSalesQty: 20,
-    actualSalesQty: null,
-    effectiveSalesQty: 20,
-    closingStock: 90,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2025-W51',
-    weekStartDate: '2025-12-16',
-    openingStock: 90,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 20,
-    actualSalesQty: null,
-    effectiveSalesQty: 20,
-    closingStock: 70,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2025-W52',
-    weekStartDate: '2025-12-23',
-    openingStock: 70,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 20,
-    actualSalesQty: null,
-    effectiveSalesQty: 20,
-    closingStock: 50,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2026-W01',
-    weekStartDate: '2025-12-30',
-    openingStock: 50,
-    plannedArrivalQty: 100,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 100,
-    forecastSalesQty: 20,
-    actualSalesQty: null,
-    effectiveSalesQty: 20,
-    closingStock: 130,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2026-W02',
-    weekStartDate: '2026-01-06',
-    openingStock: 130,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 20,
-    actualSalesQty: null,
-    effectiveSalesQty: 20,
-    closingStock: 110,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2026-W03',
-    weekStartDate: '2026-01-13',
-    openingStock: 110,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 20,
-    actualSalesQty: null,
-    effectiveSalesQty: 20,
-    closingStock: 90,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2026-W04',
-    weekStartDate: '2026-01-20',
-    openingStock: 90,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 20,
-    actualSalesQty: null,
-    effectiveSalesQty: 20,
-    closingStock: 70,
-    safetyStockThreshold: 40,
-    stockStatus: 'OK',
-  },
-  {
-    weekIso: '2026-W05',
-    weekStartDate: '2026-01-27',
-    openingStock: 70,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 35,
-    actualSalesQty: null,
-    effectiveSalesQty: 35,
-    closingStock: 35,
-    safetyStockThreshold: 40,
-    stockStatus: 'Risk',
-  },
-  {
-    weekIso: '2026-W06',
-    weekStartDate: '2026-02-03',
-    openingStock: 35,
-    plannedArrivalQty: 0,
-    actualArrivalQty: 0,
-    effectiveArrivalQty: 0,
-    forecastSalesQty: 40,
-    actualSalesQty: null,
-    effectiveSalesQty: 40,
-    closingStock: -5,
-    safetyStockThreshold: 40,
-    stockStatus: 'Stockout',
-  },
-]
 
 function getStockStatusBadge(status: 'OK' | 'Risk' | 'Stockout') {
   switch (status) {
@@ -206,9 +49,97 @@ function getStockStatusIcon(status: 'OK' | 'Risk' | 'Stockout') {
   }
 }
 
+// Helper to transform PSIRow from DB to PSIWeekData for display
+function transformPSIRow(row: PSIRow): PSIWeekData {
+  return {
+    weekIso: row.week_iso,
+    weekStartDate: row.week_start_date,
+    openingStock: row.opening_stock,
+    plannedArrivalQty: row.planned_arrival_qty,
+    actualArrivalQty: row.actual_arrival_qty,
+    effectiveArrivalQty: row.effective_arrival_qty,
+    forecastSalesQty: row.forecast_sales_qty,
+    actualSalesQty: row.actual_sales_qty,
+    effectiveSalesQty: row.effective_sales_qty,
+    closingStock: row.closing_stock,
+    safetyStockThreshold: row.safety_stock_threshold,
+    stockStatus: row.stock_status as 'OK' | 'Risk' | 'Stockout',
+  }
+}
+
+// Get current ISO week string
+function getCurrentWeekIso(): string {
+  const now = new Date()
+  const jan4 = new Date(now.getFullYear(), 0, 4)
+  const dayOfYear = Math.floor((now.getTime() - jan4.getTime()) / 86400000) + jan4.getDay() + 1
+  const weekNum = Math.ceil(dayOfYear / 7)
+  return `${now.getFullYear()}-W${weekNum.toString().padStart(2, '0')}`
+}
+
 export function PSITable({ sku, warehouseId }: PSITableProps) {
-  const [data] = useState<PSIWeekData[]>(mockPSIData)
-  const currentWeekIso = '2025-W50'
+  const [data, setData] = useState<PSIWeekData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const currentWeekIso = getCurrentWeekIso()
+
+  const fetchData = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await calculatePSI({ sku, warehouseId })
+      if (result.success && result.data) {
+        setData(result.data.map(transformPSIRow))
+      } else {
+        setError(result.error || 'Failed to load PSI data')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [sku, warehouseId])
+
+  if (loading) {
+    return (
+      <Card className="p-6">
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
+          <span className="ml-2 text-gray-500">Loading PSI data...</span>
+        </div>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card className="p-6">
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertCircle className="h-8 w-8 text-red-500" />
+          <p className="mt-2 text-sm text-red-600">{error}</p>
+          <Button variant="outline" size="sm" onClick={fetchData} className="mt-4">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </Card>
+    )
+  }
+
+  if (data.length === 0) {
+    return (
+      <Card className="p-6">
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Info className="h-8 w-8 text-gray-400" />
+          <p className="mt-2 text-sm text-gray-500">No PSI data available</p>
+          <p className="text-xs text-gray-400">Please add sales forecasts and inventory data first</p>
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="p-6">
@@ -220,6 +151,10 @@ export function PSITable({ sku, warehouseId }: PSITableProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchData}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            刷新
+          </Button>
           <Button variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
             导出Excel
