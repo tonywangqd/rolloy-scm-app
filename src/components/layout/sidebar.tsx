@@ -48,12 +48,12 @@ const navigation = [
       },
       {
         name: '需求覆盖',
-        href: '/planning/demand-coverage',
+        href: '/planning/forecast-coverage',
         icon: Target,
       },
       {
         name: '补货建议',
-        href: '/planning/replenishment',
+        href: '/inventory',
         icon: Boxes,
       },
     ],
@@ -71,12 +71,12 @@ const navigation = [
       },
       {
         name: '完工管理',
-        href: '/procurement/fulfillment',
+        href: '/procurement/deliveries',
         icon: ClipboardCheck,
       },
       {
         name: '履约追踪',
-        href: '/procurement/fulfillment-variance',
+        href: '/procurement/variances',
         icon: AlertTriangle,
       },
     ],
@@ -89,7 +89,7 @@ const navigation = [
     subItems: [
       {
         name: '发货管理',
-        href: '/logistics/shipments',
+        href: '/logistics',
         icon: ShipIcon,
       },
       {

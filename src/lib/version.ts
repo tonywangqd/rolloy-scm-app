@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '2.0.0',
+  number: '2.0.1',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-10 16:45',
+  updatedAt: '2025-12-10 17:15',
 
   // 版本标签
   tag: 'V2升级版' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: SCM V2 数据库迁移完成 - 新增system_parameters/order_arrivals/psi表+倒排排程算法',
+  changelog: 'fix: 修复所有导航路由不匹配问题 + 新增完工管理独立页面',
 }
 
 // 格式化显示
