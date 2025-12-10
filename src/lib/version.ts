@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '1.23.5',
+  number: '1.24.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-09 23:16',
+  updatedAt: '2025-12-10 18:30',
 
   // 版本标签
   tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: 添加MRP算法验证测试数据脚本 (seed-mrp-test-data.sql)',
+  changelog: 'feat: 完善运单修改/删除全链路后端逻辑 - 新增撤销到货、撤销发运、强制删除功能',
 }
 
 // 格式化显示

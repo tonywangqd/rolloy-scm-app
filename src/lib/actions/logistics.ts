@@ -174,11 +174,12 @@ export async function updateShipmentPaymentStatus(
 /**
  * Update an existing shipment (excluding items)
  * Items cannot be edited - they must be deleted and recreated
+ * Enhanced with arrival status validation
  */
 export async function updateShipment(
   shipmentId: string,
   shipmentData: Partial<ShipmentData>
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; warning?: string }> {
   try {
     const authResult = await requireAuth()
     if ('error' in authResult) {
@@ -190,22 +191,39 @@ export async function updateShipment(
     if (!idValidation.success) {
       return {
         success: false,
-        error: `Validation error: ${idValidation.error.issues.map((e) => e.message).join(', ')}`,
+        error: `参数校验失败：${idValidation.error.issues.map((e) => e.message).join(', ')}`,
       }
     }
 
     const supabase = await createServerSupabaseClient()
 
-    // Check if shipment exists
+    // Check if shipment exists and get current state
     const { data: existingShipment, error: fetchError } = await supabase
       .from('shipments')
-      .select('id')
+      .select('id, tracking_number, actual_arrival_date, actual_departure_date, destination_warehouse_id')
       .eq('id', shipmentId)
       .single()
 
     if (fetchError || !existingShipment) {
       console.error('Error fetching shipment:', fetchError)
-      return { success: false, error: 'Shipment not found' }
+      return { success: false, error: '运单不存在' }
+    }
+
+    // Prevent modification of critical fields if already arrived
+    let warning: string | undefined
+    if (existingShipment.actual_arrival_date) {
+      const criticalFieldsChanged =
+        (shipmentData.destination_warehouse_id && shipmentData.destination_warehouse_id !== existingShipment.destination_warehouse_id) ||
+        (shipmentData.actual_arrival_date && shipmentData.actual_arrival_date !== existingShipment.actual_arrival_date)
+
+      if (criticalFieldsChanged) {
+        return {
+          success: false,
+          error: '修改失败：运单已到货，无法修改目的仓库或到货日期。如需修改，请先撤销到货状态。'
+        }
+      }
+
+      warning = '警告：该运单已到货，库存已更新。修改运单信息不会自动调整库存。'
     }
 
     // Update only the provided fields
@@ -230,15 +248,15 @@ export async function updateShipment(
 
     if (updateError) {
       console.error('Error updating shipment:', updateError)
-      return { success: false, error: updateError.message }
+      return { success: false, error: `更新失败：${updateError.message}` }
     }
 
     revalidatePath('/logistics')
     revalidatePath(`/logistics/${shipmentId}`)
-    return { success: true }
+    return { success: true, warning }
   } catch (error) {
     console.error('Error updating shipment:', error)
-    return { success: false, error: 'Failed to update shipment' }
+    return { success: false, error: '更新运单失败，请稍后重试' }
   }
 }
 
@@ -320,11 +338,13 @@ export async function markShipmentArrived(
 
 /**
  * Delete a shipment
- * Cascade deletes shipment items
+ * Cascade deletes shipment items and delivery allocations
+ * Prevents deletion of arrived shipments unless force flag is used
  */
 export async function deleteShipment(
-  id: string
-): Promise<{ success: boolean; error?: string }> {
+  id: string,
+  options?: { force?: boolean }
+): Promise<{ success: boolean; error?: string; message?: string }> {
   try {
     const authResult = await requireAuth()
     if ('error' in authResult) {
@@ -336,49 +356,75 @@ export async function deleteShipment(
     if (!validation.success) {
       return {
         success: false,
-        error: `Validation error: ${validation.error.issues.map((e) => e.message).join(', ')}`,
+        error: `参数校验失败：${validation.error.issues.map((e) => e.message).join(', ')}`,
       }
     }
 
     const supabase = await createServerSupabaseClient()
 
-    // Check if shipment exists and hasn't arrived yet
+    // Check if shipment exists and get current state
     const { data: shipment, error: fetchError } = await supabase
       .from('shipments')
-      .select('id, tracking_number, actual_arrival_date')
+      .select('id, tracking_number, actual_arrival_date, actual_departure_date')
       .eq('id', id)
       .single()
 
     if (fetchError || !shipment) {
-      return { success: false, error: 'Shipment not found' }
+      return { success: false, error: '运单不存在' }
     }
 
-    // Prevent deletion of arrived shipments
+    // Handle arrived shipments
     if (shipment.actual_arrival_date) {
+      if (!options?.force) {
+        return {
+          success: false,
+          error: '删除失败：运单已到货，库存已更新。请先撤销到货状态，或使用强制删除功能（将自动回滚库存）。'
+        }
+      }
+      // Force delete - will be handled by forceDeleteShipment
+      return await forceDeleteShipment(id)
+    }
+
+    // Handle departed but not arrived shipments
+    if (shipment.actual_departure_date) {
+      // Allow deletion with warning
+      const { error: deleteError } = await supabase
+        .from('shipments')
+        .delete()
+        .eq('id', id)
+
+      if (deleteError) {
+        console.error('Error deleting shipment:', deleteError)
+        return { success: false, error: `删除失败：${deleteError.message}` }
+      }
+
+      revalidatePath('/logistics')
+      revalidatePath('/procurement/deliveries')
       return {
-        success: false,
-        error: '已到货的发运单无法删除（库存已更新）'
+        success: true,
+        message: '运单已删除（该运单已发运但未到货，关联的生产交付记录已释放）'
       }
     }
 
-    // Delete shipment (cascade deletes items)
-    const { error } = await supabase
+    // Delete pending shipment (not yet departed)
+    const { error: deleteError } = await supabase
       .from('shipments')
       .delete()
       .eq('id', id)
 
-    if (error) {
-      console.error('Error deleting shipment:', error)
-      return { success: false, error: error.message }
+    if (deleteError) {
+      console.error('Error deleting shipment:', deleteError)
+      return { success: false, error: `删除失败：${deleteError.message}` }
     }
 
     revalidatePath('/logistics')
-    return { success: true }
+    revalidatePath('/procurement/deliveries')
+    return { success: true, message: '运单已删除' }
   } catch (err) {
     console.error('Error deleting shipment:', err)
     return {
       success: false,
-      error: `Failed to delete shipment: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      error: `删除运单失败：${err instanceof Error ? err.message : '未知错误'}`,
     }
   }
 }
@@ -537,5 +583,331 @@ export async function createShipmentWithAllocations(
   } catch (error) {
     console.error('Error creating shipment with allocations:', error)
     return { success: false, error: 'Failed to create shipment' }
+  }
+}
+
+/**
+ * Undo shipment arrival - rollback inventory updates
+ * Clears actual_arrival_date and reverts inventory changes
+ */
+export async function undoShipmentArrival(
+  shipmentId: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate ID
+    const validation = deleteByIdSchema.safeParse({ id: shipmentId })
+    if (!validation.success) {
+      return {
+        success: false,
+        error: `参数校验失败：${validation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Get shipment details with items
+    const { data: shipment, error: shipmentError } = await supabase
+      .from('shipments')
+      .select('*, shipment_items(*)')
+      .eq('id', shipmentId)
+      .single()
+
+    if (shipmentError || !shipment) {
+      return { success: false, error: '运单不存在' }
+    }
+
+    // Check if shipment has arrived
+    if (!(shipment as any).actual_arrival_date) {
+      return {
+        success: false,
+        error: '撤销失败：该运单尚未到货'
+      }
+    }
+
+    // Rollback inventory for each item
+    const items = (shipment as any).shipment_items || []
+    for (const item of items) {
+      // Get current inventory
+      const { data: currentInv, error: invError } = await supabase
+        .from('inventory_snapshots')
+        .select('qty_on_hand')
+        .eq('sku', item.sku)
+        .eq('warehouse_id', (shipment as any).destination_warehouse_id)
+        .single()
+
+      if (invError) {
+        return {
+          success: false,
+          error: `回滚库存失败：SKU ${item.sku} 的库存记录不存在`
+        }
+      }
+
+      const currentQty = currentInv.qty_on_hand
+      // Use received_qty if available, fallback to shipped_qty
+      const arrivalQty = item.received_qty !== undefined && item.received_qty !== null
+        ? item.received_qty
+        : item.shipped_qty
+      const newQty = currentQty - arrivalQty
+
+      if (newQty < 0) {
+        return {
+          success: false,
+          error: `回滚库存失败：SKU ${item.sku} 的库存不足（当前库存 ${currentQty}，需回滚 ${arrivalQty}）`
+        }
+      }
+
+      // Update inventory
+      const { error: updateInvError } = await supabase
+        .from('inventory_snapshots')
+        .update({
+          qty_on_hand: newQty,
+          last_counted_at: new Date().toISOString(),
+        })
+        .eq('sku', item.sku)
+        .eq('warehouse_id', (shipment as any).destination_warehouse_id)
+
+      if (updateInvError) {
+        return {
+          success: false,
+          error: `回滚库存失败：${updateInvError.message}`
+        }
+      }
+    }
+
+    // Clear arrival date
+    const { error: clearError } = await supabase
+      .from('shipments')
+      .update({ actual_arrival_date: null })
+      .eq('id', shipmentId)
+
+    if (clearError) {
+      return {
+        success: false,
+        error: `撤销到货状态失败：${clearError.message}`
+      }
+    }
+
+    revalidatePath('/logistics')
+    revalidatePath('/inventory')
+    revalidatePath('/')
+    return {
+      success: true,
+      message: `已撤销到货状态（运单 ${(shipment as any).tracking_number}），库存已回滚`
+    }
+  } catch (error) {
+    console.error('Error undoing shipment arrival:', error)
+    return {
+      success: false,
+      error: `撤销到货失败：${error instanceof Error ? error.message : '未知错误'}`
+    }
+  }
+}
+
+/**
+ * Undo shipment departure
+ * Clears actual_departure_date
+ */
+export async function undoShipmentDeparture(
+  shipmentId: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate ID
+    const validation = deleteByIdSchema.safeParse({ id: shipmentId })
+    if (!validation.success) {
+      return {
+        success: false,
+        error: `参数校验失败：${validation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Check if shipment exists and get current state
+    const { data: shipment, error: fetchError } = await supabase
+      .from('shipments')
+      .select('id, tracking_number, actual_arrival_date, actual_departure_date')
+      .eq('id', shipmentId)
+      .single()
+
+    if (fetchError || !shipment) {
+      return { success: false, error: '运单不存在' }
+    }
+
+    // Check if already arrived
+    if (shipment.actual_arrival_date) {
+      return {
+        success: false,
+        error: '撤销失败：该运单已到货，请先撤销到货状态'
+      }
+    }
+
+    // Check if has departed
+    if (!shipment.actual_departure_date) {
+      return {
+        success: false,
+        error: '撤销失败：该运单尚未发运'
+      }
+    }
+
+    // Clear departure date
+    const { error: clearError } = await supabase
+      .from('shipments')
+      .update({ actual_departure_date: null })
+      .eq('id', shipmentId)
+
+    if (clearError) {
+      return {
+        success: false,
+        error: `撤销发运状态失败：${clearError.message}`
+      }
+    }
+
+    revalidatePath('/logistics')
+    return {
+      success: true,
+      message: `已撤销发运状态（运单 ${shipment.tracking_number}）`
+    }
+  } catch (error) {
+    console.error('Error undoing shipment departure:', error)
+    return {
+      success: false,
+      error: `撤销发运失败：${error instanceof Error ? error.message : '未知错误'}`
+    }
+  }
+}
+
+/**
+ * Force delete an arrived shipment
+ * Automatically rollbacks inventory before deletion
+ */
+export async function forceDeleteShipment(
+  shipmentId: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // Validate ID
+    const validation = deleteByIdSchema.safeParse({ id: shipmentId })
+    if (!validation.success) {
+      return {
+        success: false,
+        error: `参数校验失败：${validation.error.issues.map((e) => e.message).join(', ')}`,
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Get shipment details
+    const { data: shipment, error: shipmentError } = await supabase
+      .from('shipments')
+      .select('*, shipment_items(*)')
+      .eq('id', shipmentId)
+      .single()
+
+    if (shipmentError || !shipment) {
+      return { success: false, error: '运单不存在' }
+    }
+
+    const trackingNumber = (shipment as any).tracking_number
+    const hasArrived = !!(shipment as any).actual_arrival_date
+
+    // If arrived, rollback inventory first
+    if (hasArrived) {
+      const items = (shipment as any).shipment_items || []
+      for (const item of items) {
+        // Get current inventory
+        const { data: currentInv, error: invError } = await supabase
+          .from('inventory_snapshots')
+          .select('qty_on_hand')
+          .eq('sku', item.sku)
+          .eq('warehouse_id', (shipment as any).destination_warehouse_id)
+          .single()
+
+        if (invError) {
+          return {
+            success: false,
+            error: `回滚库存失败：SKU ${item.sku} 的库存记录不存在`
+          }
+        }
+
+        const currentQty = currentInv.qty_on_hand
+        // Use received_qty if available, fallback to shipped_qty
+        const arrivalQty = item.received_qty !== undefined && item.received_qty !== null
+          ? item.received_qty
+          : item.shipped_qty
+        const newQty = currentQty - arrivalQty
+
+        if (newQty < 0) {
+          return {
+            success: false,
+            error: `回滚库存失败：SKU ${item.sku} 的库存不足（当前库存 ${currentQty}，需回滚 ${arrivalQty}）`
+          }
+        }
+
+        // Update inventory
+        const { error: updateInvError } = await supabase
+          .from('inventory_snapshots')
+          .update({
+            qty_on_hand: newQty,
+            last_counted_at: new Date().toISOString(),
+          })
+          .eq('sku', item.sku)
+          .eq('warehouse_id', (shipment as any).destination_warehouse_id)
+
+        if (updateInvError) {
+          return {
+            success: false,
+            error: `回滚库存失败：${updateInvError.message}`
+          }
+        }
+      }
+    }
+
+    // Delete shipment (cascade deletes items and allocations)
+    const { error: deleteError } = await supabase
+      .from('shipments')
+      .delete()
+      .eq('id', shipmentId)
+
+    if (deleteError) {
+      console.error('Error force deleting shipment:', deleteError)
+      return {
+        success: false,
+        error: `强制删除失败：${deleteError.message}`
+      }
+    }
+
+    revalidatePath('/logistics')
+    revalidatePath('/procurement/deliveries')
+    if (hasArrived) {
+      revalidatePath('/inventory')
+      revalidatePath('/')
+    }
+
+    return {
+      success: true,
+      message: hasArrived
+        ? `运单已强制删除（运单 ${trackingNumber}），库存已回滚`
+        : `运单已删除（运单 ${trackingNumber}）`
+    }
+  } catch (error) {
+    console.error('Error force deleting shipment:', error)
+    return {
+      success: false,
+      error: `强制删除失败：${error instanceof Error ? error.message : '未知错误'}`
+    }
   }
 }

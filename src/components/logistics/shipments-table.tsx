@@ -16,7 +16,9 @@ import { usePagination } from '@/lib/hooks/use-pagination'
 import { formatDate, formatCurrencyCNY, getWarehouseTypeVariant } from '@/lib/utils'
 import { PaymentStatusToggle } from '@/components/logistics/payment-status-toggle'
 import { ArrivalConfirmButton } from '@/components/logistics/arrival-confirm-button'
-import { Eye, Pencil, Trash2 } from 'lucide-react'
+import { DeleteShipmentButton } from '@/components/logistics/delete-shipment-button'
+import { UndoStatusButton } from '@/components/logistics/undo-status-button'
+import { Eye, Pencil } from 'lucide-react'
 import type { PaymentStatus } from '@/lib/types/database'
 
 interface ShipmentWithDetails {
@@ -59,6 +61,7 @@ export function ShipmentsTable({ shipments }: ShipmentsTableProps) {
           <TableRow>
             <TableHead>追踪号</TableHead>
             <TableHead>批次</TableHead>
+            <TableHead>运单状态</TableHead>
             <TableHead>仓库类型</TableHead>
             <TableHead>仓库代号</TableHead>
             <TableHead>物流方案</TableHead>
@@ -71,13 +74,26 @@ export function ShipmentsTable({ shipments }: ShipmentsTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {pagination.paginatedItems.map((shipment) => (
-            <TableRow key={shipment.id}>
-              <TableCell className="font-medium">
-                {shipment.tracking_number}
-              </TableCell>
-              <TableCell>{shipment.batch_code || '-'}</TableCell>
-              <TableCell>
+          {pagination.paginatedItems.map((shipment) => {
+            // Determine shipment status
+            const hasArrived = !!shipment.actual_arrival_date
+            const hasDeparted = !!shipment.actual_departure_date
+            const status = hasArrived ? 'arrived' : hasDeparted ? 'in_transit' : 'pending'
+            const statusText = hasArrived ? '已到货' : hasDeparted ? '运输中' : '待发运'
+            const statusColor = hasArrived ? 'bg-green-100 text-green-800' : hasDeparted ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+
+            return (
+              <TableRow key={shipment.id}>
+                <TableCell className="font-medium">
+                  {shipment.tracking_number}
+                </TableCell>
+                <TableCell>{shipment.batch_code || '-'}</TableCell>
+                <TableCell>
+                  <Badge className={statusColor}>
+                    {statusText}
+                  </Badge>
+                </TableCell>
+                <TableCell>
                 {shipment.warehouse_code ? (
                   <Badge variant={getWarehouseTypeVariant(shipment.warehouse_code.startsWith('FBA') ? 'FBA' : '3PL')}>
                     {shipment.warehouse_code.startsWith('FBA') ? 'FBA仓' : '海外仓'}
@@ -155,30 +171,47 @@ export function ShipmentsTable({ shipments }: ShipmentsTableProps) {
                   currentStatus={shipment.payment_status}
                 />
               </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-1">
-                  <Link href={`/logistics/${shipment.id}`}>
-                    <Button variant="ghost" size="sm" title="查看详情">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <Link href={`/logistics/${shipment.id}/edit`}>
-                    <Button variant="ghost" size="sm" title="编辑">
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                    title="删除"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Link href={`/logistics/${shipment.id}`}>
+                      <Button variant="ghost" size="sm" title="查看详情">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                    <Link href={`/logistics/${shipment.id}/edit`}>
+                      <Button variant="ghost" size="sm" title="编辑">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                    {hasArrived && (
+                      <UndoStatusButton
+                        shipmentId={shipment.id}
+                        trackingNumber={shipment.tracking_number}
+                        type="arrival"
+                        variant="ghost"
+                        size="sm"
+                      />
+                    )}
+                    {hasDeparted && !hasArrived && (
+                      <UndoStatusButton
+                        shipmentId={shipment.id}
+                        trackingNumber={shipment.tracking_number}
+                        type="departure"
+                        variant="ghost"
+                        size="sm"
+                      />
+                    )}
+                    <DeleteShipmentButton
+                      shipmentId={shipment.id}
+                      trackingNumber={shipment.tracking_number}
+                      hasArrived={hasArrived}
+                      className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                    />
+                  </div>
+                </TableCell>
+              </TableRow>
+            )
+          })}
         </TableBody>
       </Table>
 
