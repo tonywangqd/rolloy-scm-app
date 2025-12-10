@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '2.0.2',
+  number: '2.1.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-10 18:12',
+  updatedAt: '2025-12-10 18:21',
 
   // 版本标签
   tag: 'V2升级版' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: PSI报表改为真实数据库数据 + 算法验证支持预计到仓显示',
+  changelog: 'feat: 算法验证页面重构 - 实现真正的倒排排程逻辑，从销量预测倒推各环节建议时间',
 }
 
 // 格式化显示
