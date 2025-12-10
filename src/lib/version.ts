@@ -10,13 +10,13 @@ export const VERSION = {
   number: '2.0.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-10 17:30',
+  updatedAt: '2025-12-10 16:26',
 
   // 版本标签
   tag: 'V2升级版' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: SCM V2 前端UI重构 - 新增PSI周报表/到仓管理/系统参数设置/导航重构',
+  changelog: 'feat: SCM V2 智能供应链系统升级 - 五单据流转/倒排排程/PSI周报表/到仓管理',
 }
 
 // 格式化显示

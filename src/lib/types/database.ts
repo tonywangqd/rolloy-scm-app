@@ -1091,8 +1091,9 @@ export interface SKURiskSummary {
 export interface SupplyChainLeadTimes {
   production_weeks: number      // Production cycle (from product.production_lead_weeks, default: 5 weeks)
   loading_weeks: number         // Loading preparation (default: 1 week)
-  shipping_weeks: number        // Shipping time (default: 4 weeks)
+  shipping_weeks: number        // Shipping time (default: 4-5 weeks)
   safety_stock_weeks: number    // Safety stock (from product.safety_stock_weeks)
+  inbound_weeks?: number        // Inbound buffer (default: 2 weeks) - optional for backward compatibility
 }
 
 /**
@@ -2281,16 +2282,6 @@ export interface ReverseScheduleSuggestion {
     total_lead_time_weeks: number
   }
   calculated_at: string
-}
-
-/**
- * Supply Chain Lead Times Configuration
- */
-export interface SupplyChainLeadTimes {
-  production_weeks: number
-  loading_weeks: number
-  shipping_weeks: number
-  inbound_weeks: number
 }
 
 /**
