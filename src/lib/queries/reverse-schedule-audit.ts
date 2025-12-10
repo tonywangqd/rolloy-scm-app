@@ -1,12 +1,16 @@
 /**
  * Reverse Schedule Algorithm Audit Queries
- * 倒排排程算法验证 - 从销量预测倒推计算各环节建议时间
+ * 供应链算法验证 - 双向计算逻辑
  *
  * 核心逻辑：
- * 1. 获取销量预测
- * 2. 对每个预测调用倒排排程计算
- * 3. 聚合建议数据到每周：建议下单/出厂/发货/到仓
- * 4. 对比实际数据
+ * 1. 倒推（从销量预测）→ 建议下单（告诉用户应该什么时候下单）
+ * 2. 正推（从实际数据）→ 预计出厂/发货/到仓（告诉用户已下单的货什么时候到）
+ *
+ * 计算方向：
+ * - 建议下单 = 倒推：销量需求周 - 总周期
+ * - 预计出厂 = 正推：实际下单周 + 生产周期
+ * - 预计发货 = 正推：实际出厂周 + 装柜周期（或从在途shipment）
+ * - 预计到仓 = 正推：实际发货周 + 物流周期（或从在途shipment）
  */
 
 import { createServerSupabaseClient } from '@/lib/supabase/server'
@@ -17,101 +21,73 @@ import type { Product, StockStatus } from '@/lib/types/database'
 // TYPE DEFINITIONS
 // ================================================================
 
-/**
- * Lead times configuration
- */
 export interface LeadTimes {
   production_weeks: number  // 生产周期 (PO→OF)
   loading_weeks: number     // 装柜周期 (OF→OS)
   shipping_weeks: number    // 物流周期 (OS→OA)
   inbound_weeks: number     // 上架周期 (OA→可销售)
-  safety_stock_weeks: number // 安全库存周数
-  total_weeks: number       // 总周期
+  safety_stock_weeks: number
+  total_weeks: number
 }
 
-/**
- * Reverse schedule calculation for a single forecast
- */
 export interface ReverseScheduleItem {
-  target_week: string       // 销量需求周
-  qty: number              // 需求数量
-  suggested_arrival_week: string   // 建议到仓周
-  suggested_ship_week: string      // 建议发货周
-  suggested_fulfillment_week: string // 建议出厂周
-  suggested_order_week: string     // 建议下单周
+  target_week: string
+  qty: number
+  suggested_order_week: string
 }
 
 /**
- * Algorithm Audit Row - New structure with 建议 vs 实际
+ * Algorithm Audit Row - 双向计算结构
+ * - 下单：建议（倒推）vs 实际
+ * - 出厂/发货/到仓：预计（正推）vs 实际
  */
 export interface ReverseScheduleAuditRow {
-  // Week identification
   week_iso: string
   week_start_date: string
   week_offset: number
   is_past: boolean
   is_current: boolean
 
-  // 销售 (预计 vs 实际)
+  // 销售 (预测 vs 实际)
   sales_forecast: number
   sales_actual: number | null
 
-  // 下单 (建议 vs 实际)
-  // "建议"来自倒排排程：这一周应该下单多少（为满足未来N周的销量）
-  suggested_order: number
+  // 下单 (建议[倒推] vs 实际)
+  suggested_order: number  // 倒推：为满足未来销量，这周应该下单多少
   actual_order: number
 
-  // 出厂 (建议 vs 实际)
-  suggested_factory_ship: number
+  // 出厂 (预计[正推] vs 实际)
+  planned_factory_ship: number  // 正推：基于已下单，预计这周出厂多少
   actual_factory_ship: number
 
-  // 发货 (建议 vs 实际)
-  suggested_ship: number
+  // 发货 (预计[正推] vs 实际)
+  planned_ship: number  // 正推：基于已出厂或在途，预计这周发货多少
   actual_ship: number
 
-  // 到仓 (建议 vs 实际)
-  suggested_arrival: number
+  // 到仓 (预计[正推] vs 实际)
+  planned_arrival: number  // 正推：基于已发货或在途，预计这周到仓多少
   actual_arrival: number
 
-  // 库存计算 (使用: 实际到仓 > 0 ? 实际 : 建议)
+  // 库存计算
   opening_stock: number
-  arrival_effective: number  // 有效到仓 = COALESCE(actual, suggested)
-  sales_effective: number    // 有效销售 = COALESCE(actual, forecast)
+  arrival_effective: number  // COALESCE(actual_arrival, planned_arrival)
+  sales_effective: number    // COALESCE(actual_sales, forecast_sales)
   closing_stock: number
   safety_threshold: number
   stock_status: StockStatus
 
-  // 详细数据 (可展开)
-  order_details: Array<{
-    po_number: string
-    qty: number
-    order_date: string
-  }>
-  fulfillment_details: Array<{
-    delivery_number: string
-    qty: number
-    delivery_date: string
-  }>
-  ship_details: Array<{
-    tracking_number: string
-    qty: number
-    departure_date: string | null
-  }>
-  arrival_details: Array<{
-    tracking_number: string
-    qty: number
-    arrival_date: string
-  }>
+  // 详细数据
+  order_details: Array<{ po_number: string; qty: number; order_date: string }>
+  fulfillment_details: Array<{ delivery_number: string; qty: number; delivery_date: string }>
+  ship_details: Array<{ tracking_number: string; qty: number; departure_date: string | null }>
+  arrival_details: Array<{ tracking_number: string; qty: number; arrival_date: string }>
 }
 
-/**
- * Complete audit result
- */
 export interface ReverseScheduleAuditResult {
   product: Product | null
   rows: ReverseScheduleAuditRow[]
   leadTimes: LeadTimes
-  reverseSchedule: ReverseScheduleItem[] // 每个销量预测的倒排结果
+  reverseSchedule: ReverseScheduleItem[]
   metadata: {
     current_week: string
     start_week: string
@@ -121,7 +97,7 @@ export interface ReverseScheduleAuditResult {
     total_demand: number
     total_suggested_order: number
     total_actual_order: number
-    gap: number // total_suggested - total_actual
+    gap: number
   }
 }
 
@@ -129,34 +105,6 @@ export interface ReverseScheduleAuditResult {
 // HELPER FUNCTIONS
 // ================================================================
 
-/**
- * Calculate reverse schedule for a target week
- * 倒排排程计算
- */
-function calculateReverseForWeek(
-  targetWeek: string,
-  qty: number,
-  leadTimes: LeadTimes
-): ReverseScheduleItem {
-  // 从销量需求周倒推
-  const arrivalWeek = addWeeksToISOWeek(targetWeek, -leadTimes.inbound_weeks) || targetWeek
-  const shipWeek = addWeeksToISOWeek(arrivalWeek, -leadTimes.shipping_weeks) || arrivalWeek
-  const fulfillmentWeek = addWeeksToISOWeek(shipWeek, -leadTimes.loading_weeks) || shipWeek
-  const orderWeek = addWeeksToISOWeek(fulfillmentWeek, -leadTimes.production_weeks) || fulfillmentWeek
-
-  return {
-    target_week: targetWeek,
-    qty,
-    suggested_arrival_week: arrivalWeek,
-    suggested_ship_week: shipWeek,
-    suggested_fulfillment_week: fulfillmentWeek,
-    suggested_order_week: orderWeek,
-  }
-}
-
-/**
- * Get week string from date
- */
 function getWeekFromDate(date: Date): string {
   return getISOWeekString(date)
 }
@@ -165,14 +113,6 @@ function getWeekFromDate(date: Date): string {
 // MAIN QUERY FUNCTION
 // ================================================================
 
-/**
- * Fetch Reverse Schedule Algorithm Audit Data
- * 获取倒排排程算法验证数据
- *
- * @param sku - Product SKU
- * @param customStartWeek - Optional custom start week
- * @param customEndWeek - Optional custom end week
- */
 export async function fetchReverseScheduleAudit(
   sku: string,
   customStartWeek?: string,
@@ -181,7 +121,6 @@ export async function fetchReverseScheduleAudit(
   const supabase = await createServerSupabaseClient()
   const currentWeek = getCurrentWeek()
 
-  // Default: 过去4周 + 未来11周 = 16周
   const startWeek = customStartWeek || addWeeksToISOWeek(currentWeek, -4) || currentWeek
   const endWeek = customEndWeek || addWeeksToISOWeek(currentWeek, 11) || currentWeek
 
@@ -199,31 +138,14 @@ export async function fetchReverseScheduleAudit(
     return {
       product: null,
       rows: [],
-      leadTimes: {
-        production_weeks: 5,
-        loading_weeks: 1,
-        shipping_weeks: 5,
-        inbound_weeks: 2,
-        safety_stock_weeks: 2,
-        total_weeks: 13,
-      },
+      leadTimes: { production_weeks: 5, loading_weeks: 1, shipping_weeks: 5, inbound_weeks: 2, safety_stock_weeks: 2, total_weeks: 13 },
       reverseSchedule: [],
-      metadata: {
-        current_week: currentWeek,
-        start_week: startWeek,
-        end_week: endWeek,
-        total_weeks: 0,
-        avg_weekly_sales: 0,
-        total_demand: 0,
-        total_suggested_order: 0,
-        total_actual_order: 0,
-        gap: 0,
-      },
+      metadata: { current_week: currentWeek, start_week: startWeek, end_week: endWeek, total_weeks: 0, avg_weekly_sales: 0, total_demand: 0, total_suggested_order: 0, total_actual_order: 0, gap: 0 },
     }
   }
 
   // ================================================================
-  // STEP 2: Fetch Lead Times from system_parameters
+  // STEP 2: Fetch Lead Times
   // ================================================================
 
   const { data: paramData } = await supabase
@@ -240,8 +162,7 @@ export async function fetchReverseScheduleAudit(
     safety_stock_weeks: product.safety_stock_weeks || 2,
     total_weeks: 0,
   }
-  leadTimes.total_weeks = leadTimes.production_weeks + leadTimes.loading_weeks +
-    leadTimes.shipping_weeks + leadTimes.inbound_weeks
+  leadTimes.total_weeks = leadTimes.production_weeks + leadTimes.loading_weeks + leadTimes.shipping_weeks + leadTimes.inbound_weeks
 
   // ================================================================
   // STEP 3: Generate Week Range
@@ -249,21 +170,19 @@ export async function fetchReverseScheduleAudit(
 
   const weeks: string[] = []
   let currentIterWeek = startWeek
-  const currentWeekIndex = { value: -1 }
+  let currentWeekIndex = -1
 
-  for (let i = 0; i < 24; i++) { // 最多24周防止无限循环
+  for (let i = 0; i < 24; i++) {
     if (currentIterWeek > endWeek) break
     weeks.push(currentIterWeek)
-    if (currentIterWeek === currentWeek) {
-      currentWeekIndex.value = i
-    }
+    if (currentIterWeek === currentWeek) currentWeekIndex = i
     const next = addWeeksToISOWeek(currentIterWeek, 1)
     if (!next) break
     currentIterWeek = next
   }
 
   // ================================================================
-  // STEP 4: Fetch Sales Forecasts (销量预测)
+  // STEP 4: Fetch Sales Forecasts
   // ================================================================
 
   const { data: forecasts } = await supabase
@@ -271,7 +190,6 @@ export async function fetchReverseScheduleAudit(
     .select('week_iso, forecast_qty')
     .eq('sku', sku)
     .eq('is_closed', false)
-    .in('week_iso', weeks)
 
   const forecastMap = new Map<string, number>()
   ;(forecasts || []).forEach(f => {
@@ -280,39 +198,28 @@ export async function fetchReverseScheduleAudit(
   })
 
   // ================================================================
-  // STEP 5: Calculate Reverse Schedule for Each Forecast
-  // 对每个销量预测计算倒排排程
+  // STEP 5: 倒推计算 - 建议下单
+  // 从销量预测倒推：这周应该下多少单（为满足未来N周的销量）
   // ================================================================
 
   const reverseSchedule: ReverseScheduleItem[] = []
   const suggestedOrderByWeek = new Map<string, number>()
-  const suggestedFulfillmentByWeek = new Map<string, number>()
-  const suggestedShipByWeek = new Map<string, number>()
-  const suggestedArrivalByWeek = new Map<string, number>()
 
-  weeks.forEach(week => {
-    const forecastQty = forecastMap.get(week) || 0
-    if (forecastQty > 0) {
-      const reverseResult = calculateReverseForWeek(week, forecastQty, leadTimes)
-      reverseSchedule.push(reverseResult)
-
-      // 聚合到对应周
-      const orderCurrent = suggestedOrderByWeek.get(reverseResult.suggested_order_week) || 0
-      suggestedOrderByWeek.set(reverseResult.suggested_order_week, orderCurrent + forecastQty)
-
-      const fulfillCurrent = suggestedFulfillmentByWeek.get(reverseResult.suggested_fulfillment_week) || 0
-      suggestedFulfillmentByWeek.set(reverseResult.suggested_fulfillment_week, fulfillCurrent + forecastQty)
-
-      const shipCurrent = suggestedShipByWeek.get(reverseResult.suggested_ship_week) || 0
-      suggestedShipByWeek.set(reverseResult.suggested_ship_week, shipCurrent + forecastQty)
-
-      const arrivalCurrent = suggestedArrivalByWeek.get(reverseResult.suggested_arrival_week) || 0
-      suggestedArrivalByWeek.set(reverseResult.suggested_arrival_week, arrivalCurrent + forecastQty)
+  // 遍历所有周的销量预测
+  forecastMap.forEach((qty, targetWeek) => {
+    if (qty > 0) {
+      // 倒推：销量需求周 - 总周期 = 建议下单周
+      const orderWeek = addWeeksToISOWeek(targetWeek, -leadTimes.total_weeks)
+      if (orderWeek) {
+        reverseSchedule.push({ target_week: targetWeek, qty, suggested_order_week: orderWeek })
+        const current = suggestedOrderByWeek.get(orderWeek) || 0
+        suggestedOrderByWeek.set(orderWeek, current + qty)
+      }
     }
   })
 
   // ================================================================
-  // STEP 6: Fetch Actual Data (实际数据)
+  // STEP 6: Fetch Actual Data
   // ================================================================
 
   // 实际销量
@@ -320,7 +227,6 @@ export async function fetchReverseScheduleAudit(
     .from('sales_actuals')
     .select('week_iso, actual_qty')
     .eq('sku', sku)
-    .in('week_iso', weeks)
 
   const actualSalesMap = new Map<string, number>()
   ;(actuals || []).forEach(a => {
@@ -331,12 +237,7 @@ export async function fetchReverseScheduleAudit(
   // 实际下单 (PO)
   const { data: purchaseOrders } = await supabase
     .from('purchase_orders')
-    .select(`
-      id,
-      po_number,
-      actual_order_date,
-      purchase_order_items!inner(sku, ordered_qty)
-    `)
+    .select(`id, po_number, actual_order_date, purchase_order_items!inner(sku, ordered_qty)`)
     .eq('purchase_order_items.sku', sku)
     .not('actual_order_date', 'is', null)
 
@@ -350,7 +251,6 @@ export async function fetchReverseScheduleAudit(
       if (item?.sku !== sku) return
       const current = actualOrderMap.get(orderWeek) || 0
       actualOrderMap.set(orderWeek, current + item.ordered_qty)
-
       const details = orderDetailsByWeek.get(orderWeek) || []
       details.push({ po_number: po.po_number, qty: item.ordered_qty, order_date: po.actual_order_date })
       orderDetailsByWeek.set(orderWeek, details)
@@ -371,26 +271,20 @@ export async function fetchReverseScheduleAudit(
     const deliveryWeek = getWeekFromDate(new Date(d.actual_delivery_date))
     const current = actualFactoryShipMap.get(deliveryWeek) || 0
     actualFactoryShipMap.set(deliveryWeek, current + d.delivered_qty)
-
     const details = fulfillmentDetailsByWeek.get(deliveryWeek) || []
     details.push({ delivery_number: d.delivery_number, qty: d.delivered_qty, delivery_date: d.actual_delivery_date })
     fulfillmentDetailsByWeek.set(deliveryWeek, details)
   })
 
-  // 实际发货 (Shipment - departure)
+  // Shipments
   const { data: shipments } = await supabase
     .from('shipments')
-    .select(`
-      id,
-      tracking_number,
-      actual_departure_date,
-      actual_arrival_date,
-      shipment_items!inner(sku, shipped_qty)
-    `)
+    .select(`id, tracking_number, actual_departure_date, planned_arrival_date, actual_arrival_date, shipment_items!inner(sku, shipped_qty)`)
     .eq('shipment_items.sku', sku)
 
   const actualShipMap = new Map<string, number>()
   const actualArrivalMap = new Map<string, number>()
+  const plannedArrivalFromShipmentsMap = new Map<string, number>() // 在途货物预计到仓
   const shipDetailsByWeek = new Map<string, Array<{ tracking_number: string; qty: number; departure_date: string | null }>>()
   const arrivalDetailsByWeek = new Map<string, Array<{ tracking_number: string; qty: number; arrival_date: string }>>()
 
@@ -404,7 +298,6 @@ export async function fetchReverseScheduleAudit(
         const departureWeek = getWeekFromDate(new Date(s.actual_departure_date))
         const current = actualShipMap.get(departureWeek) || 0
         actualShipMap.set(departureWeek, current + item.shipped_qty)
-
         const details = shipDetailsByWeek.get(departureWeek) || []
         details.push({ tracking_number: s.tracking_number, qty: item.shipped_qty, departure_date: s.actual_departure_date })
         shipDetailsByWeek.set(departureWeek, details)
@@ -415,16 +308,76 @@ export async function fetchReverseScheduleAudit(
         const arrivalWeek = getWeekFromDate(new Date(s.actual_arrival_date))
         const current = actualArrivalMap.get(arrivalWeek) || 0
         actualArrivalMap.set(arrivalWeek, current + item.shipped_qty)
-
         const details = arrivalDetailsByWeek.get(arrivalWeek) || []
         details.push({ tracking_number: s.tracking_number, qty: item.shipped_qty, arrival_date: s.actual_arrival_date })
         arrivalDetailsByWeek.set(arrivalWeek, details)
+      }
+      // 在途货物预计到仓（已发货但未到仓）
+      else if (s.actual_departure_date && s.planned_arrival_date) {
+        const plannedArrivalWeek = getWeekFromDate(new Date(s.planned_arrival_date))
+        const current = plannedArrivalFromShipmentsMap.get(plannedArrivalWeek) || 0
+        plannedArrivalFromShipmentsMap.set(plannedArrivalWeek, current + item.shipped_qty)
       }
     })
   })
 
   // ================================================================
-  // STEP 7: Fetch Current Inventory Snapshot
+  // STEP 7: 正推计算 - 从实际数据向后推
+  // ================================================================
+
+  // 7.1 预计出厂（正推）：实际下单 + 生产周期
+  const plannedFactoryShipByWeek = new Map<string, number>()
+  actualOrderMap.forEach((qty, orderWeek) => {
+    const factoryShipWeek = addWeeksToISOWeek(orderWeek, leadTimes.production_weeks)
+    if (factoryShipWeek) {
+      // 只有当没有实际出厂数据时才显示预计
+      const actualQty = actualFactoryShipMap.get(factoryShipWeek) || 0
+      if (actualQty === 0) {
+        const current = plannedFactoryShipByWeek.get(factoryShipWeek) || 0
+        plannedFactoryShipByWeek.set(factoryShipWeek, current + qty)
+      }
+    }
+  })
+
+  // 7.2 预计发货（正推）：实际出厂 + 装柜周期
+  const plannedShipByWeek = new Map<string, number>()
+  actualFactoryShipMap.forEach((qty, factoryShipWeek) => {
+    const shipWeek = addWeeksToISOWeek(factoryShipWeek, leadTimes.loading_weeks)
+    if (shipWeek) {
+      const actualQty = actualShipMap.get(shipWeek) || 0
+      if (actualQty === 0) {
+        const current = plannedShipByWeek.get(shipWeek) || 0
+        plannedShipByWeek.set(shipWeek, current + qty)
+      }
+    }
+  })
+
+  // 7.3 预计到仓（正推）：
+  // - 优先使用在途shipment的planned_arrival_date
+  // - 其次从实际发货 + 物流周期推算
+  const plannedArrivalByWeek = new Map<string, number>()
+
+  // 先加入在途shipment的预计到仓
+  plannedArrivalFromShipmentsMap.forEach((qty, week) => {
+    const current = plannedArrivalByWeek.get(week) || 0
+    plannedArrivalByWeek.set(week, current + qty)
+  })
+
+  // 再从实际发货正推（如果没有在途数据）
+  actualShipMap.forEach((qty, shipWeek) => {
+    const arrivalWeek = addWeeksToISOWeek(shipWeek, leadTimes.shipping_weeks)
+    if (arrivalWeek) {
+      const actualQty = actualArrivalMap.get(arrivalWeek) || 0
+      const plannedFromShipments = plannedArrivalFromShipmentsMap.get(arrivalWeek) || 0
+      if (actualQty === 0 && plannedFromShipments === 0) {
+        const current = plannedArrivalByWeek.get(arrivalWeek) || 0
+        plannedArrivalByWeek.set(arrivalWeek, current + qty)
+      }
+    }
+  })
+
+  // ================================================================
+  // STEP 8: Fetch Current Inventory
   // ================================================================
 
   const { data: snapshots } = await supabase
@@ -435,7 +388,7 @@ export async function fetchReverseScheduleAudit(
   const initialStock = (snapshots || []).reduce((sum, s) => sum + s.qty_on_hand, 0)
 
   // ================================================================
-  // STEP 8: Build Rows with Rolling Inventory
+  // STEP 9: Build Rows
   // ================================================================
 
   let runningStock = initialStock
@@ -447,7 +400,7 @@ export async function fetchReverseScheduleAudit(
   const avgWeeklySales = totalEffectiveSales / weeks.length
 
   const rows: ReverseScheduleAuditRow[] = weeks.map((week, index) => {
-    const weekOffset = currentWeekIndex.value >= 0 ? index - currentWeekIndex.value : index - 4
+    const weekOffset = currentWeekIndex >= 0 ? index - currentWeekIndex : index - 4
     const weekStartDate = parseISOWeekString(week)
     const week_start_date = weekStartDate ? formatDateISO(weekStartDate) : week
 
@@ -456,35 +409,34 @@ export async function fetchReverseScheduleAudit(
     const sales_actual = actualSalesMap.get(week) ?? null
     const sales_effective = sales_actual !== null ? sales_actual : sales_forecast
 
-    // 建议 vs 实际
+    // 下单：建议（倒推）vs 实际
     const suggested_order = suggestedOrderByWeek.get(week) || 0
     const actual_order = actualOrderMap.get(week) || 0
 
-    const suggested_factory_ship = suggestedFulfillmentByWeek.get(week) || 0
+    // 出厂：预计（正推）vs 实际
+    const planned_factory_ship = plannedFactoryShipByWeek.get(week) || 0
     const actual_factory_ship = actualFactoryShipMap.get(week) || 0
 
-    const suggested_ship = suggestedShipByWeek.get(week) || 0
+    // 发货：预计（正推）vs 实际
+    const planned_ship = plannedShipByWeek.get(week) || 0
     const actual_ship = actualShipMap.get(week) || 0
 
-    const suggested_arrival = suggestedArrivalByWeek.get(week) || 0
+    // 到仓：预计（正推）vs 实际
+    const planned_arrival = plannedArrivalByWeek.get(week) || 0
     const actual_arrival = actualArrivalMap.get(week) || 0
 
-    // 有效到仓 = COALESCE(实际, 建议)
-    const arrival_effective = actual_arrival > 0 ? actual_arrival : suggested_arrival
+    // 有效到仓 = COALESCE(实际, 预计)
+    const arrival_effective = actual_arrival > 0 ? actual_arrival : planned_arrival
 
     // 库存计算
     const opening_stock = runningStock
     const closing_stock = opening_stock + arrival_effective - sales_effective
     runningStock = closing_stock
 
-    // 安全库存和状态
     const safety_threshold = avgWeeklySales * leadTimes.safety_stock_weeks
     let stock_status: StockStatus = 'OK'
-    if (closing_stock <= 0) {
-      stock_status = 'Stockout'
-    } else if (closing_stock < safety_threshold) {
-      stock_status = 'Risk'
-    }
+    if (closing_stock <= 0) stock_status = 'Stockout'
+    else if (closing_stock < safety_threshold) stock_status = 'Risk'
 
     return {
       week_iso: week,
@@ -496,11 +448,11 @@ export async function fetchReverseScheduleAudit(
       sales_actual,
       suggested_order,
       actual_order,
-      suggested_factory_ship,
+      planned_factory_ship,
       actual_factory_ship,
-      suggested_ship,
+      planned_ship,
       actual_ship,
-      suggested_arrival,
+      planned_arrival,
       actual_arrival,
       opening_stock,
       arrival_effective,
@@ -516,7 +468,7 @@ export async function fetchReverseScheduleAudit(
   })
 
   // ================================================================
-  // STEP 9: Calculate Metadata
+  // STEP 10: Calculate Metadata
   // ================================================================
 
   const totalDemand = Array.from(forecastMap.values()).reduce((a, b) => a + b, 0)

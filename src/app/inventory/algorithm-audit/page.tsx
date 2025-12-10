@@ -1,6 +1,7 @@
 /**
- * Algorithm Audit Page V5 - Reverse Schedule
- * 倒排排程算法验证 - 从销量预测倒推各环节建议时间
+ * Algorithm Audit Page V5 - 双向计算逻辑
+ * - 倒推：从销量预测 → 建议下单
+ * - 正推：从实际下单 → 预计出厂/发货/到仓
  * Path: /inventory/algorithm-audit
  */
 
@@ -40,7 +41,7 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
   if (!selectedSku) {
     return (
       <div className="p-8">
-        <h1 className="text-2xl font-semibold mb-6">算法验证 - 倒排排程</h1>
+        <h1 className="text-2xl font-semibold mb-6">算法验证 - 双向计算</h1>
         <Card>
           <CardContent className="p-12 text-center">
             <p className="text-gray-500">暂无产品数据，请先添加产品</p>
@@ -63,9 +64,9 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
     <div className="p-8 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold mb-2">算法验证 V5 - 倒排排程</h1>
+        <h1 className="text-2xl font-semibold mb-2">算法验证 V5 - 双向计算</h1>
         <p className="text-sm text-gray-500">
-          从销量预测倒推计算：建议下单周 → 建议出厂周 → 建议发货周 → 建议到仓周
+          倒推：销量预测 → 建议下单 | 正推：实际下单 → 预计出厂/发货/到仓
         </p>
       </div>
 
@@ -161,13 +162,13 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* Reverse Schedule Visualization */}
+      {/* Reverse Schedule Visualization - 倒推建议下单 */}
       {reverseSchedule.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">倒排排程计算结果</CardTitle>
+            <CardTitle className="text-base">倒推计算 - 建议下单时间</CardTitle>
             <CardDescription>
-              每个销量预测周 → 倒推各环节建议时间
+              从销量预测倒推：需求周 - {leadTimes.total_weeks}周 = 建议下单周
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -178,9 +179,7 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
                     <th className="px-3 py-2 text-left font-medium text-gray-700">销量需求周</th>
                     <th className="px-3 py-2 text-right font-medium text-gray-700">需求数量</th>
                     <th className="px-3 py-2 text-center font-medium text-orange-600">建议下单周</th>
-                    <th className="px-3 py-2 text-center font-medium text-yellow-600">建议出厂周</th>
-                    <th className="px-3 py-2 text-center font-medium text-cyan-600">建议发货周</th>
-                    <th className="px-3 py-2 text-center font-medium text-green-600">建议到仓周</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">计算公式</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,17 +187,17 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
                     <tr key={idx} className="border-b hover:bg-gray-50">
                       <td className="px-3 py-2 font-medium">{item.target_week}</td>
                       <td className="px-3 py-2 text-right">{item.qty}</td>
-                      <td className="px-3 py-2 text-center text-orange-600">{item.suggested_order_week}</td>
-                      <td className="px-3 py-2 text-center text-yellow-600">{item.suggested_fulfillment_week}</td>
-                      <td className="px-3 py-2 text-center text-cyan-600">{item.suggested_ship_week}</td>
-                      <td className="px-3 py-2 text-center text-green-600">{item.suggested_arrival_week}</td>
+                      <td className="px-3 py-2 text-center text-orange-600 font-semibold">{item.suggested_order_week}</td>
+                      <td className="px-3 py-2 text-gray-400 text-xs">
+                        {item.target_week} - {leadTimes.total_weeks}周
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {reverseSchedule.length > 8 && (
                 <p className="text-xs text-gray-400 mt-2 text-center">
-                  显示前 8 条，共 {reverseSchedule.length} 条倒排计算
+                  显示前 8 条，共 {reverseSchedule.length} 条
                 </p>
               )}
             </div>
@@ -206,11 +205,36 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
         </Card>
       )}
 
-      {/* Legend Card */}
+      {/* Legend Card - 双向计算说明 */}
       <Card>
         <CardContent className="p-4">
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-4 text-sm">
+          <div className="space-y-4">
+            {/* 倒推说明 */}
+            <div className="bg-orange-50 rounded-lg p-3">
+              <div className="font-medium text-orange-800 mb-2">倒推计算（从需求端）</div>
+              <div className="text-sm text-orange-700">
+                <strong>建议下单</strong> = 销量需求周 - 总周期({leadTimes.total_weeks}周)
+              </div>
+              <div className="text-xs text-orange-600 mt-1">
+                告诉用户：为满足未来销量，这周应该下多少单
+              </div>
+            </div>
+
+            {/* 正推说明 */}
+            <div className="bg-green-50 rounded-lg p-3">
+              <div className="font-medium text-green-800 mb-2">正推计算（从供应端）</div>
+              <div className="text-sm text-green-700 space-y-1">
+                <div><strong>预计出厂</strong> = 实际下单周 + 生产周期({leadTimes.production_weeks}周)</div>
+                <div><strong>预计发货</strong> = 实际出厂周 + 装柜周期({leadTimes.loading_weeks}周)</div>
+                <div><strong>预计到仓</strong> = 实际发货周 + 物流周期({leadTimes.shipping_weeks}周)</div>
+              </div>
+              <div className="text-xs text-green-600 mt-1">
+                告诉用户：已下单的货预计什么时候到
+              </div>
+            </div>
+
+            {/* 图例 */}
+            <div className="flex flex-wrap gap-4 text-sm border-t pt-3">
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 bg-gray-50 border border-gray-300 rounded"></div>
                 <span className="text-gray-600">过去周次</span>
@@ -221,18 +245,16 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-orange-600 font-medium">建议</span>
-                <span className="text-gray-600">= 从销量预测倒推计算</span>
+                <span className="text-gray-600">= 倒推（从销量预测）</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-green-600 font-medium">预计</span>
+                <span className="text-gray-600">= 正推（从实际数据）</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-green-700 font-semibold">实际</span>
-                <span className="text-gray-600">= 实际发生的数据</span>
+                <span className="text-gray-600">= 已发生的真实数据</span>
               </div>
-            </div>
-            <div className="text-xs text-gray-500 border-t border-gray-200 pt-3">
-              <strong>公式:</strong> 销量需求周 - 上架{leadTimes.inbound_weeks}周 = 到仓周 →
-              到仓周 - 物流{leadTimes.shipping_weeks}周 = 发货周 →
-              发货周 - 装柜{leadTimes.loading_weeks}周 = 出厂周 →
-              出厂周 - 生产{leadTimes.production_weeks}周 = 下单周
             </div>
           </div>
         </CardContent>
@@ -241,9 +263,9 @@ export default async function AlgorithmAuditPage({ searchParams }: PageProps) {
       {/* Audit Table */}
       <Card>
         <CardHeader>
-          <CardTitle>周度对比表 - 建议 vs 实际</CardTitle>
+          <CardTitle>周度对比表</CardTitle>
           <CardDescription>
-            对比每周的建议执行量与实际执行量，差异以红色/绿色数字显示
+            下单：建议(倒推) vs 实际 | 出厂/发货/到仓：预计(正推) vs 实际
           </CardDescription>
         </CardHeader>
         <CardContent>
