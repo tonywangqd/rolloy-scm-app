@@ -8,11 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
 import { updateShipment } from '@/lib/actions/logistics'
-import { ArrowLeft, Save } from 'lucide-react'
+import { UndoStatusButton } from '@/components/logistics/undo-status-button'
+import { ArrowLeft, Save, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Warehouse, WarehouseType, Shipment, ShipmentItem } from '@/lib/types/database'
+import { toast } from 'sonner'
 
 const LOGISTICS_PLANS = [
   '极速20日达',
@@ -39,6 +42,10 @@ export default function EditShipmentPage({ params }: EditShipmentPageProps) {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [warehouseType, setWarehouseType] = useState<WarehouseType | ''>('')
   const [items, setItems] = useState<ShipmentItem[]>([])
+
+  // Status tracking
+  const [hasArrived, setHasArrived] = useState(false)
+  const [hasDeparted, setHasDeparted] = useState(false)
 
   const [formData, setFormData] = useState({
     tracking_number: '',
@@ -81,6 +88,10 @@ export default function EditShipmentPage({ params }: EditShipmentPageProps) {
         const shipment = shipmentResult.data as Shipment
         setItems(itemsResult.data || [])
         setWarehouses(warehousesResult.data || [])
+
+        // Track shipment status
+        setHasArrived(!!shipment.actual_arrival_date)
+        setHasDeparted(!!shipment.actual_departure_date)
 
         // Get warehouse type for filtering
         const warehouse = warehousesResult.data?.find(w => w.id === shipment.destination_warehouse_id)
@@ -153,9 +164,15 @@ export default function EditShipmentPage({ params }: EditShipmentPageProps) {
       })
 
       if (result.success) {
+        if (result.warning) {
+          toast.warning(result.warning)
+        } else {
+          toast.success('运单已更新')
+        }
         router.push('/logistics')
       } else {
         setError(result.error || '更新失败')
+        toast.error(result.error || '更新失败')
       }
     } catch (err) {
       setError('更新失败，请重试')
@@ -205,9 +222,73 @@ export default function EditShipmentPage({ params }: EditShipmentPageProps) {
             </Button>
           </Link>
 
+          {/* Status Display & Actions */}
+          <Card className="border-2">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500 mb-2">运单状态</p>
+                    <Badge
+                      className={
+                        hasArrived
+                          ? 'bg-green-100 text-green-800 text-base px-3 py-1'
+                          : hasDeparted
+                          ? 'bg-blue-100 text-blue-800 text-base px-3 py-1'
+                          : 'bg-gray-100 text-gray-800 text-base px-3 py-1'
+                      }
+                    >
+                      {hasArrived ? '已到货' : hasDeparted ? '运输中' : '待发运'}
+                    </Badge>
+                  </div>
+                  <div className="h-12 w-px bg-gray-200" />
+                  <div>
+                    <p className="text-sm text-gray-500">运单号</p>
+                    <p className="font-semibold text-lg">{formData.tracking_number}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {hasArrived && (
+                    <UndoStatusButton
+                      shipmentId={shipmentId}
+                      trackingNumber={formData.tracking_number}
+                      type="arrival"
+                      variant="outline"
+                      size="md"
+                    />
+                  )}
+                  {hasDeparted && !hasArrived && (
+                    <UndoStatusButton
+                      shipmentId={shipmentId}
+                      trackingNumber={formData.tracking_number}
+                      type="departure"
+                      variant="outline"
+                      size="md"
+                    />
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {error && (
             <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600">
               {error}
+            </div>
+          )}
+
+          {/* Warning for arrived shipments */}
+          {hasArrived && (
+            <div className="rounded-lg bg-orange-50 p-4 border border-orange-200">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-semibold text-orange-900 mb-1">此运单已到货</p>
+                  <p className="text-sm text-orange-800">
+                    库存已更新。修改运单信息不会自动调整库存。如需修改目的仓库或到货日期，请先撤销到货状态。
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
