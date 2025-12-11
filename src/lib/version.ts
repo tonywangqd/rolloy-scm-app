@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '2.1.1',
+  number: '2.2.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-10 18:28',
+  updatedAt: '2025-12-11 22:30',
 
   // 版本标签
   tag: 'V2升级版' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 算法验证双向计算逻辑 - 倒推建议下单，正推预计出厂/发货/到仓',
+  changelog: 'feat: 销量预测页面UI重构 - 矩阵表格跨周批量编辑',
 }
 
 // 格式化显示
