@@ -346,14 +346,34 @@ export async function fetchReverseScheduleAudit(
   // 最高优先级：从 production_deliveries 读取预计出厂
   // 这些是有 planned_delivery_date 但没有 actual_delivery_date 的记录
   // 用户创建PO时会生成连续几周的预计出货计划
+  //
+  // 重要：预计出厂需要扣减已实际出厂的总量
+  // 例如：下单150，实际出厂105，则剩余预计出厂只能是45
   if (plannedFactoryShipFromDeliveriesMap.size > 0) {
-    plannedFactoryShipFromDeliveriesMap.forEach((qty, week) => {
+    // 计算总下单量
+    const totalOrdered = Array.from(actualOrderMap.values()).reduce((a, b) => a + b, 0)
+    // 计算总实际出厂量
+    const totalActualFactoryShip = Array.from(actualFactoryShipMap.values()).reduce((a, b) => a + b, 0)
+    // 剩余待出厂 = 总下单 - 总实际出厂
+    let remainingToShip = Math.max(0, totalOrdered - totalActualFactoryShip)
+
+    // 按周排序，从近到远分配剩余量
+    const sortedPlannedWeeks = Array.from(plannedFactoryShipFromDeliveriesMap.keys()).sort()
+
+    for (const week of sortedPlannedWeeks) {
+      if (remainingToShip <= 0) break
+
       const actualQty = actualFactoryShipMap.get(week) || 0
-      if (actualQty === 0) {
-        // 该周没有实际出厂，显示预计
-        plannedFactoryShipByWeek.set(week, qty)
+      if (actualQty > 0) continue // 该周有实际出厂，跳过
+
+      const plannedQty = plannedFactoryShipFromDeliveriesMap.get(week) || 0
+      // 分配剩余量，不超过该周原计划
+      const allocatedQty = Math.min(plannedQty, remainingToShip)
+      if (allocatedQty > 0) {
+        plannedFactoryShipByWeek.set(week, allocatedQty)
+        remainingToShip -= allocatedQty
       }
-    })
+    }
   }
 
   // 次优先级：如果没有预计出厂记录，使用计算的预计
