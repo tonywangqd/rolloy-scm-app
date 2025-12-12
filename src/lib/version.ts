@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '2.4.4',
+  number: '2.5.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-12 18:02',
+  updatedAt: '2025-12-12 18:30',
 
   // 版本标签
   tag: 'V2升级版' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 算法验证正推 - 有实际出厂的周也需扣减预计量（150-5-100=45）',
+  changelog: 'feat: 新增剩余出厂计划组件 (RemainingPlanSection)',
 }
 
 // 格式化显示

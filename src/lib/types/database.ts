@@ -680,6 +680,40 @@ export interface ProductionDeliveryUpdate {
   remarks?: string | null
 }
 
+// ================================================================
+// REMAINING DELIVERY PLAN TYPES
+// ================================================================
+
+/**
+ * Remaining delivery plan allocation
+ * Used when recording actual delivery to specify planned future deliveries
+ */
+export interface RemainingDeliveryPlan {
+  week_iso: string          // "2025-W04"
+  planned_qty: number       // 25
+  planned_date?: string     // "2025-01-27" (computed from week_iso)
+}
+
+/**
+ * Enhanced delivery creation payload
+ * Extends existing ProductionDeliveryInsert with remaining plan
+ */
+export interface DeliveryWithPlanInsert {
+  // Actual delivery fields (existing)
+  delivery_number: string
+  po_item_id: string
+  sku: string
+  channel_code?: string | null
+  delivered_qty: number              // Actual delivered quantity
+  actual_delivery_date: string       // ISO date string
+  unit_cost_usd: number
+  payment_status?: PaymentStatus
+  remarks?: string | null
+
+  // NEW: Remaining delivery plan (optional)
+  remaining_plan?: RemainingDeliveryPlan[]  // Array of week allocations
+}
+
 export interface Shipment {
   id: string
   tracking_number: string
@@ -1596,6 +1630,75 @@ export interface AlgorithmAuditResultV3 {
     production_lead_weeks: number
     shipping_weeks: number         // User-provided parameter
   }
+}
+
+// ================================================================
+// DELIVERY REMAINING PLAN TYPES
+// ================================================================
+
+/**
+ * Remaining delivery plan allocation
+ * Used when recording actual delivery to specify planned future deliveries
+ */
+export interface RemainingDeliveryPlan {
+  week_iso: string // "2025-W04"
+  planned_qty: number // 25
+  planned_date?: string // "2025-01-27" (computed from week_iso)
+}
+
+/**
+ * Enhanced delivery creation payload
+ * Extends existing ProductionDeliveryInsert with remaining plan
+ */
+export interface DeliveryWithPlanInput {
+  // Actual delivery fields
+  po_item_id: string
+  sku: string
+  channel_code?: string | null
+  delivered_qty: number // Actual delivered quantity
+  actual_delivery_date: string // ISO date string
+  unit_cost_usd: number
+  remarks?: string | null
+
+  // Remaining delivery plan (optional)
+  remaining_plan?: RemainingDeliveryPlan[] // Array of week allocations
+}
+
+/**
+ * Delivery form state for UI
+ */
+export interface DeliveryFormData {
+  // Basic info
+  po_id: string
+  delivery_number: string
+  delivery_date: string
+  remarks: string
+
+  // Item deliveries
+  items: DeliveryItemForm[]
+
+  // Remaining plan
+  show_remaining_plan: boolean
+  remaining_plan_items: RemainingPlanItem[]
+}
+
+export interface DeliveryItemForm {
+  id: string
+  po_item_id: string
+  sku: string
+  channel_code: string | null
+  ordered_qty: number
+  delivered_qty: number
+  remaining_qty: number
+  delivery_qty: number
+  unit_cost_usd: number
+}
+
+export interface RemainingPlanItem {
+  id: string // Client-side UUID for React key
+  week_iso: string
+  planned_qty: number
+  error?: string // Validation error message
 }
 
 // ================================================================
