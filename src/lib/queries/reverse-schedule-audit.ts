@@ -322,57 +322,102 @@ export async function fetchReverseScheduleAudit(
   })
 
   // ================================================================
-  // STEP 7: 正推计算 - 从实际数据向后推
+  // STEP 7: 正推计算 - 双源正推（优先实际数据，否则用建议数据）
+  // 核心思想：形成完整的供应链计划视图
   // ================================================================
 
-  // 7.1 预计出厂（正推）：实际下单 + 生产周期
+  // 7.1 预计出厂（正推）：
+  // - 优先：实际下单 + 生产周期
+  // - 其次：建议下单 + 生产周期（当没有实际下单时）
   const plannedFactoryShipByWeek = new Map<string, number>()
+
+  // 先从建议下单正推（计划层）
+  suggestedOrderByWeek.forEach((qty, orderWeek) => {
+    const factoryShipWeek = addWeeksToISOWeek(orderWeek, leadTimes.production_weeks)
+    if (factoryShipWeek) {
+      const current = plannedFactoryShipByWeek.get(factoryShipWeek) || 0
+      plannedFactoryShipByWeek.set(factoryShipWeek, current + qty)
+    }
+  })
+
+  // 再用实际下单覆盖（实际层，如果有的话）
   actualOrderMap.forEach((qty, orderWeek) => {
     const factoryShipWeek = addWeeksToISOWeek(orderWeek, leadTimes.production_weeks)
     if (factoryShipWeek) {
-      // 只有当没有实际出厂数据时才显示预计
+      // 如果该周已有实际出厂，不显示预计
       const actualQty = actualFactoryShipMap.get(factoryShipWeek) || 0
-      if (actualQty === 0) {
-        const current = plannedFactoryShipByWeek.get(factoryShipWeek) || 0
-        plannedFactoryShipByWeek.set(factoryShipWeek, current + qty)
+      if (actualQty > 0) {
+        // 有实际数据，移除预计
+        plannedFactoryShipByWeek.delete(factoryShipWeek)
+      } else {
+        // 没有实际数据，用实际下单推算的预计覆盖建议下单推算的
+        plannedFactoryShipByWeek.set(factoryShipWeek, qty)
       }
     }
   })
 
-  // 7.2 预计发货（正推）：实际出厂 + 装柜周期
+  // 7.2 预计发货（正推）：
+  // - 优先：实际出厂 + 装柜周期
+  // - 其次：预计出厂 + 装柜周期
   const plannedShipByWeek = new Map<string, number>()
+
+  // 先从预计出厂正推
+  plannedFactoryShipByWeek.forEach((qty, factoryShipWeek) => {
+    const shipWeek = addWeeksToISOWeek(factoryShipWeek, leadTimes.loading_weeks)
+    if (shipWeek) {
+      const current = plannedShipByWeek.get(shipWeek) || 0
+      plannedShipByWeek.set(shipWeek, current + qty)
+    }
+  })
+
+  // 再用实际出厂覆盖
   actualFactoryShipMap.forEach((qty, factoryShipWeek) => {
     const shipWeek = addWeeksToISOWeek(factoryShipWeek, leadTimes.loading_weeks)
     if (shipWeek) {
       const actualQty = actualShipMap.get(shipWeek) || 0
-      if (actualQty === 0) {
-        const current = plannedShipByWeek.get(shipWeek) || 0
-        plannedShipByWeek.set(shipWeek, current + qty)
+      if (actualQty > 0) {
+        plannedShipByWeek.delete(shipWeek)
+      } else {
+        plannedShipByWeek.set(shipWeek, qty)
       }
     }
   })
 
   // 7.3 预计到仓（正推）：
-  // - 优先使用在途shipment的planned_arrival_date
-  // - 其次从实际发货 + 物流周期推算
+  // - 优先：在途shipment的planned_arrival_date
+  // - 其次：实际发货 + 物流周期
+  // - 最后：预计发货 + 物流周期
   const plannedArrivalByWeek = new Map<string, number>()
 
-  // 先加入在途shipment的预计到仓
-  plannedArrivalFromShipmentsMap.forEach((qty, week) => {
-    const current = plannedArrivalByWeek.get(week) || 0
-    plannedArrivalByWeek.set(week, current + qty)
+  // 先从预计发货正推
+  plannedShipByWeek.forEach((qty, shipWeek) => {
+    const arrivalWeek = addWeeksToISOWeek(shipWeek, leadTimes.shipping_weeks)
+    if (arrivalWeek) {
+      const current = plannedArrivalByWeek.get(arrivalWeek) || 0
+      plannedArrivalByWeek.set(arrivalWeek, current + qty)
+    }
   })
 
-  // 再从实际发货正推（如果没有在途数据）
+  // 再从实际发货正推
   actualShipMap.forEach((qty, shipWeek) => {
     const arrivalWeek = addWeeksToISOWeek(shipWeek, leadTimes.shipping_weeks)
     if (arrivalWeek) {
       const actualQty = actualArrivalMap.get(arrivalWeek) || 0
       const plannedFromShipments = plannedArrivalFromShipmentsMap.get(arrivalWeek) || 0
       if (actualQty === 0 && plannedFromShipments === 0) {
-        const current = plannedArrivalByWeek.get(arrivalWeek) || 0
-        plannedArrivalByWeek.set(arrivalWeek, current + qty)
+        // 用实际发货推算覆盖预计发货推算
+        plannedArrivalByWeek.set(arrivalWeek, qty)
+      } else if (actualQty > 0) {
+        plannedArrivalByWeek.delete(arrivalWeek)
       }
+    }
+  })
+
+  // 最后用在途shipment的预计到仓覆盖
+  plannedArrivalFromShipmentsMap.forEach((qty, week) => {
+    const actualQty = actualArrivalMap.get(week) || 0
+    if (actualQty === 0) {
+      plannedArrivalByWeek.set(week, qty)
     }
   })
 

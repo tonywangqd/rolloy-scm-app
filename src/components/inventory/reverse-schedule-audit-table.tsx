@@ -31,6 +31,7 @@ function getStockStatusBadge(status: 'OK' | 'Risk' | 'Stockout') {
 
 // Compare planned/suggested vs actual - highlight gaps
 function getCompareCell(planned: number, actual: number) {
+  // 只有当建议/预计和实际都为0时才显示 "-"
   if (planned === 0 && actual === 0) {
     return <span className="text-gray-400">-</span>
   }
@@ -40,8 +41,9 @@ function getCompareCell(planned: number, actual: number) {
 
   return (
     <div className="flex flex-col items-end">
-      <span className={actual > 0 ? 'font-semibold text-green-700' : 'text-gray-400'}>
-        {formatValue(actual)}
+      <span className={actual > 0 ? 'font-semibold text-green-700' : 'text-gray-500'}>
+        {/* 当有建议/预计值时，实际为0也要显示0（而不是-），这样更清晰 */}
+        {planned > 0 ? actual.toString() : formatValue(actual)}
       </span>
       {hasGap && (
         <span className={`text-xs ${gap > 0 ? 'text-green-600' : 'text-red-600'}`}>
