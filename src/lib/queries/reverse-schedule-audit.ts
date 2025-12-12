@@ -364,9 +364,15 @@ export async function fetchReverseScheduleAudit(
       if (remainingToShip <= 0) break
 
       const actualQty = actualFactoryShipMap.get(week) || 0
-      if (actualQty > 0) continue // 该周有实际出厂，跳过
-
       const plannedQty = plannedFactoryShipFromDeliveriesMap.get(week) || 0
+
+      if (actualQty > 0) {
+        // 该周有实际出厂，从剩余量中扣除该周预计量，但不显示预计值
+        // 因为该周的计划已被"占用"，后续周只能分配剩余的量
+        remainingToShip -= plannedQty
+        continue
+      }
+
       // 分配剩余量，不超过该周原计划
       const allocatedQty = Math.min(plannedQty, remainingToShip)
       if (allocatedQty > 0) {
