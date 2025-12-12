@@ -243,6 +243,7 @@ export async function fetchReverseScheduleAudit(
 
   const actualOrderMap = new Map<string, number>()
   const orderDetailsByWeek = new Map<string, Array<{ po_number: string; qty: number; order_date: string }>>()
+
   ;(purchaseOrders || []).forEach((po: any) => {
     if (!po.actual_order_date) return
     const orderWeek = getWeekFromDate(new Date(po.actual_order_date))
@@ -257,23 +258,32 @@ export async function fetchReverseScheduleAudit(
     })
   })
 
-  // 实际出厂 (Delivery)
+  // 出厂记录 (Delivery) - 包含实际和预计
   const { data: deliveries } = await supabase
     .from('production_deliveries')
-    .select('id, delivery_number, sku, delivered_qty, actual_delivery_date')
+    .select('id, delivery_number, sku, delivered_qty, planned_delivery_date, actual_delivery_date')
     .eq('sku', sku)
-    .not('actual_delivery_date', 'is', null)
 
   const actualFactoryShipMap = new Map<string, number>()
   const fulfillmentDetailsByWeek = new Map<string, Array<{ delivery_number: string; qty: number; delivery_date: string }>>()
+  // 新增：从 production_deliveries 读取预计出厂（有 planned 但没有 actual 的记录）
+  const plannedFactoryShipFromDeliveriesMap = new Map<string, number>()
+
   ;(deliveries || []).forEach((d: any) => {
-    if (!d.actual_delivery_date) return
-    const deliveryWeek = getWeekFromDate(new Date(d.actual_delivery_date))
-    const current = actualFactoryShipMap.get(deliveryWeek) || 0
-    actualFactoryShipMap.set(deliveryWeek, current + d.delivered_qty)
-    const details = fulfillmentDetailsByWeek.get(deliveryWeek) || []
-    details.push({ delivery_number: d.delivery_number, qty: d.delivered_qty, delivery_date: d.actual_delivery_date })
-    fulfillmentDetailsByWeek.set(deliveryWeek, details)
+    if (d.actual_delivery_date) {
+      // 实际出厂
+      const deliveryWeek = getWeekFromDate(new Date(d.actual_delivery_date))
+      const current = actualFactoryShipMap.get(deliveryWeek) || 0
+      actualFactoryShipMap.set(deliveryWeek, current + d.delivered_qty)
+      const details = fulfillmentDetailsByWeek.get(deliveryWeek) || []
+      details.push({ delivery_number: d.delivery_number, qty: d.delivered_qty, delivery_date: d.actual_delivery_date })
+      fulfillmentDetailsByWeek.set(deliveryWeek, details)
+    } else if (d.planned_delivery_date) {
+      // 预计出厂（有 planned 但没有 actual）
+      const plannedWeek = getWeekFromDate(new Date(d.planned_delivery_date))
+      const current = plannedFactoryShipFromDeliveriesMap.get(plannedWeek) || 0
+      plannedFactoryShipFromDeliveriesMap.set(plannedWeek, current + d.delivered_qty)
+    }
   })
 
   // Shipments
@@ -323,73 +333,84 @@ export async function fetchReverseScheduleAudit(
 
   // ================================================================
   // STEP 7: 正推计算 - 部分履约追踪
-  // 核心思想：追踪每个环节的"累计应完成"vs"累计已完成"，差额继续显示预计
+  // 核心思想（优先级从高到低）：
+  // 1. 从 production_deliveries 读取预计出厂（planned_delivery_date 但无 actual_delivery_date）
+  //    用户创建PO时会生成连续几周的预计出货计划，实际出货从时间近的先出
+  // 2. 如果没有预计出厂记录，则从实际下单正推计算
+  // 3. 如果没有实际下单，则从建议下单正推计算
   // ================================================================
 
   // 7.1 预计出厂（正推）：追踪部分履约
-  // 逻辑：实际下单 -> 预计出厂周，但如果实际出厂 < 预计，剩余部分延后显示
   const plannedFactoryShipByWeek = new Map<string, number>()
 
-  // 计算：基于实际下单，每周应该出厂多少（累计概念）
-  const expectedFactoryShipByWeek = new Map<string, number>()
-  actualOrderMap.forEach((qty, orderWeek) => {
-    const factoryShipWeek = addWeeksToISOWeek(orderWeek, leadTimes.production_weeks)
-    if (factoryShipWeek) {
-      const current = expectedFactoryShipByWeek.get(factoryShipWeek) || 0
-      expectedFactoryShipByWeek.set(factoryShipWeek, current + qty)
-    }
-  })
+  // 最高优先级：从 production_deliveries 读取预计出厂
+  // 这些是有 planned_delivery_date 但没有 actual_delivery_date 的记录
+  // 用户创建PO时会生成连续几周的预计出货计划
+  if (plannedFactoryShipFromDeliveriesMap.size > 0) {
+    plannedFactoryShipFromDeliveriesMap.forEach((qty, week) => {
+      const actualQty = actualFactoryShipMap.get(week) || 0
+      if (actualQty === 0) {
+        // 该周没有实际出厂，显示预计
+        plannedFactoryShipByWeek.set(week, qty)
+      }
+    })
+  }
 
-  // 如果没有实际下单，用建议下单
-  if (expectedFactoryShipByWeek.size === 0) {
-    suggestedOrderByWeek.forEach((qty, orderWeek) => {
+  // 次优先级：如果没有预计出厂记录，使用计算的预计
+  if (plannedFactoryShipFromDeliveriesMap.size === 0) {
+    // 计算：基于实际下单，每周应该出厂多少
+    const expectedFactoryShipByWeek = new Map<string, number>()
+    actualOrderMap.forEach((qty, orderWeek) => {
       const factoryShipWeek = addWeeksToISOWeek(orderWeek, leadTimes.production_weeks)
       if (factoryShipWeek) {
         const current = expectedFactoryShipByWeek.get(factoryShipWeek) || 0
         expectedFactoryShipByWeek.set(factoryShipWeek, current + qty)
       }
     })
-  }
 
-  // 计算累计已出厂
-  const totalActualFactoryShip = Array.from(actualFactoryShipMap.values()).reduce((a, b) => a + b, 0)
-  const totalExpectedFactoryShip = Array.from(expectedFactoryShipByWeek.values()).reduce((a, b) => a + b, 0)
-  const remainingFactoryShip = totalExpectedFactoryShip - totalActualFactoryShip
-
-  // 将预计出厂分配到各周：
-  // - 如果某周有实际出厂，该周预计=0（已完成）
-  // - 剩余未出厂的数量，从当前周开始显示
-  expectedFactoryShipByWeek.forEach((expectedQty, week) => {
-    const actualQty = actualFactoryShipMap.get(week) || 0
-    if (actualQty === 0) {
-      // 该周没有实际出厂，显示预计
-      plannedFactoryShipByWeek.set(week, expectedQty)
-    }
-    // 如果有实际但小于预计，差额会在下面处理
-  })
-
-  // 处理部分履约：如果总实际 < 总预计，剩余部分显示在最近的未来周
-  if (remainingFactoryShip > 0 && totalActualFactoryShip > 0) {
-    // 找到所有有实际出厂的周，计算差额
-    let remainingToAllocate = remainingFactoryShip
-
-    // 按周顺序遍历，找到应该显示剩余预计的周
-    const sortedExpectedWeeks = Array.from(expectedFactoryShipByWeek.keys()).sort()
-    for (const week of sortedExpectedWeeks) {
-      if (remainingToAllocate <= 0) break
-
-      const expectedQty = expectedFactoryShipByWeek.get(week) || 0
-      const actualQty = actualFactoryShipMap.get(week) || 0
-
-      if (actualQty > 0 && actualQty < expectedQty) {
-        // 部分履约：该周应出expectedQty，实际出actualQty，差额显示在下一周
-        const gap = expectedQty - actualQty
-        const nextWeek = addWeeksToISOWeek(week, 1)
-        if (nextWeek) {
-          const existing = plannedFactoryShipByWeek.get(nextWeek) || 0
-          plannedFactoryShipByWeek.set(nextWeek, existing + gap)
+    // 如果没有实际下单，用建议下单
+    if (expectedFactoryShipByWeek.size === 0) {
+      suggestedOrderByWeek.forEach((qty, orderWeek) => {
+        const factoryShipWeek = addWeeksToISOWeek(orderWeek, leadTimes.production_weeks)
+        if (factoryShipWeek) {
+          const current = expectedFactoryShipByWeek.get(factoryShipWeek) || 0
+          expectedFactoryShipByWeek.set(factoryShipWeek, current + qty)
         }
-        remainingToAllocate -= gap
+      })
+    }
+
+    // 将预计出厂分配到各周（基于订单正推）
+    expectedFactoryShipByWeek.forEach((expectedQty, week) => {
+      const actualQty = actualFactoryShipMap.get(week) || 0
+      if (actualQty === 0) {
+        plannedFactoryShipByWeek.set(week, expectedQty)
+      }
+    })
+
+    // 处理部分履约：如果总实际 < 总预计，剩余部分显示在下一周
+    const totalActualFactoryShip = Array.from(actualFactoryShipMap.values()).reduce((a, b) => a + b, 0)
+    const totalExpectedFactoryShip = Array.from(expectedFactoryShipByWeek.values()).reduce((a, b) => a + b, 0)
+    const remainingFactoryShip = totalExpectedFactoryShip - totalActualFactoryShip
+
+    if (remainingFactoryShip > 0 && totalActualFactoryShip > 0) {
+      const sortedExpectedWeeks = Array.from(expectedFactoryShipByWeek.keys()).sort()
+      let remainingToAllocate = remainingFactoryShip
+
+      for (const week of sortedExpectedWeeks) {
+        if (remainingToAllocate <= 0) break
+
+        const expectedQty = expectedFactoryShipByWeek.get(week) || 0
+        const actualQty = actualFactoryShipMap.get(week) || 0
+
+        if (actualQty > 0 && actualQty < expectedQty) {
+          const gap = expectedQty - actualQty
+          const nextWeek = addWeeksToISOWeek(week, 1)
+          if (nextWeek) {
+            const existing = plannedFactoryShipByWeek.get(nextWeek) || 0
+            plannedFactoryShipByWeek.set(nextWeek, existing + gap)
+          }
+          remainingToAllocate -= gap
+        }
       }
     }
   }
