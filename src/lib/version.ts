@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '2.3.0',
+  number: '2.4.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-12 12:12',
+  updatedAt: '2025-12-12 14:43',
 
   // 版本标签
   tag: 'V2升级版' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: 算法验证用周转率替换安全库存',
+  changelog: 'feat: 算法验证页面添加数据来源Tooltip - 悬停显示预计/实际数据来源与单号',
 }
 
 // 格式化显示
