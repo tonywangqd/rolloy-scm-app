@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '2.6.0',
+  number: '2.7.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-12 22:15',
+  updatedAt: '2025-12-12 22:30',
 
   // 版本标签
   tag: 'V2升级版' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: 实现剩余出厂计划后端 Server Action (createDeliveryWithPlan)',
+  changelog: 'feat: 出厂单据页面集成剩余出厂计划组件 (RemainingPlanSection)',
 }
 
 // 格式化显示

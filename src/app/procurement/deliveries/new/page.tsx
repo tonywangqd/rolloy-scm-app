@@ -10,10 +10,14 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { createDelivery } from '@/lib/actions/procurement'
+import { createDeliveryWithPlan, type RemainingDeliveryPlan } from '@/lib/actions/deliveries'
 import { ArrowLeft, PackageCheck } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { PurchaseOrderItem } from '@/lib/types/database'
+import { RemainingPlanSection } from '@/components/procurement/remaining-plan-section'
+import { useToast } from '@/lib/hooks/use-toast'
+import { ToastContainer } from '@/components/ui/toast'
 
 interface POOption {
   id: string
@@ -34,12 +38,16 @@ interface DeliveryItemForm {
 
 export default function NewDeliveryPage() {
   const router = useRouter()
+  const { toasts, showToast, dismissToast } = useToast()
   const [loading, setLoading] = useState(false)
   const [loadingPO, setLoadingPO] = useState(false)
   const [error, setError] = useState('')
   const [poOptions, setPoOptions] = useState<POOption[]>([])
   const [selectedPO, setSelectedPO] = useState<string>('')
   const [deliveryItems, setDeliveryItems] = useState<DeliveryItemForm[]>([])
+  const [remainingPlans, setRemainingPlans] = useState<Map<string, RemainingDeliveryPlan[]>>(
+    new Map()
+  )
 
   const [formData, setFormData] = useState({
     delivery_number: `DLV-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
@@ -165,32 +173,49 @@ export default function NewDeliveryPage() {
     try {
       // Create a delivery record for each item with quantity > 0
       const results = await Promise.all(
-        itemsToDeliver.map((item) =>
-          createDelivery({
-            delivery_number: formData.delivery_number,
+        itemsToDeliver.map((item) => {
+          const itemRemainingPlan = remainingPlans.get(item.po_item_id)
+
+          return createDeliveryWithPlan({
             po_item_id: item.po_item_id,
             sku: item.sku,
-            channel_code: item.channel_code,
+            channel_code: item.channel_code || null,
             delivered_qty: item.delivery_qty,
-            planned_delivery_date: null,
-            actual_delivery_date: formData.delivery_date || null,
+            actual_delivery_date: formData.delivery_date,
             unit_cost_usd: item.unit_cost_usd,
-            payment_status: 'Pending',
             remarks: formData.remarks || null,
+            remaining_plan: itemRemainingPlan && itemRemainingPlan.length > 0
+              ? itemRemainingPlan
+              : undefined,
           })
-        )
+        })
       )
 
       // Check if all succeeded
       const failures = results.filter((r) => !r.success)
       if (failures.length > 0) {
-        setError(`部分交货记录创建失败: ${failures.map((f) => f.error).join(', ')}`)
+        const errorMessage = `部分交货记录创建失败: ${failures.map((f) => f.error).join(', ')}`
+        setError(errorMessage)
+        showToast(errorMessage, 'error')
       } else {
-        // Success - redirect back to procurement list
+        // Success - show toast and redirect
+        const totalPlannedRecords = results.reduce(
+          (sum, r) => sum + (r.data?.planned_delivery_ids.length || 0),
+          0
+        )
+
+        showToast(
+          `已创建 ${itemsToDeliver.length} 条实际交货记录${
+            totalPlannedRecords > 0 ? `和 ${totalPlannedRecords} 条预计交货记录` : ''
+          }`,
+          'success'
+        )
+
         router.push('/procurement')
       }
     } catch {
       setError('创建交货记录失败，请重试')
+      showToast('创建交货记录失败，请重试', 'error')
     } finally {
       setLoading(false)
     }
@@ -375,6 +400,55 @@ export default function NewDeliveryPage() {
             </Card>
           )}
 
+          {/* Remaining Plan Sections - One per SKU with remaining quantity */}
+          {selectedPO &&
+            deliveryItems.length > 0 &&
+            deliveryItems
+              .filter((item) => item.delivery_qty > 0)
+              .map((item, index) => {
+                const remainingQty = item.ordered_qty - item.delivered_qty - item.delivery_qty
+
+                return (
+                  <div key={item.po_item_id} className="space-y-2">
+                    {index === 0 && (
+                      <h3 className="text-lg font-semibold text-gray-900 mt-2">
+                        剩余预计出厂计划
+                      </h3>
+                    )}
+                    <div className="bg-gray-50 px-4 py-2 rounded-md">
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">{item.sku}</span>
+                        {item.channel_code && (
+                          <span className="text-gray-500 ml-2">({item.channel_code})</span>
+                        )}
+                        {remainingQty > 0 && (
+                          <span className="ml-4 text-blue-600">
+                            剩余待出厂: {remainingQty} 件
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <RemainingPlanSection
+                      orderedQty={item.ordered_qty}
+                      previousDeliveredQty={item.delivered_qty}
+                      currentDeliveryQty={item.delivery_qty}
+                      onChange={(plans) => {
+                        setRemainingPlans((prev) => {
+                          const newMap = new Map(prev)
+                          if (plans.length > 0) {
+                            newMap.set(item.po_item_id, plans)
+                          } else {
+                            newMap.delete(item.po_item_id)
+                          }
+                          return newMap
+                        })
+                      }}
+                      disabled={loading}
+                    />
+                  </div>
+                )
+              })}
+
           {/* Remarks */}
           <Card>
             <CardContent className="pt-6">
@@ -410,6 +484,9 @@ export default function NewDeliveryPage() {
           </div>
         </form>
       </div>
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }
