@@ -37,7 +37,9 @@ function getCompareCell(planned: number, actual: number) {
   }
 
   const gap = actual - planned
-  const hasGap = planned > 0 && gap !== 0
+  // 只有当实际值 > 0 时才显示差距
+  // 因为 actual=0 表示"还没发生"，显示差距没有意义
+  const hasGap = actual > 0 && planned > 0 && gap !== 0
 
   return (
     <div className="flex flex-col items-end">
