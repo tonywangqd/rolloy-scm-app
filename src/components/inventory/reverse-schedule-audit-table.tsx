@@ -146,7 +146,7 @@ export function ReverseScheduleAuditTable({ rows }: ReverseScheduleAuditTablePro
             {/* 库存 - 4 columns */}
             <th className="px-2 py-1 text-center text-blue-700 font-medium bg-blue-50/50">期初</th>
             <th className="px-2 py-1 text-center text-blue-700 font-semibold bg-blue-50/50">期末</th>
-            <th className="px-2 py-1 text-center text-blue-700 font-medium bg-blue-50/50">安全</th>
+            <th className="px-2 py-1 text-center text-blue-700 font-medium bg-blue-50/50" title="周转率 = 期末库存 / 本周销量">周转</th>
             <th className="px-2 py-1 text-center text-blue-700 font-medium bg-blue-50/50">状态</th>
           </tr>
         </thead>
@@ -225,7 +225,7 @@ export function ReverseScheduleAuditTable({ rows }: ReverseScheduleAuditTablePro
                   className={`font-bold ${
                     row.closing_stock <= 0
                       ? 'text-red-600'
-                      : row.closing_stock < row.safety_threshold
+                      : row.turnover_ratio !== null && row.turnover_ratio < 2
                       ? 'text-orange-600'
                       : 'text-green-600'
                   }`}
@@ -234,7 +234,7 @@ export function ReverseScheduleAuditTable({ rows }: ReverseScheduleAuditTablePro
                 </span>
               </td>
               <td className="px-2 py-2 text-right text-xs text-gray-500">
-                {Math.round(row.safety_threshold)}
+                {row.turnover_ratio !== null ? row.turnover_ratio.toFixed(1) : '-'}
               </td>
               <td className="px-2 py-2 text-center">
                 {getStockStatusBadge(row.stock_status)}

@@ -73,7 +73,7 @@ export interface ReverseScheduleAuditRow {
   arrival_effective: number  // COALESCE(actual_arrival, planned_arrival)
   sales_effective: number    // COALESCE(actual_sales, forecast_sales)
   closing_stock: number
-  safety_threshold: number
+  turnover_ratio: number | null  // 周转率 = 期末库存 / 有效销量
   stock_status: StockStatus
 
   // 详细数据
@@ -478,10 +478,13 @@ export async function fetchReverseScheduleAudit(
     const closing_stock = opening_stock + arrival_effective - sales_effective
     runningStock = closing_stock
 
-    const safety_threshold = avgWeeklySales * leadTimes.safety_stock_weeks
+    // 周转率 = 期末库存 / 有效销量（销量为0时为null）
+    const turnover_ratio = sales_effective > 0 ? closing_stock / sales_effective : null
+
+    // 库存状态：简化为根据期末库存判断
     let stock_status: StockStatus = 'OK'
     if (closing_stock <= 0) stock_status = 'Stockout'
-    else if (closing_stock < safety_threshold) stock_status = 'Risk'
+    else if (turnover_ratio !== null && turnover_ratio < 2) stock_status = 'Risk' // 周转率<2周视为风险
 
     return {
       week_iso: week,
@@ -503,7 +506,7 @@ export async function fetchReverseScheduleAudit(
       arrival_effective,
       sales_effective,
       closing_stock,
-      safety_threshold,
+      turnover_ratio,
       stock_status,
       order_details: orderDetailsByWeek.get(week) || [],
       fulfillment_details: fulfillmentDetailsByWeek.get(week) || [],
