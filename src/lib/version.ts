@@ -10,13 +10,13 @@ export const VERSION = {
   number: '3.0.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-15 08:30',
+  updatedAt: '2025-12-14 12:50',
 
   // 版本标签
-  tag: 'V3模拟引擎' as const,
+  tag: 'V3模拟引擎 Phase 1-2' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: V3 Simulation Playground UI - ControlPanel, InventoryChart, CashFlowChart, KPISummaryCards, RiskHeatmap',
+  changelog: 'feat: V3 Simulation Engine Phase 1-2 - Backend (SimulatorService, Server Actions, Migration) + Frontend (Playground UI, Charts, Controls)',
 }
 
 // 格式化显示
