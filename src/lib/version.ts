@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.1.0',
+  number: '3.2.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-14 22:30',
+  updatedAt: '2025-12-15 07:00',
 
   // 版本标签
   tag: 'V3模拟引擎 Phase 3' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: V3 Simulation Engine Phase 3 - Ontology Management Server Actions (SKU Tiers, Capital Constraints, Logistics Routes CRUD)',
+  changelog: 'feat: V3 Simulation Engine Phase 3 - Ontology Settings UI (SKU Segmentation Table, Capital Constraints Editor, Logistics Routes Table)',
 }
 
 // 格式化显示
