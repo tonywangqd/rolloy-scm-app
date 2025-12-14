@@ -305,6 +305,22 @@ export async function upsertCapitalConstraint(
   // Default period_type to 'monthly' if not provided
   const periodType = constraint.period_type ?? 'monthly'
 
+  // Validate input with Zod schema
+  const validation = upsertCapitalConstraintSchema.safeParse({
+    period_type: periodType,
+    period_key: constraint.period_key,
+    budget_cap_usd: budgetValue,
+    is_active: constraint.is_active ?? true,
+    notes: constraint.notes ?? null,
+  })
+  if (!validation.success) {
+    return {
+      success: false,
+      data: null,
+      error: `Validation error: ${validation.error.issues.map(e => e.message).join(', ')}`,
+    }
+  }
+
   try {
     const supabase = await createServerSupabaseClient()
     const { data: { user } } = await supabase.auth.getUser()
