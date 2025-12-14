@@ -313,7 +313,7 @@ CREATE TABLE IF NOT EXISTS simulation_executions (
 
   -- Rollback capability
   rollback_available BOOLEAN NOT NULL DEFAULT true,
-  rollback_deadline TIMESTAMPTZ GENERATED ALWAYS AS (executed_at + INTERVAL '24 hours') STORED,
+  rollback_deadline TIMESTAMPTZ,  -- Set via trigger (executed_at + 24 hours)
   rollback_executed_at TIMESTAMPTZ,
   rollback_executed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   rollback_reason TEXT,
@@ -343,6 +343,21 @@ CREATE INDEX IF NOT EXISTS idx_sim_exec_status ON simulation_executions(status);
 -- GIN index for JSONB queries
 CREATE INDEX IF NOT EXISTS idx_sim_exec_params ON simulation_executions USING GIN (scenario_params);
 CREATE INDEX IF NOT EXISTS idx_sim_exec_affected ON simulation_executions USING GIN (affected_records);
+
+-- Trigger to set rollback_deadline (24 hours after executed_at)
+CREATE OR REPLACE FUNCTION set_rollback_deadline()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.rollback_deadline := NEW.executed_at + INTERVAL '24 hours';
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_simulation_rollback_deadline ON simulation_executions;
+CREATE TRIGGER set_simulation_rollback_deadline
+  BEFORE INSERT ON simulation_executions
+  FOR EACH ROW
+  EXECUTE FUNCTION set_rollback_deadline();
 
 -- RLS Policies
 ALTER TABLE simulation_executions ENABLE ROW LEVEL SECURITY;
