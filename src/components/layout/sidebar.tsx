@@ -140,9 +140,14 @@ const navigation = [
         icon: Settings,
       },
       {
+        name: '模拟参数',
+        href: '/settings/simulation',
+        icon: Sliders,
+      },
+      {
         name: '系统参数',
         href: '/settings/parameters',
-        icon: Sliders,
+        icon: Calculator,
       },
     ],
   },

@@ -157,6 +157,61 @@ export const updateProductTierSchema = z.object({
 })
 
 /**
+ * Validation schema for bulk updating product tiers
+ */
+export const bulkUpdateTiersSchema = z.object({
+  updates: z
+    .array(
+      z.object({
+        sku: skuSchema,
+        tier: skuTierCodeSchema,
+      })
+    )
+    .min(1, 'At least one update is required')
+    .max(100, 'Maximum 100 updates per batch'),
+})
+
+/**
+ * Validation schema for deleting capital constraint
+ */
+export const deleteCapitalConstraintSchema = z.object({
+  id: uuidSchema,
+})
+
+/**
+ * Validation schema for deleting logistics route
+ */
+export const deleteLogisticsRouteSchema = z.object({
+  id: uuidSchema,
+})
+
+/**
+ * Validation schema for updating logistics route
+ */
+export const updateLogisticsRouteByIdSchema = z.object({
+  id: uuidSchema,
+  transit_time_weeks: z.number().positive().max(52).optional(),
+  cost_per_kg_usd: positiveNumber.optional(),
+  is_active: z.boolean().optional(),
+  route_name: z.string().min(1).max(100).optional(),
+  minimum_charge_usd: nonNegativeNumber.optional(),
+}).refine(
+  (data) => {
+    // At least one field to update
+    return (
+      data.transit_time_weeks !== undefined ||
+      data.cost_per_kg_usd !== undefined ||
+      data.is_active !== undefined ||
+      data.route_name !== undefined ||
+      data.minimum_charge_usd !== undefined
+    )
+  },
+  {
+    message: 'At least one field must be provided for update',
+  }
+)
+
+/**
  * Validation schema for upserting capital constraint
  */
 export const upsertCapitalConstraintSchema = z.object({
@@ -303,9 +358,13 @@ export type SimulationParamsInput = z.infer<typeof simulationParamsSchema>
 export type ExecuteScenarioRequestInput = z.infer<typeof executeScenarioRequestSchema>
 export type RollbackRequestInput = z.infer<typeof rollbackRequestSchema>
 export type UpdateProductTierInput = z.infer<typeof updateProductTierSchema>
+export type BulkUpdateTiersInput = z.infer<typeof bulkUpdateTiersSchema>
 export type UpsertCapitalConstraintInput = z.infer<typeof upsertCapitalConstraintSchema>
+export type DeleteCapitalConstraintInput = z.infer<typeof deleteCapitalConstraintSchema>
 export type CreateLogisticsRouteInput = z.infer<typeof createLogisticsRouteSchema>
 export type UpdateLogisticsRouteInput = z.infer<typeof updateLogisticsRouteSchema>
+export type UpdateLogisticsRouteByIdInput = z.infer<typeof updateLogisticsRouteByIdSchema>
+export type DeleteLogisticsRouteInput = z.infer<typeof deleteLogisticsRouteSchema>
 export type CreatePOPayloadInput = z.infer<typeof createPOPayloadSchema>
 export type UpdateShipmentPayloadInput = z.infer<typeof updateShipmentPayloadSchema>
 export type DeferPOPayloadInput = z.infer<typeof deferPOPayloadSchema>
