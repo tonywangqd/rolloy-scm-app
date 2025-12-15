@@ -384,59 +384,53 @@ export async function fetchReverseScheduleAudit(
 
   // 次优先级：如果没有预计出厂记录，使用计算的预计
   if (plannedFactoryShipFromDeliveriesMap.size === 0) {
-    // 计算：基于实际下单，每周应该出厂多少
-    const expectedFactoryShipByWeek = new Map<string, number>()
-    actualOrderMap.forEach((qty, orderWeek) => {
-      const factoryShipWeek = addWeeksToISOWeek(orderWeek, leadTimes.production_weeks)
-      if (factoryShipWeek) {
-        const current = expectedFactoryShipByWeek.get(factoryShipWeek) || 0
-        expectedFactoryShipByWeek.set(factoryShipWeek, current + qty)
-      }
-    })
+    // 核心逻辑：剩余预计出厂 = 总下单 - 总实际出厂
+    // 不再基于下单周正推，而是直接计算剩余量并分配到未来最近的可用周
+
+    // 1. 计算总下单量
+    const totalOrdered = Array.from(actualOrderMap.values()).reduce((a, b) => a + b, 0)
 
     // 如果没有实际下单，用建议下单
-    if (expectedFactoryShipByWeek.size === 0) {
-      suggestedOrderByWeek.forEach((qty, orderWeek) => {
-        const factoryShipWeek = addWeeksToISOWeek(orderWeek, leadTimes.production_weeks)
-        if (factoryShipWeek) {
-          const current = expectedFactoryShipByWeek.get(factoryShipWeek) || 0
-          expectedFactoryShipByWeek.set(factoryShipWeek, current + qty)
-        }
-      })
-    }
+    const totalSuggestedOrder = totalOrdered > 0 ? 0 : Array.from(suggestedOrderByWeek.values()).reduce((a, b) => a + b, 0)
+    const totalOrderBase = totalOrdered > 0 ? totalOrdered : totalSuggestedOrder
 
-    // 将预计出厂分配到各周（基于订单正推）
-    expectedFactoryShipByWeek.forEach((expectedQty, week) => {
-      const actualQty = actualFactoryShipMap.get(week) || 0
-      if (actualQty === 0) {
-        plannedFactoryShipByWeek.set(week, expectedQty)
-      }
-    })
-
-    // 处理部分履约：如果总实际 < 总预计，剩余部分显示在下一周
+    // 2. 计算总实际出厂量
     const totalActualFactoryShip = Array.from(actualFactoryShipMap.values()).reduce((a, b) => a + b, 0)
-    const totalExpectedFactoryShip = Array.from(expectedFactoryShipByWeek.values()).reduce((a, b) => a + b, 0)
-    const remainingFactoryShip = totalExpectedFactoryShip - totalActualFactoryShip
 
-    if (remainingFactoryShip > 0 && totalActualFactoryShip > 0) {
-      const sortedExpectedWeeks = Array.from(expectedFactoryShipByWeek.keys()).sort()
-      let remainingToAllocate = remainingFactoryShip
+    // 3. 剩余待出厂 = 总下单 - 总实际出厂
+    const remainingToShip = Math.max(0, totalOrderBase - totalActualFactoryShip)
 
-      for (const week of sortedExpectedWeeks) {
-        if (remainingToAllocate <= 0) break
+    // 4. 如果有剩余，分配到未来最近的可用周
+    if (remainingToShip > 0) {
+      // 找到当前周或下一周作为预计出厂周
+      // 优先使用最近的订单周 + 生产周期
+      let targetWeek: string | null = null
 
-        const expectedQty = expectedFactoryShipByWeek.get(week) || 0
-        const actualQty = actualFactoryShipMap.get(week) || 0
-
-        if (actualQty > 0 && actualQty < expectedQty) {
-          const gap = expectedQty - actualQty
-          const nextWeek = addWeeksToISOWeek(week, 1)
-          if (nextWeek) {
-            const existing = plannedFactoryShipByWeek.get(nextWeek) || 0
-            plannedFactoryShipByWeek.set(nextWeek, existing + gap)
-          }
-          remainingToAllocate -= gap
+      if (actualOrderMap.size > 0) {
+        // 从实际下单中找最近的订单周
+        const latestOrderWeek = Array.from(actualOrderMap.keys()).sort().pop()
+        if (latestOrderWeek) {
+          targetWeek = addWeeksToISOWeek(latestOrderWeek, leadTimes.production_weeks)
         }
+      } else if (suggestedOrderByWeek.size > 0) {
+        // 从建议下单中找最近的订单周
+        const latestSuggestedWeek = Array.from(suggestedOrderByWeek.keys()).sort().pop()
+        if (latestSuggestedWeek) {
+          targetWeek = addWeeksToISOWeek(latestSuggestedWeek, leadTimes.production_weeks)
+        }
+      }
+
+      // 如果找到目标周，分配剩余量
+      if (targetWeek) {
+        // 如果目标周已有实际出厂，推到下一周
+        let finalWeek = targetWeek
+        while (actualFactoryShipMap.has(finalWeek)) {
+          const nextWeek = addWeeksToISOWeek(finalWeek, 1)
+          if (!nextWeek) break
+          finalWeek = nextWeek
+        }
+
+        plannedFactoryShipByWeek.set(finalWeek, remainingToShip)
       }
     }
   }

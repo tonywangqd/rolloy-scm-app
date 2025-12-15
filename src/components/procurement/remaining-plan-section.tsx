@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react'
+import { Plus, Trash2, AlertCircle, CheckCircle, AlertTriangle } from 'lucide-react'
 
 /**
  * Remaining delivery plan allocation item
@@ -115,11 +115,20 @@ export function RemainingPlanSection({
     )
   }
 
+  // Check if user has not filled the plan when there is remaining quantity
+  const shouldShowWarning = remainingQty > 0 && totalPlanned === 0
+
   return (
-    <Card>
+    <Card className={shouldShowWarning ? 'border-yellow-400 border-2' : ''}>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>剩余预计出厂计划 (可选)</span>
+          <span className="flex items-center gap-2">
+            剩余预计出厂计划
+            <span className="flex items-center gap-1 text-sm font-medium text-yellow-600 bg-yellow-50 px-2 py-1 rounded-md">
+              <AlertTriangle className="h-4 w-4" />
+              建议填写
+            </span>
+          </span>
           <span className="text-sm font-normal text-gray-500">
             剩余待出厂: <span className="font-semibold text-blue-600">{remainingQty}</span> 件
           </span>
@@ -127,6 +136,19 @@ export function RemainingPlanSection({
         <p className="text-sm text-gray-600 mt-2">
           可指定剩余数量的预计出厂周次，用于更准确的库存预测。如不填写，系统将使用默认算法推算。
         </p>
+        {shouldShowWarning && (
+          <div className="mt-3 flex items-start gap-3 rounded-lg p-4 bg-yellow-50 border border-yellow-200">
+            <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-yellow-800">
+                建议填写剩余出厂计划
+              </p>
+              <p className="text-sm text-yellow-700 mt-1">
+                不填写剩余计划会影响库存预测的准确性，系统将使用默认算法推算，可能导致预测偏差。建议根据实际生产情况填写预计出厂周次和数量。
+              </p>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <div className="space-y-4">

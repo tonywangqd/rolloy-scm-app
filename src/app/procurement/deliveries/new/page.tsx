@@ -11,13 +11,21 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { createDelivery } from '@/lib/actions/procurement'
 import { createDeliveryWithPlan, type RemainingDeliveryPlan } from '@/lib/actions/deliveries'
-import { ArrowLeft, PackageCheck } from 'lucide-react'
+import { ArrowLeft, PackageCheck, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { PurchaseOrderItem } from '@/lib/types/database'
 import { RemainingPlanSection } from '@/components/procurement/remaining-plan-section'
 import { useToast } from '@/lib/hooks/use-toast'
 import { ToastContainer } from '@/components/ui/toast'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface POOption {
   id: string
@@ -48,6 +56,9 @@ export default function NewDeliveryPage() {
   const [remainingPlans, setRemainingPlans] = useState<Map<string, RemainingDeliveryPlan[]>>(
     new Map()
   )
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [itemsWithoutPlan, setItemsWithoutPlan] = useState<DeliveryItemForm[]>([])
+  const [totalRemainingQty, setTotalRemainingQty] = useState(0)
 
   const [formData, setFormData] = useState({
     delivery_number: `DLV-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
@@ -170,6 +181,38 @@ export default function NewDeliveryPage() {
       return
     }
 
+    // Check if there are items with remaining quantity but no plan
+    const itemsNeedingPlan = itemsToDeliver.filter((item) => {
+      const remainingQty = item.ordered_qty - item.delivered_qty - item.delivery_qty
+      const hasPlan = remainingPlans.has(item.po_item_id) &&
+                      remainingPlans.get(item.po_item_id)!.length > 0
+      return remainingQty > 0 && !hasPlan
+    })
+
+    if (itemsNeedingPlan.length > 0) {
+      // Calculate total remaining quantity without plan
+      const totalRemaining = itemsNeedingPlan.reduce((sum, item) => {
+        return sum + (item.ordered_qty - item.delivered_qty - item.delivery_qty)
+      }, 0)
+
+      // Show confirmation dialog
+      setItemsWithoutPlan(itemsNeedingPlan)
+      setTotalRemainingQty(totalRemaining)
+      setShowConfirmDialog(true)
+      setLoading(false)
+      return
+    }
+
+    // If all validations pass, proceed with submission
+    await submitDelivery()
+  }
+
+  const submitDelivery = async () => {
+    setLoading(true)
+    setError('')
+
+    const itemsToDeliver = deliveryItems.filter((item) => item.delivery_qty > 0)
+
     try {
       // Create a delivery record for each item with quantity > 0
       const results = await Promise.all(
@@ -219,6 +262,16 @@ export default function NewDeliveryPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleConfirmSubmit = async () => {
+    setShowConfirmDialog(false)
+    await submitDelivery()
+  }
+
+  const handleCancelSubmit = () => {
+    setShowConfirmDialog(false)
+    setLoading(false)
   }
 
   return (
@@ -487,6 +540,59 @@ export default function NewDeliveryPage() {
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-yellow-600">
+              <AlertTriangle className="h-5 w-5" />
+              确认提交
+            </DialogTitle>
+            <DialogDescription className="text-base text-gray-700 pt-4">
+              <div className="space-y-3">
+                <p className="font-medium">
+                  您还有 <span className="text-yellow-600 font-bold">{totalRemainingQty}</span> 件货物未安排出厂计划，这可能影响库存预测准确性。
+                </p>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-sm text-yellow-800 font-medium mb-2">
+                    未填写计划的SKU:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-yellow-700">
+                    {itemsWithoutPlan.map((item) => {
+                      const remainingQty = item.ordered_qty - item.delivered_qty - item.delivery_qty
+                      return (
+                        <li key={item.po_item_id}>
+                          {item.sku} {item.channel_code && `(${item.channel_code})`} - 剩余 {remainingQty} 件
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+                <p className="text-sm text-gray-600">
+                  建议：返回填写剩余出厂计划，以提高库存预测准确性。
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancelSubmit}
+            >
+              返回填写
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleConfirmSubmit}
+            >
+              确定继续
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
