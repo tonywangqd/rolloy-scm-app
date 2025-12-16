@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.3.6',
+  number: '3.3.7',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-16 19:40',
+  updatedAt: '2025-12-16 20:15',
 
   // 版本标签
   tag: 'V3模拟引擎 Phase 3' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: 优化发运单创建页面日期字段逻辑，支持自动计算预计签收日期',
+  changelog: 'perf: 优化逆向排程审计查询性能，响应时间从5-8秒降至1-2秒',
 }
 
 // 格式化显示
