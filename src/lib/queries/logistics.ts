@@ -219,3 +219,152 @@ export async function fetchShipmentSourceDeliveries(shipmentId: string): Promise
 
   return data || []
 }
+
+/**
+ * Arrived Shipment type for arrivals page
+ */
+export interface ArrivedShipment {
+  id: string
+  tracking_number: string
+  warehouse_name: string | null
+  warehouse_code: string | null
+  warehouse_type: WarehouseType | null
+  shipped_qty: number
+  planned_arrival_date: string | null
+  actual_arrival_date: string
+  variance_days: number | null  // 实际-预计天数差（正=迟到，负=提前）
+  logistics_plan: string | null
+  shipping_method: string | null
+  remarks: string | null
+  created_at: string
+}
+
+/**
+ * Fetch arrived shipments (shipments with actual_arrival_date)
+ * This replaces the separate order_arrivals table concept
+ */
+export async function fetchArrivedShipments(): Promise<ArrivedShipment[]> {
+  const supabase = await createServerSupabaseClient()
+
+  // Only fetch shipments that have arrived (actual_arrival_date is not null)
+  const { data: shipments, error } = await supabase
+    .from('shipments')
+    .select('*')
+    .not('actual_arrival_date', 'is', null)
+    .order('actual_arrival_date', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching arrived shipments:', error)
+    return []
+  }
+
+  if (!shipments || shipments.length === 0) {
+    return []
+  }
+
+  // Fetch warehouse details
+  const warehouseIds = [...new Set(shipments.map((s) => s.destination_warehouse_id))]
+  const { data: warehouses } = await supabase
+    .from('warehouses')
+    .select('id, warehouse_name, warehouse_code, warehouse_type')
+    .in('id', warehouseIds)
+
+  const warehouseMap = new Map(warehouses?.map((w) => [w.id, {
+    name: w.warehouse_name,
+    code: w.warehouse_code,
+    type: w.warehouse_type as WarehouseType,
+  }]) || [])
+
+  // Fetch total shipped qty per shipment
+  const shipmentIds = shipments.map((s) => s.id)
+  const { data: items } = await supabase
+    .from('shipment_items')
+    .select('shipment_id, shipped_qty')
+    .in('shipment_id', shipmentIds)
+
+  const qtyMap = new Map<string, number>()
+  items?.forEach((item) => {
+    const current = qtyMap.get(item.shipment_id) || 0
+    qtyMap.set(item.shipment_id, current + item.shipped_qty)
+  })
+
+  return shipments.map((s) => {
+    const warehouseInfo = warehouseMap.get(s.destination_warehouse_id)
+
+    // Calculate variance days (actual - planned)
+    let variance_days: number | null = null
+    if (s.planned_arrival_date && s.actual_arrival_date) {
+      const planned = new Date(s.planned_arrival_date)
+      const actual = new Date(s.actual_arrival_date)
+      variance_days = Math.round((actual.getTime() - planned.getTime()) / (1000 * 60 * 60 * 24))
+    }
+
+    return {
+      id: s.id,
+      tracking_number: s.tracking_number,
+      warehouse_name: warehouseInfo?.name || null,
+      warehouse_code: warehouseInfo?.code || null,
+      warehouse_type: warehouseInfo?.type || null,
+      shipped_qty: qtyMap.get(s.id) || 0,
+      planned_arrival_date: s.planned_arrival_date,
+      actual_arrival_date: s.actual_arrival_date!,
+      variance_days,
+      logistics_plan: s.logistics_plan,
+      shipping_method: s.shipping_method,
+      remarks: s.remarks,
+      created_at: s.created_at,
+    }
+  })
+}
+
+/**
+ * Arrivals statistics
+ */
+export interface ArrivalsStats {
+  total_arrived: number
+  total_qty: number
+  on_time_count: number
+  late_count: number
+  early_count: number
+  avg_variance_days: number | null
+}
+
+/**
+ * Calculate arrivals statistics
+ */
+export async function fetchArrivalsStats(): Promise<ArrivalsStats> {
+  const arrivals = await fetchArrivedShipments()
+
+  const stats: ArrivalsStats = {
+    total_arrived: arrivals.length,
+    total_qty: arrivals.reduce((sum, a) => sum + a.shipped_qty, 0),
+    on_time_count: 0,
+    late_count: 0,
+    early_count: 0,
+    avg_variance_days: null,
+  }
+
+  const varianceDays: number[] = []
+
+  arrivals.forEach((a) => {
+    if (a.variance_days === null) {
+      // No planned date, count as on-time
+      stats.on_time_count++
+    } else if (a.variance_days > 0) {
+      stats.late_count++
+      varianceDays.push(a.variance_days)
+    } else if (a.variance_days < 0) {
+      stats.early_count++
+      varianceDays.push(a.variance_days)
+    } else {
+      stats.on_time_count++
+      varianceDays.push(0)
+    }
+  })
+
+  if (varianceDays.length > 0) {
+    stats.avg_variance_days = Math.round(varianceDays.reduce((a, b) => a + b, 0) / varianceDays.length * 10) / 10
+  }
+
+  return stats
+}
