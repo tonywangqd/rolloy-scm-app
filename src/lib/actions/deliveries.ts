@@ -197,6 +197,29 @@ export async function createDeliveryWithPlan(
     // 6. Generate delivery number
     const deliveryNumber = generateDeliveryNumber()
 
+    // 6.5 CRITICAL FIX: Delete existing planned deliveries for this PO Item + SKU
+    // This prevents accumulation of obsolete planned records when creating new actual deliveries
+    // Without this, planned records pile up and cause "exceeds ordered quantity" errors
+    const { error: deletePlannedError, count: deletedCount } = await supabase
+      .from('production_deliveries')
+      .delete()
+      .eq('po_item_id', validatedData.po_item_id)
+      .eq('sku', validatedData.sku)
+      .is('actual_delivery_date', null) // Only delete planned records (no actual date)
+      .not('planned_delivery_date', 'is', null) // Must have a planned date
+
+    if (deletePlannedError) {
+      console.warn(
+        `[createDeliveryWithPlan] Failed to delete existing planned deliveries for PO item ${validatedData.po_item_id}:`,
+        deletePlannedError
+      )
+      // Don't fail the transaction, just log - the deletion is a cleanup step
+    } else if (deletedCount && deletedCount > 0) {
+      console.log(
+        `[createDeliveryWithPlan] Deleted ${deletedCount} existing planned delivery records for PO item ${validatedData.po_item_id}`
+      )
+    }
+
     // 7. Insert actual delivery record
     const { data: actualDelivery, error: actualError } = await supabase
       .from('production_deliveries')

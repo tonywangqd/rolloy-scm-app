@@ -469,12 +469,13 @@ export async function updateDelivery(
       return { success: false, error: 'Delivery not found' }
     }
 
-    // 4. Calculate other deliveries qty
+    // 4. Calculate other deliveries qty (ONLY actual deliveries, not planned)
     const { data: otherDeliveries } = await supabase
       .from('production_deliveries')
       .select('delivered_qty')
       .eq('po_item_id', currentDelivery.po_item_id)
       .neq('id', deliveryId)
+      .not('actual_delivery_date', 'is', null) // CRITICAL: Only count actual deliveries
 
     const otherDeliveriesQty = otherDeliveries?.reduce(
       (sum, d) => sum + d.delivered_qty,
@@ -531,46 +532,49 @@ export async function updateDelivery(
       return { success: false, error: updateError.message }
     }
 
-    // 8. Recalculate PO item delivered_qty (SUM of all deliveries for this po_item)
-    const { data: allDeliveries } = await supabase
-      .from('production_deliveries')
-      .select('delivered_qty')
-      .eq('po_item_id', currentDelivery.po_item_id)
+    // 8. Calculate new total delivered qty (PERFORMANCE OPTIMIZATION)
+    // Instead of re-querying the database, calculate from Step 4 results + current update
+    // Formula: newTotal = otherDeliveriesQty + (updated delivered_qty OR original delivered_qty)
+    const newTotalDeliveredQty = otherDeliveriesQty + (
+      updates.delivered_qty !== undefined
+        ? updates.delivered_qty
+        : currentDelivery.delivered_qty
+    )
 
-    const newTotalDeliveredQty = allDeliveries?.reduce(
-      (sum, d) => sum + d.delivered_qty,
-      0
-    ) || 0
+    // 9. Execute PO item update and audit log in parallel (PERFORMANCE OPTIMIZATION)
+    const now = new Date().toISOString()
+    const [poItemResult, auditResult] = await Promise.all([
+      // Update PO item delivered_qty
+      supabase
+        .from('purchase_order_items')
+        .update({
+          delivered_qty: newTotalDeliveredQty,
+          updated_at: now,
+        })
+        .eq('id', currentDelivery.po_item_id),
 
-    const { error: poItemUpdateError } = await supabase
-      .from('purchase_order_items')
-      .update({
-        delivered_qty: newTotalDeliveredQty,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', currentDelivery.po_item_id)
+      // Insert audit log
+      supabase
+        .from('delivery_edit_audit_log')
+        .insert({
+          delivery_id: deliveryId,
+          changed_by: userId || null,
+          changed_at: now,
+          changed_fields: changedFields,
+          change_reason: updates.remarks || null,
+        }),
+    ])
 
-    if (poItemUpdateError) {
-      console.error('Failed to update PO item delivered_qty:', poItemUpdateError)
+    if (poItemResult.error) {
+      console.error('Failed to update PO item delivered_qty:', poItemResult.error)
       return {
         success: false,
         error: 'Cascade update failed. Please contact support.',
       }
     }
 
-    // 9. Insert audit log
-    const { error: auditError } = await supabase
-      .from('delivery_edit_audit_log')
-      .insert({
-        delivery_id: deliveryId,
-        changed_by: userId || null,
-        changed_at: new Date().toISOString(),
-        changed_fields: changedFields,
-        change_reason: updates.remarks || null,
-      })
-
-    if (auditError) {
-      console.error('Failed to log audit trail:', auditError)
+    if (auditResult.error) {
+      console.error('Failed to log audit trail:', auditResult.error)
       // Don't fail the request if audit log fails, but log it
     }
 
@@ -631,11 +635,12 @@ export async function deleteDelivery(
       return { success: false, error: deleteError.message }
     }
 
-    // Recalculate PO item delivered_qty
+    // Recalculate PO item delivered_qty (ONLY actual deliveries, not planned)
     const { data: remainingDeliveries } = await supabase
       .from('production_deliveries')
       .select('delivered_qty')
       .eq('po_item_id', delivery.po_item_id)
+      .not('actual_delivery_date', 'is', null) // CRITICAL: Only count actual deliveries
 
     const newTotalDeliveredQty = remainingDeliveries?.reduce(
       (sum, d) => sum + d.delivered_qty,
