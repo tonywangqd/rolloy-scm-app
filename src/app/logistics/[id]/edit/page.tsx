@@ -491,7 +491,7 @@ export default function EditShipmentPage({ params }: EditShipmentPageProps) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="tax_refund_usd">退税 (CNY)</Label>
+                  <Label htmlFor="tax_refund_usd">报关费用 (CNY)</Label>
                   <NumericInput
                     id="tax_refund_usd"
                     value={formData.tax_refund_usd}
@@ -502,6 +502,7 @@ export default function EditShipmentPage({ params }: EditShipmentPageProps) {
                     decimalPlaces={2}
                     placeholder="0.00"
                   />
+                  <p className="text-xs text-gray-500">报关、清关相关费用</p>
                 </div>
                 <div className="space-y-2">
                   <Label>总费用 (CNY)</Label>

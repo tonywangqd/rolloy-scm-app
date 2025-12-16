@@ -42,14 +42,14 @@ interface SelectedDelivery extends UnshippedDelivery {
 }
 
 const LOGISTICS_PLANS = [
-  '极速20日达',
-  '全美25日达',
-  '奥克兰30日达',
-  '纽约海铁30日达',
-  '芝加哥45日达',
-  '纽约45日达',
-  '萨瓦纳45日达',
-  '美森特快',
+  { name: '极速20日达', days: 20 },
+  { name: '全美25日达', days: 25 },
+  { name: '奥克兰30日达', days: 30 },
+  { name: '纽约海铁30日达', days: 30 },
+  { name: '芝加哥45日达', days: 45 },
+  { name: '纽约45日达', days: 45 },
+  { name: '萨瓦纳45日达', days: 45 },
+  { name: '美森特快', days: 30 },
 ]
 const REGIONS = ['East', 'Central', 'West']
 
@@ -75,16 +75,28 @@ export default function NewShipmentPage() {
     logistics_plan: '',
     logistics_region: '' as 'East' | 'Central' | 'West' | '',
     planned_departure_date: '',
-    actual_departure_date: '',
     planned_arrival_days: 30,
     planned_arrival_date: '',
-    actual_arrival_date: '',
     weight_kg: 0,
     cost_per_kg_usd: 0,
     surcharge_usd: 0,
     tax_refund_usd: 0,
     remarks: '',
   })
+
+  // Auto-calculate planned_arrival_date when departure date or days change
+  useEffect(() => {
+    if (formData.planned_departure_date && formData.planned_arrival_days > 0) {
+      const departureDate = new Date(formData.planned_departure_date)
+      const arrivalDate = new Date(departureDate)
+      arrivalDate.setDate(arrivalDate.getDate() + formData.planned_arrival_days)
+      const calculatedDate = arrivalDate.toISOString().split('T')[0]
+
+      if (calculatedDate !== formData.planned_arrival_date) {
+        setFormData(prev => ({ ...prev, planned_arrival_date: calculatedDate }))
+      }
+    }
+  }, [formData.planned_departure_date, formData.planned_arrival_days, formData.planned_arrival_date])
 
   // Fetch unshipped deliveries and warehouses
   useEffect(() => {
@@ -185,10 +197,10 @@ export default function NewShipmentPage() {
           logistics_plan: formData.logistics_plan || null,
           logistics_region: formData.logistics_region || null,
           planned_departure_date: formData.planned_departure_date || null,
-          actual_departure_date: formData.actual_departure_date || null,
+          actual_departure_date: null,
           planned_arrival_days: formData.planned_arrival_days || null,
           planned_arrival_date: formData.planned_arrival_date || null,
-          actual_arrival_date: formData.actual_arrival_date || null,
+          actual_arrival_date: null,
           weight_kg: formData.weight_kg || null,
           unit_count: totalShippedQty || null,
           cost_per_kg_usd: formData.cost_per_kg_usd || null,
@@ -569,15 +581,20 @@ export default function NewShipmentPage() {
                     <select
                       id="logistics_plan"
                       value={formData.logistics_plan}
-                      onChange={(e) =>
-                        setFormData({ ...formData, logistics_plan: e.target.value })
-                      }
+                      onChange={(e) => {
+                        const selectedPlan = LOGISTICS_PLANS.find(p => p.name === e.target.value)
+                        setFormData({
+                          ...formData,
+                          logistics_plan: e.target.value,
+                          planned_arrival_days: selectedPlan?.days || 30,
+                        })
+                      }}
                       className="flex h-10 w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <option value="">选择方案</option>
                       {LOGISTICS_PLANS.map((plan) => (
-                        <option key={plan} value={plan}>
-                          {plan}
+                        <option key={plan.name} value={plan.name}>
+                          {plan.name}
                         </option>
                       ))}
                     </select>
@@ -610,46 +627,38 @@ export default function NewShipmentPage() {
                 <CardTitle>时间安排</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div className="space-y-2">
-                    <Label htmlFor="planned_departure_date">预计开船日期</Label>
+                    <Label htmlFor="planned_departure_date">预计开船日期 *</Label>
                     <DateInput
                       id="planned_departure_date"
                       value={formData.planned_departure_date}
                       onChange={(value) =>
                         setFormData({ ...formData, planned_departure_date: value })
                       }
+                      required
                     />
+                    <p className="text-xs text-gray-500">实际开船日期请在发运单详情页填写</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="actual_departure_date">实际开船日期</Label>
-                    <DateInput
-                      id="actual_departure_date"
-                      value={formData.actual_departure_date}
-                      onChange={(value) =>
-                        setFormData({ ...formData, actual_departure_date: value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="planned_arrival_days">预计签收天数</Label>
+                    <Label htmlFor="planned_arrival_days">预计签收天数 *</Label>
                     <NumericInput
                       id="planned_arrival_days"
                       value={formData.planned_arrival_days}
                       onChange={(value) =>
                         setFormData({ ...formData, planned_arrival_days: value })
                       }
+                      min={1}
+                      placeholder="选择物流方案自动填充"
                     />
+                    <p className="text-xs text-gray-500">选择物流方案后自动填充</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="actual_arrival_date">实际签收日期</Label>
-                    <DateInput
-                      id="actual_arrival_date"
-                      value={formData.actual_arrival_date}
-                      onChange={(value) =>
-                        setFormData({ ...formData, actual_arrival_date: value })
-                      }
-                    />
+                    <Label htmlFor="planned_arrival_date">预计签收日期</Label>
+                    <div className="flex h-10 items-center rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-700">
+                      {formData.planned_arrival_date || '自动计算'}
+                    </div>
+                    <p className="text-xs text-gray-500">根据开船日期 + 签收天数自动计算</p>
                   </div>
                 </div>
               </CardContent>
@@ -702,7 +711,7 @@ export default function NewShipmentPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="tax_refund_usd">退税 (CNY)</Label>
+                    <Label htmlFor="tax_refund_usd">报关费用 (CNY)</Label>
                     <NumericInput
                       id="tax_refund_usd"
                       value={formData.tax_refund_usd}
@@ -713,6 +722,7 @@ export default function NewShipmentPage() {
                       decimalPlaces={2}
                       placeholder="0.00"
                     />
+                    <p className="text-xs text-gray-500">报关、清关相关费用</p>
                   </div>
                   <div className="space-y-2">
                     <Label>总费用 (CNY)</Label>
