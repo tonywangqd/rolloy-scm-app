@@ -646,10 +646,11 @@ export async function deleteDelivery(
     }
 
     // Business rule 2: Check if delivery is associated with any shipments
+    // NOTE: Use delivery_shipment_allocations table (N:N relationship model since 2025-12-08)
     const { data: shipmentLinks, error: shipmentCheckError } = await supabase
-      .from('shipment_items')
+      .from('delivery_shipment_allocations')
       .select('id')
-      .eq('production_delivery_id', deliveryId)
+      .eq('delivery_id', deliveryId)
       .limit(1)
 
     if (shipmentCheckError) {

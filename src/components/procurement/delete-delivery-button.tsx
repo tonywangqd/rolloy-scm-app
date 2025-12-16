@@ -56,8 +56,11 @@ export function DeleteDeliveryButton({
       const result = await deleteDelivery(deliveryId)
 
       if (result.success) {
+        const remainingQty = result.data?.remainingQty
         toast.success('删除成功', {
-          description: `交货记录 ${deliveryNumber} 已删除`,
+          description: remainingQty !== undefined && remainingQty > 0
+            ? `交货记录 ${deliveryNumber} 已删除，剩余未交付: ${remainingQty} 件`
+            : `交货记录 ${deliveryNumber} 已删除`,
         })
         setOpen(false)
 
