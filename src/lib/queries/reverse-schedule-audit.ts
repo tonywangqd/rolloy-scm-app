@@ -172,7 +172,8 @@ export async function fetchReverseScheduleAudit(
   let currentIterWeek = startWeek
   let currentWeekIndex = -1
 
-  for (let i = 0; i < 24; i++) {
+  // 最多支持 104 周（2年），与筛选器范围一致
+  for (let i = 0; i < 104; i++) {
     if (currentIterWeek > endWeek) break
     weeks.push(currentIterWeek)
     if (currentIterWeek === currentWeek) currentWeekIndex = i
