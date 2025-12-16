@@ -6,6 +6,8 @@ import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { DateInput } from '@/components/ui/date-input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -227,34 +229,31 @@ export default function NewPurchaseOrderPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="planned_order_date">计划下单日期</Label>
-                  <Input
+                  <DateInput
                     id="planned_order_date"
-                    type="date"
                     value={formData.planned_order_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, planned_order_date: e.target.value })
+                    onChange={(value) =>
+                      setFormData({ ...formData, planned_order_date: value })
                     }
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="actual_order_date">实际下单日期</Label>
-                  <Input
+                  <DateInput
                     id="actual_order_date"
-                    type="date"
                     value={formData.actual_order_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, actual_order_date: e.target.value })
+                    onChange={(value) =>
+                      setFormData({ ...formData, actual_order_date: value })
                     }
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="planned_ship_date">预计出货日期</Label>
-                  <Input
+                  <DateInput
                     id="planned_ship_date"
-                    type="date"
                     value={formData.planned_ship_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, planned_ship_date: e.target.value })
+                    onChange={(value) =>
+                      setFormData({ ...formData, planned_ship_date: value })
                     }
                   />
                 </div>
@@ -335,13 +334,10 @@ export default function NewPurchaseOrderPage() {
                         </div>
                         <div className="space-y-2">
                           <Label>数量</Label>
-                          <Input
-                            type="number"
-                            min="1"
+                          <NumericInput
+                            min={1}
                             value={item.ordered_qty}
-                            onChange={(e) =>
-                              updateItem(index, 'ordered_qty', parseInt(e.target.value) || 0)
-                            }
+                            onChange={(value) => updateItem(index, 'ordered_qty', value)}
                           />
                         </div>
                         <div className="space-y-2">

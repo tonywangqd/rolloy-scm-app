@@ -6,6 +6,8 @@ import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { DateInput } from '@/components/ui/date-input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -430,15 +432,12 @@ export default function NewShipmentPage() {
                       </div>
                       <div>
                         <Label htmlFor={`qty-${delivery.delivery_id}`}>本次发货数量 *</Label>
-                        <Input
+                        <NumericInput
                           id={`qty-${delivery.delivery_id}`}
-                          type="number"
-                          min="1"
+                          min={1}
                           max={delivery.unshipped_qty}
                           value={delivery.userShippedQty}
-                          onChange={(e) =>
-                            handleQtyChange(delivery.delivery_id, parseInt(e.target.value) || 0)
-                          }
+                          onChange={(value) => handleQtyChange(delivery.delivery_id, value)}
                           className={qtyError ? 'border-red-500' : ''}
                         />
                         {qtyError && (
@@ -614,45 +613,41 @@ export default function NewShipmentPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                   <div className="space-y-2">
                     <Label htmlFor="planned_departure_date">预计开船日期</Label>
-                    <Input
+                    <DateInput
                       id="planned_departure_date"
-                      type="date"
                       value={formData.planned_departure_date}
-                      onChange={(e) =>
-                        setFormData({ ...formData, planned_departure_date: e.target.value })
+                      onChange={(value) =>
+                        setFormData({ ...formData, planned_departure_date: value })
                       }
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="actual_departure_date">实际开船日期</Label>
-                    <Input
+                    <DateInput
                       id="actual_departure_date"
-                      type="date"
                       value={formData.actual_departure_date}
-                      onChange={(e) =>
-                        setFormData({ ...formData, actual_departure_date: e.target.value })
+                      onChange={(value) =>
+                        setFormData({ ...formData, actual_departure_date: value })
                       }
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="planned_arrival_days">预计签收天数</Label>
-                    <Input
+                    <NumericInput
                       id="planned_arrival_days"
-                      type="number"
                       value={formData.planned_arrival_days}
-                      onChange={(e) =>
-                        setFormData({ ...formData, planned_arrival_days: parseInt(e.target.value) || 0 })
+                      onChange={(value) =>
+                        setFormData({ ...formData, planned_arrival_days: value })
                       }
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="actual_arrival_date">实际签收日期</Label>
-                    <Input
+                    <DateInput
                       id="actual_arrival_date"
-                      type="date"
                       value={formData.actual_arrival_date}
-                      onChange={(e) =>
-                        setFormData({ ...formData, actual_arrival_date: e.target.value })
+                      onChange={(value) =>
+                        setFormData({ ...formData, actual_arrival_date: value })
                       }
                     />
                   </div>
@@ -669,53 +664,53 @@ export default function NewShipmentPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
                   <div className="space-y-2">
                     <Label htmlFor="weight_kg">计费重量 (Kg)</Label>
-                    <Input
+                    <NumericInput
                       id="weight_kg"
-                      type="number"
-                      step="0.01"
                       value={formData.weight_kg}
-                      onChange={(e) =>
-                        setFormData({ ...formData, weight_kg: parseFloat(e.target.value) || 0 })
+                      onChange={(value) =>
+                        setFormData({ ...formData, weight_kg: value })
                       }
+                      allowDecimal
+                      decimalPlaces={2}
                       placeholder="0.00"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cost_per_kg_usd">公斤单价 (CNY)</Label>
-                    <Input
+                    <NumericInput
                       id="cost_per_kg_usd"
-                      type="number"
-                      step="0.01"
                       value={formData.cost_per_kg_usd}
-                      onChange={(e) =>
-                        setFormData({ ...formData, cost_per_kg_usd: parseFloat(e.target.value) || 0 })
+                      onChange={(value) =>
+                        setFormData({ ...formData, cost_per_kg_usd: value })
                       }
+                      allowDecimal
+                      decimalPlaces={2}
                       placeholder="0.00"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="surcharge_usd">杂费 (CNY)</Label>
-                    <Input
+                    <NumericInput
                       id="surcharge_usd"
-                      type="number"
-                      step="0.01"
                       value={formData.surcharge_usd}
-                      onChange={(e) =>
-                        setFormData({ ...formData, surcharge_usd: parseFloat(e.target.value) || 0 })
+                      onChange={(value) =>
+                        setFormData({ ...formData, surcharge_usd: value })
                       }
+                      allowDecimal
+                      decimalPlaces={2}
                       placeholder="0.00"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="tax_refund_usd">退税 (CNY)</Label>
-                    <Input
+                    <NumericInput
                       id="tax_refund_usd"
-                      type="number"
-                      step="0.01"
                       value={formData.tax_refund_usd}
-                      onChange={(e) =>
-                        setFormData({ ...formData, tax_refund_usd: parseFloat(e.target.value) || 0 })
+                      onChange={(value) =>
+                        setFormData({ ...formData, tax_refund_usd: value })
                       }
+                      allowDecimal
+                      decimalPlaces={2}
                       placeholder="0.00"
                     />
                   </div>

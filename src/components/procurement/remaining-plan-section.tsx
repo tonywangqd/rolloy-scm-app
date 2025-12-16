@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import { Button } from '@/components/ui/button'
 import { Plus, Trash2, AlertCircle, CheckCircle, AlertTriangle } from 'lucide-react'
 
@@ -189,14 +190,11 @@ export function RemainingPlanSection({
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <Input
-                        type="number"
-                        min="0"
+                      <NumericInput
+                        min={0}
                         max={remainingQty}
-                        value={item.planned_qty || ''}
-                        onChange={(e) =>
-                          updatePlanItem(item.id, 'planned_qty', parseInt(e.target.value) || 0)
-                        }
+                        value={item.planned_qty}
+                        onChange={(value) => updatePlanItem(item.id, 'planned_qty', value)}
                         disabled={disabled}
                         className="text-right"
                       />

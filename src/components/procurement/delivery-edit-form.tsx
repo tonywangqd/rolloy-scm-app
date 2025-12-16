@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { DateInput } from '@/components/ui/date-input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -219,13 +221,12 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
             <Label htmlFor="delivered_qty">
               Delivered Quantity <span className="text-red-500">*</span>
             </Label>
-            <Input
+            <NumericInput
               id="delivered_qty"
-              type="number"
               value={formData.delivered_qty}
-              onChange={(e) =>
-                handleChange('delivered_qty', parseInt(e.target.value) || 0)
-              }
+              onChange={(value) => handleChange('delivered_qty', value)}
+              min={1}
+              max={context.max_allowed_qty}
               className={errors.delivered_qty ? 'border-red-500' : ''}
             />
             {errors.delivered_qty && (
@@ -244,11 +245,10 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
             <Label htmlFor="actual_delivery_date">
               Actual Delivery Date <span className="text-red-500">*</span>
             </Label>
-            <Input
+            <DateInput
               id="actual_delivery_date"
-              type="date"
               value={formData.actual_delivery_date}
-              onChange={(e) => handleChange('actual_delivery_date', e.target.value)}
+              onChange={(value) => handleChange('actual_delivery_date', value)}
               className={errors.actual_delivery_date ? 'border-red-500' : ''}
             />
             {errors.actual_delivery_date && (
@@ -264,14 +264,12 @@ export function DeliveryEditForm({ context }: DeliveryEditFormProps) {
             <Label htmlFor="unit_cost_usd">
               Unit Cost (USD) <span className="text-red-500">*</span>
             </Label>
-            <Input
+            <NumericInput
               id="unit_cost_usd"
-              type="number"
-              step="0.01"
               value={formData.unit_cost_usd}
-              onChange={(e) =>
-                handleChange('unit_cost_usd', parseFloat(e.target.value) || 0)
-              }
+              onChange={(value) => handleChange('unit_cost_usd', value)}
+              allowDecimal
+              decimalPlaces={2}
               className={errors.unit_cost_usd ? 'border-red-500' : ''}
             />
             {errors.unit_cost_usd && (

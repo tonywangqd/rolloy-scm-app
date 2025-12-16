@@ -6,6 +6,8 @@ import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { DateInput } from '@/components/ui/date-input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -329,12 +331,11 @@ export default function NewDeliveryPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="delivery_date">交货日期 *</Label>
-                  <Input
+                  <DateInput
                     id="delivery_date"
-                    type="date"
                     value={formData.delivery_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, delivery_date: e.target.value })
+                    onChange={(value) =>
+                      setFormData({ ...formData, delivery_date: value })
                     }
                     required
                   />
@@ -420,14 +421,11 @@ export default function NewDeliveryPage() {
                               {item.remaining_qty}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <Input
-                                type="number"
-                                min="0"
+                              <NumericInput
+                                min={0}
                                 max={item.remaining_qty}
                                 value={item.delivery_qty}
-                                onChange={(e) =>
-                                  updateDeliveryQty(index, parseInt(e.target.value) || 0)
-                                }
+                                onChange={(value) => updateDeliveryQty(index, value)}
                                 className="w-24 text-right"
                               />
                             </td>
