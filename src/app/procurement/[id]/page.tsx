@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table'
 import { fetchPurchaseOrderDetails } from '@/lib/queries/procurement'
 import type { POStatus, PaymentStatus } from '@/lib/types/database'
+import { DeleteDeliveryButton } from '@/components/procurement/delete-delivery-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -285,6 +286,7 @@ export default async function PurchaseOrderDetailPage({
                     <TableHead>交付日期</TableHead>
                     <TableHead>付款截止日</TableHead>
                     <TableHead>付款状态</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -303,6 +305,13 @@ export default async function PurchaseOrderDetailPage({
                       <TableCell>{formatDate(delivery.actual_delivery_date)}</TableCell>
                       <TableCell>{formatDate(delivery.payment_due_date)}</TableCell>
                       <TableCell>{getPaymentStatusBadge(delivery.payment_status)}</TableCell>
+                      <TableCell className="text-right">
+                        <DeleteDeliveryButton
+                          deliveryId={delivery.delivery_id}
+                          deliveryNumber={delivery.delivery_number}
+                          paymentStatus={delivery.payment_status}
+                        />
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

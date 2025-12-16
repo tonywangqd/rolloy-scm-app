@@ -19,6 +19,7 @@ import { usePagination } from '@/lib/hooks/use-pagination'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { Eye, Plus } from 'lucide-react'
 import type { ProductionDelivery } from '@/lib/types/database'
+import { DeleteDeliveryButton } from './delete-delivery-button'
 
 interface DeliveriesTableProps {
   deliveries: ProductionDelivery[]
@@ -178,11 +179,18 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
                         {delivery.remarks || '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/procurement/deliveries/${delivery.id}`}>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
+                        <div className="flex items-center justify-end gap-1">
+                          <Link href={`/procurement/deliveries/${delivery.id}`}>
+                            <Button variant="ghost" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <DeleteDeliveryButton
+                            deliveryId={delivery.id}
+                            deliveryNumber={delivery.delivery_number}
+                            paymentStatus={delivery.payment_status}
+                          />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

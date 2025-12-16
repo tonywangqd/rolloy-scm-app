@@ -593,11 +593,15 @@ export async function updateDelivery(
 
 /**
  * Delete production delivery record
- * Only allowed if payment_status = 'Pending'
+ * Business Rules:
+ * 1. Only allowed if payment_status = 'Pending'
+ * 2. Cannot delete if delivery is associated with any shipment_items
+ * 3. When deleting an actual delivery, automatically delete all planned deliveries for the same PO item
+ * 4. Returns remaining undelivered quantity after deletion
  */
 export async function deleteDelivery(
   deliveryId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; data?: { remainingQty: number } }> {
   try {
     const authResult = await requireAuth()
     if (authResult.error) {
@@ -606,10 +610,15 @@ export async function deleteDelivery(
 
     const supabase = await createServerSupabaseClient()
 
-    // Check current delivery status
+    // Check current delivery status and get PO item info
     const { data: delivery, error: fetchError } = await supabase
       .from('production_deliveries')
-      .select('payment_status, po_item_id, delivered_qty')
+      .select(`
+        payment_status,
+        po_item_id,
+        delivered_qty,
+        actual_delivery_date
+      `)
       .eq('id', deliveryId)
       .single()
 
@@ -617,7 +626,18 @@ export async function deleteDelivery(
       return { success: false, error: 'Delivery not found' }
     }
 
-    // Business rule: Only allow delete if payment is pending
+    // Get PO item info
+    const { data: poItem, error: poItemError } = await supabase
+      .from('purchase_order_items')
+      .select('id, ordered_qty, delivered_qty')
+      .eq('id', delivery.po_item_id)
+      .single()
+
+    if (poItemError || !poItem) {
+      return { success: false, error: 'PO item not found' }
+    }
+
+    // Business rule 1: Only allow delete if payment is pending
     if (delivery.payment_status !== 'Pending') {
       return {
         success: false,
@@ -625,7 +645,43 @@ export async function deleteDelivery(
       }
     }
 
-    // Delete delivery
+    // Business rule 2: Check if delivery is associated with any shipments
+    const { data: shipmentLinks, error: shipmentCheckError } = await supabase
+      .from('shipment_items')
+      .select('id')
+      .eq('production_delivery_id', deliveryId)
+      .limit(1)
+
+    if (shipmentCheckError) {
+      return {
+        success: false,
+        error: `检查发货关联失败: ${shipmentCheckError.message}`
+      }
+    }
+
+    if (shipmentLinks && shipmentLinks.length > 0) {
+      return {
+        success: false,
+        error: '无法删除：该交货记录已关联到发货单，请先取消关联',
+      }
+    }
+
+    // Business rule 3: If this is an actual delivery, also delete all planned deliveries for the same PO item
+    if (delivery.actual_delivery_date) {
+      const { error: deletePlannedError } = await supabase
+        .from('production_deliveries')
+        .delete()
+        .eq('po_item_id', delivery.po_item_id)
+        .is('actual_delivery_date', null) // Delete only planned deliveries
+        .not('planned_delivery_date', 'is', null) // Ensure it has planned_delivery_date
+
+      if (deletePlannedError) {
+        console.error('Failed to delete planned deliveries:', deletePlannedError)
+        // Don't fail the whole operation, just log it
+      }
+    }
+
+    // Delete the actual delivery
     const { error: deleteError } = await supabase
       .from('production_deliveries')
       .delete()
@@ -647,6 +703,10 @@ export async function deleteDelivery(
       0
     ) || 0
 
+    // Calculate remaining undelivered quantity
+    const remainingQty = poItem.ordered_qty - newTotalDeliveredQty
+
+    // Update PO item delivered_qty
     await supabase
       .from('purchase_order_items')
       .update({
@@ -656,7 +716,12 @@ export async function deleteDelivery(
       .eq('id', delivery.po_item_id)
 
     revalidatePath('/procurement')
-    return { success: true }
+
+    // Return remaining quantity for frontend display
+    return {
+      success: true,
+      data: { remainingQty }
+    }
   } catch (err) {
     return {
       success: false,
