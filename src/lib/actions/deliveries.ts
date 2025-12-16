@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth/check-auth'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { startOfISOWeek } from 'date-fns'
+import { generateDocumentNumber } from '@/lib/utils/document-number'
 
 // ================================================================
 // TYPE DEFINITIONS
@@ -82,12 +83,38 @@ function isoWeekToDate(weekIso: string): string {
 }
 
 /**
- * Generate unique delivery number with timestamp
- * @returns "DLV-{timestamp}"
+ * Generate unique delivery number using unified format
+ * Format: OF + 年(4位) + 周(2位) + 序号(2位)
+ * Example: OF20255101 (2025年51周01号)
+ *
+ * @param date - Date for the delivery (defaults to current date)
+ * @returns Delivery number string (e.g., "OF20255101")
  */
-function generateDeliveryNumber(): string {
-  const timestamp = Date.now()
-  return `DLV-${timestamp}`
+async function generateDeliveryNumberAsync(supabase: any, date: Date = new Date()): Promise<string> {
+  // Get existing deliveries for this week to determine sequence
+  const { getISOWeek, getISOWeekYear } = await import('date-fns')
+  const year = getISOWeekYear(date)
+  const week = getISOWeek(date)
+  const prefix = `OF${year}${week.toString().padStart(2, '0')}`
+
+  // Query existing deliveries with this prefix to find next sequence
+  const { data: existingDeliveries } = await supabase
+    .from('production_deliveries')
+    .select('delivery_number')
+    .like('delivery_number', `${prefix}%`)
+    .order('delivery_number', { ascending: false })
+    .limit(1)
+
+  let nextSequence = 1
+  if (existingDeliveries && existingDeliveries.length > 0) {
+    const lastNumber = existingDeliveries[0].delivery_number
+    const lastSeq = parseInt(lastNumber.slice(-2), 10)
+    if (!isNaN(lastSeq)) {
+      nextSequence = lastSeq + 1
+    }
+  }
+
+  return generateDocumentNumber('OF', date, nextSequence)
 }
 
 // ================================================================
@@ -194,8 +221,9 @@ export async function createDeliveryWithPlan(
       }
     }
 
-    // 6. Generate delivery number
-    const deliveryNumber = generateDeliveryNumber()
+    // 6. Generate delivery number using unified format (OF + year + week + sequence)
+    const deliveryDate = new Date(validatedData.actual_delivery_date)
+    const deliveryNumber = await generateDeliveryNumberAsync(supabase, deliveryDate)
 
     // 6.5 CRITICAL FIX: Delete existing planned deliveries for this PO Item + SKU
     // This prevents accumulation of obsolete planned records when creating new actual deliveries

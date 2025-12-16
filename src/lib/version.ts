@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.2.3',
+  number: '3.3.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-16 16:18',
+  updatedAt: '2025-12-16 16:45',
 
   // 版本标签
   tag: 'V3模拟引擎 Phase 3' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 修复交货记录预计/实际冲突bug + 优化updateDelivery性能',
+  changelog: 'feat: 统一单号命名规则 - XX+年+周+序号格式 (SF/PF/PO/OF)',
 }
 
 // 格式化显示
