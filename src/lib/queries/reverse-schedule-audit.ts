@@ -141,10 +141,10 @@ export async function fetchReverseScheduleAudit(
     { data: shipments },
     { data: snapshots },
   ] = await Promise.all([
-    // 1. 产品信息（只选择必要字段）
+    // 1. 产品信息（选择所有字段以满足 Product 类型）
     supabase
       .from('products')
-      .select('sku, name_zh, production_lead_weeks, safety_stock_weeks')
+      .select('*')
       .eq('sku', sku)
       .single(),
 

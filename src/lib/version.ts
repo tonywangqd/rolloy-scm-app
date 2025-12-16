@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.3.5',
+  number: '3.3.6',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-16 19:30',
+  updatedAt: '2025-12-16 19:40',
 
   // 版本标签
   tag: 'V3模拟引擎 Phase 3' as const,
 
   // 更新说明 (可选)
-  changelog: 'style: 将物流管理中"退税费用"改为"报关费用"',
+  changelog: 'feat: 优化发运单创建页面日期字段逻辑，支持自动计算预计签收日期',
 }
 
 // 格式化显示
