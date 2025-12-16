@@ -464,88 +464,190 @@ export async function fetchReverseScheduleAudit(
   }
 
   // 7.2 预计发货（正推）：追踪部分履约
+  // 核心逻辑（类似出厂追踪）：
+  // 剩余待发货 = 总实际出厂 + 总预计出厂 - 总实际发货
+  // 参考用户反馈：W50出厂5台，W51实际发货3台，剩余2台需要追踪
   const plannedShipByWeek = new Map<string, number>()
 
-  // 从预计出厂正推预计发货
-  plannedFactoryShipByWeek.forEach((qty, factoryShipWeek) => {
-    const shipWeek = addWeeksToISOWeek(factoryShipWeek, leadTimes.loading_weeks)
-    if (shipWeek) {
-      const current = plannedShipByWeek.get(shipWeek) || 0
-      plannedShipByWeek.set(shipWeek, current + qty)
-    }
-  })
+  // Step 1: 计算总量
+  const totalActualFactoryShip = Array.from(actualFactoryShipMap.values()).reduce((a, b) => a + b, 0)
+  const totalPlannedFactoryShip = Array.from(plannedFactoryShipByWeek.values()).reduce((a, b) => a + b, 0)
+  const totalActualShip = Array.from(actualShipMap.values()).reduce((a, b) => a + b, 0)
 
-  // 从实际出厂正推预计发货
-  actualFactoryShipMap.forEach((qty, factoryShipWeek) => {
-    const shipWeek = addWeeksToISOWeek(factoryShipWeek, leadTimes.loading_weeks)
-    if (shipWeek) {
-      const actualQty = actualShipMap.get(shipWeek) || 0
-      if (actualQty === 0) {
-        // 没有实际发货，显示预计
-        const current = plannedShipByWeek.get(shipWeek) || 0
-        // 用实际出厂推算的值（可能比预计出厂推算的更准确）
-        plannedShipByWeek.set(shipWeek, Math.max(current, qty))
-      } else if (actualQty < qty) {
-        // 部分发货，差额显示在下一周
-        const gap = qty - actualQty
-        const nextWeek = addWeeksToISOWeek(shipWeek, 1)
+  // Step 2: 剩余待发货 = 总出厂（实际+预计）- 总实际发货
+  let remainingToShip = Math.max(0, totalActualFactoryShip + totalPlannedFactoryShip - totalActualShip)
+
+  // Step 3: 分配剩余待发货到合适的周
+  if (remainingToShip > 0) {
+    // 收集所有出厂记录，按周排序
+    const factoryShipEntries: { week: string; qty: number; isActual: boolean }[] = []
+
+    // 从实际出厂收集
+    actualFactoryShipMap.forEach((qty, factoryWeek) => {
+      factoryShipEntries.push({ week: factoryWeek, qty, isActual: true })
+    })
+
+    // 从预计出厂收集
+    plannedFactoryShipByWeek.forEach((qty, factoryWeek) => {
+      factoryShipEntries.push({ week: factoryWeek, qty, isActual: false })
+    })
+
+    // 按周排序（从近到远）
+    factoryShipEntries.sort((a, b) => a.week.localeCompare(b.week))
+
+    // 计算每个出厂周对应的发货周，并分配剩余量
+    for (const entry of factoryShipEntries) {
+      if (remainingToShip <= 0) break
+
+      const shipWeek = addWeeksToISOWeek(entry.week, leadTimes.loading_weeks)
+      if (!shipWeek) continue
+
+      const actualShipQty = actualShipMap.get(shipWeek) || 0
+
+      if (actualShipQty === 0) {
+        // 该周没有实际发货，分配预计
+        const allocatedQty = Math.min(entry.qty, remainingToShip)
+        const existing = plannedShipByWeek.get(shipWeek) || 0
+        plannedShipByWeek.set(shipWeek, existing + allocatedQty)
+        remainingToShip -= allocatedQty
+      }
+      // 如果有实际发货，该周的量已经在总量计算中扣除了
+    }
+
+    // 如果还有剩余（所有目标周都有实际发货），分配到最近未来周
+    if (remainingToShip > 0) {
+      // 找到最近的实际发货周，推到下一周
+      const sortedActualShipWeeks = Array.from(actualShipMap.keys()).sort()
+      const latestActualShipWeek = sortedActualShipWeeks[sortedActualShipWeeks.length - 1]
+
+      if (latestActualShipWeek) {
+        let nextWeek = addWeeksToISOWeek(latestActualShipWeek, 1)
+        // 跳过已有实际发货的周
+        while (nextWeek && actualShipMap.has(nextWeek)) {
+          nextWeek = addWeeksToISOWeek(nextWeek, 1)
+        }
         if (nextWeek) {
           const existing = plannedShipByWeek.get(nextWeek) || 0
-          plannedShipByWeek.set(nextWeek, existing + gap)
+          plannedShipByWeek.set(nextWeek, existing + remainingToShip)
         }
-        plannedShipByWeek.delete(shipWeek) // 该周已有实际，不显示预计
-      } else {
-        // 实际 >= 预计，不显示预计
-        plannedShipByWeek.delete(shipWeek)
+      } else if (factoryShipEntries.length > 0) {
+        // 如果没有实际发货记录，用最后一个出厂周推算
+        const lastFactory = factoryShipEntries[factoryShipEntries.length - 1]
+        const targetWeek = addWeeksToISOWeek(lastFactory.week, leadTimes.loading_weeks)
+        if (targetWeek) {
+          const existing = plannedShipByWeek.get(targetWeek) || 0
+          plannedShipByWeek.set(targetWeek, existing + remainingToShip)
+        }
       }
     }
-  })
+  } else if (totalActualFactoryShip === 0 && totalPlannedFactoryShip > 0) {
+    // 没有实际出厂，只有预计出厂，直接从预计出厂正推
+    plannedFactoryShipByWeek.forEach((qty, factoryShipWeek) => {
+      const shipWeek = addWeeksToISOWeek(factoryShipWeek, leadTimes.loading_weeks)
+      if (shipWeek) {
+        const current = plannedShipByWeek.get(shipWeek) || 0
+        plannedShipByWeek.set(shipWeek, current + qty)
+      }
+    })
+  }
 
   // 7.3 预计到仓（正推）：追踪部分履约
+  // 核心逻辑（类似发货追踪）：
+  // 剩余待到仓 = 总实际发货 + 总预计发货 - 总实际到仓
   const plannedArrivalByWeek = new Map<string, number>()
 
-  // 先从预计发货正推
-  plannedShipByWeek.forEach((qty, shipWeek) => {
-    const arrivalWeek = addWeeksToISOWeek(shipWeek, leadTimes.shipping_weeks)
-    if (arrivalWeek) {
-      const current = plannedArrivalByWeek.get(arrivalWeek) || 0
-      plannedArrivalByWeek.set(arrivalWeek, current + qty)
-    }
-  })
+  // 最高优先级：在途shipment的预计到仓（有 planned_arrival_date 的在途货物）
+  // 这些是用户创建的shipment明确指定的预计到仓日期，优先使用
+  const totalPlannedFromShipments = Array.from(plannedArrivalFromShipmentsMap.values()).reduce((a, b) => a + b, 0)
 
-  // 从实际发货正推
-  actualShipMap.forEach((qty, shipWeek) => {
-    const arrivalWeek = addWeeksToISOWeek(shipWeek, leadTimes.shipping_weeks)
-    if (arrivalWeek) {
-      const actualQty = actualArrivalMap.get(arrivalWeek) || 0
-      const plannedFromShipments = plannedArrivalFromShipmentsMap.get(arrivalWeek) || 0
+  // Step 1: 计算总量
+  const totalActualArrival = Array.from(actualArrivalMap.values()).reduce((a, b) => a + b, 0)
+  const totalPlannedShip = Array.from(plannedShipByWeek.values()).reduce((a, b) => a + b, 0)
 
-      if (actualQty === 0 && plannedFromShipments === 0) {
-        // 用实际发货推算
-        const current = plannedArrivalByWeek.get(arrivalWeek) || 0
-        plannedArrivalByWeek.set(arrivalWeek, Math.max(current, qty))
-      } else if (actualQty > 0 && actualQty < qty) {
-        // 部分到仓，差额显示在下一周
-        const gap = qty - actualQty
-        const nextWeek = addWeeksToISOWeek(arrivalWeek, 1)
-        if (nextWeek) {
-          const existing = plannedArrivalByWeek.get(nextWeek) || 0
-          plannedArrivalByWeek.set(nextWeek, existing + gap)
-        }
-        plannedArrivalByWeek.delete(arrivalWeek)
-      } else if (actualQty > 0) {
-        plannedArrivalByWeek.delete(arrivalWeek)
-      }
-    }
-  })
+  // Step 2: 剩余待到仓 = 总发货（实际+预计）- 总实际到仓 - 在途预计
+  // 注意：在途预计已经是确定的（有明确的 planned_arrival_date）
+  let remainingToArrive = Math.max(0, totalActualShip + totalPlannedShip - totalActualArrival - totalPlannedFromShipments)
 
-  // 用在途shipment的预计到仓覆盖（最高优先级）
+  // Step 3: 先填充在途shipment的预计到仓（最高优先级）
   plannedArrivalFromShipmentsMap.forEach((qty, week) => {
     const actualQty = actualArrivalMap.get(week) || 0
     if (actualQty === 0) {
       plannedArrivalByWeek.set(week, qty)
     }
   })
+
+  // Step 4: 分配剩余待到仓到合适的周
+  if (remainingToArrive > 0) {
+    // 收集所有发货记录，按周排序
+    const shipEntries: { week: string; qty: number; isActual: boolean }[] = []
+
+    // 从实际发货收集
+    actualShipMap.forEach((qty, shipWeek) => {
+      shipEntries.push({ week: shipWeek, qty, isActual: true })
+    })
+
+    // 从预计发货收集
+    plannedShipByWeek.forEach((qty, shipWeek) => {
+      shipEntries.push({ week: shipWeek, qty, isActual: false })
+    })
+
+    // 按周排序（从近到远）
+    shipEntries.sort((a, b) => a.week.localeCompare(b.week))
+
+    // 计算每个发货周对应的到仓周，并分配剩余量
+    for (const entry of shipEntries) {
+      if (remainingToArrive <= 0) break
+
+      const arrivalWeek = addWeeksToISOWeek(entry.week, leadTimes.shipping_weeks)
+      if (!arrivalWeek) continue
+
+      const actualArrivalQty = actualArrivalMap.get(arrivalWeek) || 0
+      const plannedFromShipmentsQty = plannedArrivalFromShipmentsMap.get(arrivalWeek) || 0
+
+      if (actualArrivalQty === 0 && plannedFromShipmentsQty === 0) {
+        // 该周没有实际到仓也没有在途预计，分配预计
+        const allocatedQty = Math.min(entry.qty, remainingToArrive)
+        const existing = plannedArrivalByWeek.get(arrivalWeek) || 0
+        plannedArrivalByWeek.set(arrivalWeek, existing + allocatedQty)
+        remainingToArrive -= allocatedQty
+      }
+    }
+
+    // 如果还有剩余（所有目标周都有实际到仓或在途），分配到最近未来周
+    if (remainingToArrive > 0) {
+      // 找到最近的实际到仓周，推到下一周
+      const sortedActualArrivalWeeks = Array.from(actualArrivalMap.keys()).sort()
+      const latestActualArrivalWeek = sortedActualArrivalWeeks[sortedActualArrivalWeeks.length - 1]
+
+      if (latestActualArrivalWeek) {
+        let nextWeek = addWeeksToISOWeek(latestActualArrivalWeek, 1)
+        // 跳过已有实际到仓或在途预计的周
+        while (nextWeek && (actualArrivalMap.has(nextWeek) || plannedArrivalFromShipmentsMap.has(nextWeek))) {
+          nextWeek = addWeeksToISOWeek(nextWeek, 1)
+        }
+        if (nextWeek) {
+          const existing = plannedArrivalByWeek.get(nextWeek) || 0
+          plannedArrivalByWeek.set(nextWeek, existing + remainingToArrive)
+        }
+      } else if (shipEntries.length > 0) {
+        // 如果没有实际到仓记录，用最后一个发货周推算
+        const lastShip = shipEntries[shipEntries.length - 1]
+        const targetWeek = addWeeksToISOWeek(lastShip.week, leadTimes.shipping_weeks)
+        if (targetWeek && !plannedArrivalByWeek.has(targetWeek)) {
+          plannedArrivalByWeek.set(targetWeek, remainingToArrive)
+        }
+      }
+    }
+  } else if (totalActualShip === 0 && totalPlannedShip > 0 && totalPlannedFromShipments === 0) {
+    // 没有实际发货和在途，只有预计发货，直接从预计发货正推
+    plannedShipByWeek.forEach((qty, shipWeek) => {
+      const arrivalWeek = addWeeksToISOWeek(shipWeek, leadTimes.shipping_weeks)
+      if (arrivalWeek) {
+        const current = plannedArrivalByWeek.get(arrivalWeek) || 0
+        plannedArrivalByWeek.set(arrivalWeek, current + qty)
+      }
+    })
+  }
 
   // ================================================================
   // STEP 8: 计算初始库存（Initial Stock）
