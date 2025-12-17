@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.3.9',
+  number: '3.4.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-16 18:58',
+  updatedAt: '2025-12-17 09:40',
 
   // 版本标签
   tag: 'V3模拟引擎 Phase 3' as const,
 
   // 更新说明 (可选)
-  changelog: 'refactor: 到仓管理页面改为显示已到仓的发货单，移除无用的mock数据',
+  changelog: 'feat: 库存总览新增12周预测时序图表，可视化断货风险预警',
 }
 
 // 格式化显示

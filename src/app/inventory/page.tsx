@@ -6,20 +6,24 @@ import {
   fetchInventoryByWarehouse,
   fetchIncomingInventory,
 } from '@/lib/queries/inventory'
+import { fetchInventoryProjection12Weeks, fetchRiskSummary } from '@/lib/queries/inventory-projection'
 import { formatNumber } from '@/lib/utils'
-import { Package, Warehouse, Truck, BoxIcon } from 'lucide-react'
+import { Package, Warehouse, Truck, BoxIcon, AlertTriangle } from 'lucide-react'
 import { InventoryByWarehouse } from '@/components/inventory/inventory-by-warehouse'
 import { SkuSummaryTable } from '@/components/inventory/sku-summary-table'
 import { IncomingShipmentsTable } from '@/components/inventory/incoming-shipments-table'
+import { InventoryProjectionChart } from '@/components/inventory/inventory-projection-chart'
 
 export const dynamic = 'force-dynamic'
 
 export default async function InventoryPage() {
-  const [stats, skuSummary, warehouseInventory, incoming] = await Promise.all([
+  const [stats, skuSummary, warehouseInventory, incoming, projections, riskSummary] = await Promise.all([
     fetchInventoryStats(),
     fetchInventorySummaryBySku(),
     fetchInventoryByWarehouse(),
     fetchIncomingInventory(),
+    fetchInventoryProjection12Weeks(),
+    fetchRiskSummary(),
   ])
 
   return (
@@ -31,7 +35,7 @@ export default async function InventoryPage() {
 
       <div className="flex-1 space-y-6 p-6">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center space-x-3">
@@ -74,19 +78,6 @@ export default async function InventoryPage() {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center space-x-3">
-                <div className="rounded-lg bg-green-100 p-2">
-                  <Package className="h-6 w-6 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">SKU 数</p>
-                  <p className="text-xl font-semibold">{stats.sku_count}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-3">
                 <div className="rounded-lg bg-yellow-100 p-2">
                   <Truck className="h-6 w-6 text-yellow-600" />
                 </div>
@@ -99,7 +90,38 @@ export default async function InventoryPage() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-3">
+                <div className="rounded-lg bg-red-100 p-2">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">断货风险</p>
+                  <p className="text-xl font-semibold text-red-600">
+                    {riskSummary.stockout_count + riskSummary.risk_count}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-3">
+                <div className="rounded-lg bg-green-100 p-2">
+                  <Package className="h-6 w-6 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">SKU 数</p>
+                  <p className="text-xl font-semibold">{stats.sku_count}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* 12-Week Inventory Projection Chart */}
+        <InventoryProjectionChart projections={projections} />
 
         {/* Incoming Shipments */}
         {incoming.length > 0 && (
