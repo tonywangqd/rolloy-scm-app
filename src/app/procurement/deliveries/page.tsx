@@ -23,8 +23,8 @@ export default async function DeliveriesPage() {
   return (
     <div className="flex flex-col">
       <Header
-        title="完工管理 (Production Fulfillment)"
-        description="生产完工交付记录管理"
+        title="采购交货"
+        description="管理采购交货记录"
       />
 
       <div className="flex-1 space-y-6 p-6">

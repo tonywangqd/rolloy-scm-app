@@ -70,7 +70,7 @@ const navigation = [
         icon: ShoppingCart,
       },
       {
-        name: '完工管理',
+        name: '采购交货',
         href: '/procurement/deliveries',
         icon: ClipboardCheck,
       },

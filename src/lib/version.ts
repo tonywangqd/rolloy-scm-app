@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.7.0',
+  number: '3.7.1',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-18 20:22',
+  updatedAt: '2025-12-18 20:25',
 
   // 版本标签
-  tag: '销量预测向导完整版' as const,
+  tag: '正式版' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: 完成销量预测智能向导前端UI（5步向导、AI预测、图表可视化）',
+  changelog: 'refactor: 合并采购交货和完工管理，消除重复功能入口',
 }
 
 // 格式化显示
