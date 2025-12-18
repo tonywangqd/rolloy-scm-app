@@ -387,7 +387,30 @@ export async function deleteShipment(
 
     // Handle departed but not arrived shipments
     if (shipment.actual_departure_date) {
-      // Allow deletion with warning
+      // Delete related records first (due to foreign key constraints)
+      // 1. Delete delivery_shipment_allocations (triggers auto-update of production_deliveries status)
+      const { error: allocDeleteError } = await supabase
+        .from('delivery_shipment_allocations')
+        .delete()
+        .eq('shipment_id', id)
+
+      if (allocDeleteError) {
+        console.error('Error deleting allocations:', allocDeleteError)
+        return { success: false, error: `删除失败：无法清除发货分配记录 - ${allocDeleteError.message}` }
+      }
+
+      // 2. Delete shipment_items
+      const { error: itemsDeleteError } = await supabase
+        .from('shipment_items')
+        .delete()
+        .eq('shipment_id', id)
+
+      if (itemsDeleteError) {
+        console.error('Error deleting shipment items:', itemsDeleteError)
+        return { success: false, error: `删除失败：无法清除发运明细 - ${itemsDeleteError.message}` }
+      }
+
+      // 3. Delete shipment
       const { error: deleteError } = await supabase
         .from('shipments')
         .delete()
@@ -407,6 +430,30 @@ export async function deleteShipment(
     }
 
     // Delete pending shipment (not yet departed)
+    // Delete related records first (due to foreign key constraints)
+    // 1. Delete delivery_shipment_allocations (triggers auto-update of production_deliveries status)
+    const { error: allocDeleteError } = await supabase
+      .from('delivery_shipment_allocations')
+      .delete()
+      .eq('shipment_id', id)
+
+    if (allocDeleteError) {
+      console.error('Error deleting allocations:', allocDeleteError)
+      return { success: false, error: `删除失败：无法清除发货分配记录 - ${allocDeleteError.message}` }
+    }
+
+    // 2. Delete shipment_items
+    const { error: itemsDeleteError } = await supabase
+      .from('shipment_items')
+      .delete()
+      .eq('shipment_id', id)
+
+    if (itemsDeleteError) {
+      console.error('Error deleting shipment items:', itemsDeleteError)
+      return { success: false, error: `删除失败：无法清除发运明细 - ${itemsDeleteError.message}` }
+    }
+
+    // 3. Delete shipment
     const { error: deleteError } = await supabase
       .from('shipments')
       .delete()
@@ -876,7 +923,30 @@ export async function forceDeleteShipment(
       }
     }
 
-    // Delete shipment (cascade deletes items and allocations)
+    // Delete related records first (due to foreign key constraints)
+    // 1. Delete delivery_shipment_allocations (triggers auto-update of production_deliveries status)
+    const { error: allocDeleteError } = await supabase
+      .from('delivery_shipment_allocations')
+      .delete()
+      .eq('shipment_id', shipmentId)
+
+    if (allocDeleteError) {
+      console.error('Error deleting allocations:', allocDeleteError)
+      return { success: false, error: `强制删除失败：无法清除发货分配记录 - ${allocDeleteError.message}` }
+    }
+
+    // 2. Delete shipment_items
+    const { error: itemsDeleteError } = await supabase
+      .from('shipment_items')
+      .delete()
+      .eq('shipment_id', shipmentId)
+
+    if (itemsDeleteError) {
+      console.error('Error deleting shipment items:', itemsDeleteError)
+      return { success: false, error: `强制删除失败：无法清除发运明细 - ${itemsDeleteError.message}` }
+    }
+
+    // 3. Delete shipment
     const { error: deleteError } = await supabase
       .from('shipments')
       .delete()
