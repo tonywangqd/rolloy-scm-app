@@ -64,26 +64,15 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
   const pagination = usePagination(filteredDeliveries, 20)
 
   return (
-    <>
-      {/* Actions Bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <span className="text-sm text-gray-500">
-            共 {deliveries.length} 条交货记录
-          </span>
-        </div>
-        <Link href="/procurement/deliveries/new">
-          <Button variant="primary">
-            <Plus className="mr-2 h-4 w-4" />
-            新增交货记录
-          </Button>
-        </Link>
-      </div>
-
-      {/* Deliveries Table */}
-      <Card>
-        <CardHeader>
+    <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>交货记录列表</CardTitle>
+          <Link href="/procurement/deliveries/new">
+            <Button variant="primary">
+              <Plus className="mr-2 h-4 w-4" />
+              新建交货单
+            </Button>
+          </Link>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -209,6 +198,5 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
           </div>
         </CardContent>
       </Card>
-    </>
   )
 }

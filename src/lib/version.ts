@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.7.2',
+  number: '3.7.3',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-18 20:26',
+  updatedAt: '2025-12-18 20:31',
 
   // 版本标签
-  tag: '智能预测向导入口' as const,
+  tag: '采购交货UI优化' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: 在销量预测页面添加智能向导入口卡片',
+  changelog: 'fix: 移除采购交货页面重复的新建按钮',
 }
 
 // 格式化显示

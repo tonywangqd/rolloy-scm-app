@@ -1,11 +1,9 @@
-import Link from 'next/link'
 import { Header } from '@/components/layout/header'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { DeliveriesTable } from '@/components/procurement/deliveries-table'
 import { fetchAllDeliveries } from '@/lib/queries/procurement'
 import type { ProductionDelivery } from '@/lib/types/database'
-import { Plus, PackageCheck, Clock, CheckCircle } from 'lucide-react'
+import { PackageCheck, Clock, CheckCircle } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,22 +85,7 @@ export default async function DeliveriesPage() {
         </div>
 
         {/* Deliveries Table */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>交货记录列表</CardTitle>
-              <Link href="/procurement/deliveries/new">
-                <Button variant="primary">
-                  <Plus className="mr-2 h-4 w-4" />
-                  新建交货单
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <DeliveriesTable deliveries={deliveries} />
-          </CardContent>
-        </Card>
+        <DeliveriesTable deliveries={deliveries} />
       </div>
     </div>
   )
