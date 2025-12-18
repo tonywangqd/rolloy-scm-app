@@ -268,3 +268,38 @@ export function getWeekInfo(weekStr: string): {
     label: `Week ${components.week}, ${components.year}`,
   }
 }
+
+/**
+ * Get week start date (Monday) in YYYY-MM-DD format
+ *
+ * @param weekISO - Week string in YYYY-WNN format
+ * @returns Date string (YYYY-MM-DD) for Monday of the week, or empty string if invalid
+ *
+ * @example
+ * getWeekStartDate("2025-W06") // "2025-02-03"
+ */
+export function getWeekStartDate(weekISO: string): string {
+  const date = parseWeekString(weekISO)
+  if (!date) return ''
+
+  return format(date, 'yyyy-MM-dd')
+}
+
+/**
+ * Get week end date (Sunday) in YYYY-MM-DD format
+ *
+ * @param weekISO - Week string in YYYY-WNN format
+ * @returns Date string (YYYY-MM-DD) for Sunday of the week, or empty string if invalid
+ *
+ * @example
+ * getWeekEndDate("2025-W06") // "2025-02-09"
+ */
+export function getWeekEndDate(weekISO: string): string {
+  const startDate = parseWeekString(weekISO)
+  if (!startDate) return ''
+
+  const endDate = addWeeks(startDate, 1)
+  endDate.setDate(endDate.getDate() - 1) // Get Sunday
+
+  return format(endDate, 'yyyy-MM-dd')
+}

@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.5.0',
+  number: '3.6.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-18 20:15',
+  updatedAt: '2025-12-18 20:45',
 
   // 版本标签
-  tag: '销量预测向导设计' as const,
+  tag: '销量预测向导后端' as const,
 
   // 更新说明 (可选)
-  changelog: 'docs: 完成销量预测向导技术架构设计文档',
+  changelog: 'feat: 实现销量预测向导后端 Server Actions 和类型定义',
 }
 
 // 格式化显示
