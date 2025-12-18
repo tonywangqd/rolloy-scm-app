@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.7.4',
+  number: '3.7.5',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-18 20:38',
+  updatedAt: '2025-12-18 20:41',
 
   // 版本标签
-  tag: '产品创建修复' as const,
+  tag: '产品创建完整修复' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 修复产品创建时 spu 字段缺失导致的错误',
+  changelog: 'fix: 修复产品创建时所有必填字段缺失（spu, color_code等）',
 }
 
 // 格式化显示
