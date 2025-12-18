@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.7.3',
+  number: '3.7.4',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-18 20:31',
+  updatedAt: '2025-12-18 20:38',
 
   // 版本标签
-  tag: '采购交货UI优化' as const,
+  tag: '产品创建修复' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 移除采购交货页面重复的新建按钮',
+  changelog: 'fix: 修复产品创建时 spu 字段缺失导致的错误',
 }
 
 // 格式化显示

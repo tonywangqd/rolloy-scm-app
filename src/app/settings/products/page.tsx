@@ -111,6 +111,7 @@ export default function ProductsPage() {
     if (editingProduct.isNew) {
       const { error } = await (supabase.from('products') as any).insert({
         sku: editingProduct.sku,
+        spu: '',  // Required field, default to empty string
         product_name: editingProduct.product_name,
         unit_cost_usd: editingProduct.unit_cost_usd,
         safety_stock_weeks: editingProduct.safety_stock_weeks,
