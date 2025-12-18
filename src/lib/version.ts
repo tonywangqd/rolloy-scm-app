@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.4.2',
+  number: '3.4.3',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-18 19:16',
+  updatedAt: '2025-12-18 19:54',
 
   // 版本标签
   tag: 'V3模拟引擎 Phase 3' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 全面修复删除操作的外键约束问题，增强主数据删除前的引用检查',
+  changelog: 'fix: 渠道管理移除数据库不存在的字段，优化删除确认对话框样式',
 }
 
 // 格式化显示

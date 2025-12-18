@@ -23,8 +23,6 @@ import type { Channel } from '@/lib/types/database'
 interface EditingChannel {
   channel_code: string
   channel_name: string
-  platform: string
-  region: string
   is_active: boolean
   isNew?: boolean
 }
@@ -62,8 +60,6 @@ export default function ChannelsPage() {
     setEditingChannel({
       channel_code: channel.channel_code,
       channel_name: channel.channel_name,
-      platform: channel.platform || '',
-      region: channel.region || '',
       is_active: channel.is_active,
     })
   }
@@ -72,8 +68,6 @@ export default function ChannelsPage() {
     setEditingChannel({
       channel_code: '',
       channel_name: '',
-      platform: '',
-      region: '',
       is_active: true,
       isNew: true,
     })
@@ -100,8 +94,6 @@ export default function ChannelsPage() {
       const { error } = await (supabase.from('channels') as any).insert({
         channel_code: editingChannel.channel_code,
         channel_name: editingChannel.channel_name,
-        platform: editingChannel.platform || null,
-        region: editingChannel.region || null,
         is_active: editingChannel.is_active,
       })
 
@@ -117,8 +109,6 @@ export default function ChannelsPage() {
         .from('channels') as any)
         .update({
           channel_name: editingChannel.channel_name,
-          platform: editingChannel.platform || null,
-          region: editingChannel.region || null,
           is_active: editingChannel.is_active,
         })
         .eq('channel_code', editingChannel.channel_code)
@@ -176,7 +166,7 @@ export default function ChannelsPage() {
               <CardTitle>{editingChannel.isNew ? '添加渠道' : '编辑渠道'}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="channel_code">渠道编码 *</Label>
                   <Input
@@ -186,7 +176,7 @@ export default function ChannelsPage() {
                       setEditingChannel({ ...editingChannel, channel_code: e.target.value })
                     }
                     disabled={!editingChannel.isNew}
-                    placeholder="例: AMZ-US"
+                    placeholder="例: Amazon"
                   />
                 </div>
                 <div className="space-y-2">
@@ -197,29 +187,7 @@ export default function ChannelsPage() {
                     onChange={(e) =>
                       setEditingChannel({ ...editingChannel, channel_name: e.target.value })
                     }
-                    placeholder="例: Amazon-US"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="platform">平台</Label>
-                  <Input
-                    id="platform"
-                    value={editingChannel.platform}
-                    onChange={(e) =>
-                      setEditingChannel({ ...editingChannel, platform: e.target.value })
-                    }
-                    placeholder="例: Amazon"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="region">地区</Label>
-                  <Input
-                    id="region"
-                    value={editingChannel.region}
-                    onChange={(e) =>
-                      setEditingChannel({ ...editingChannel, region: e.target.value })
-                    }
-                    placeholder="例: US"
+                    placeholder="例: 亚马逊"
                   />
                 </div>
               </div>
@@ -276,8 +244,6 @@ export default function ChannelsPage() {
                   <TableRow>
                     <TableHead>渠道编码</TableHead>
                     <TableHead>渠道名称</TableHead>
-                    <TableHead>平台</TableHead>
-                    <TableHead>地区</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>
@@ -287,8 +253,6 @@ export default function ChannelsPage() {
                     <TableRow key={channel.channel_code}>
                       <TableCell className="font-medium">{channel.channel_code}</TableCell>
                       <TableCell>{channel.channel_name}</TableCell>
-                      <TableCell>{channel.platform || '-'}</TableCell>
-                      <TableCell>{channel.region || '-'}</TableCell>
                       <TableCell>
                         <Badge variant={channel.is_active ? 'success' : 'default'}>
                           {channel.is_active ? '启用' : '停用'}

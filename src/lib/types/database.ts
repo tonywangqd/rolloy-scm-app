@@ -389,8 +389,6 @@ export interface Channel {
   id: string
   channel_code: string
   channel_name: string
-  platform: string | null
-  region: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -400,16 +398,12 @@ export interface ChannelInsert {
   id?: string
   channel_code: string
   channel_name: string
-  platform?: string | null
-  region?: string | null
   is_active?: boolean
 }
 
 export interface ChannelUpdate {
   channel_code?: string
   channel_name?: string
-  platform?: string | null
-  region?: string | null
   is_active?: boolean
 }
 

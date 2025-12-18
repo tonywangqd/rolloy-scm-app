@@ -101,43 +101,40 @@ export function ConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <div className="flex items-start gap-4">
-            <div className={cn('rounded-full p-2', config.iconBg)}>
-              <Icon className={cn('h-6 w-6', config.iconColor)} />
-            </div>
-            <div className="flex-1">
-              <AlertDialogTitle>{title}</AlertDialogTitle>
-              <AlertDialogDescription className="mt-2">
-                {description}
-              </AlertDialogDescription>
-
-              {requireInput && (
-                <div className="mt-4 space-y-2">
-                  <label className="text-sm font-medium text-gray-700">
-                    请输入 <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm">{requireInput}</code> 以确认操作
-                  </label>
-                  <Input
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    placeholder={`输入 "${requireInput}"`}
-                    disabled={loading || isProcessing}
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !isConfirmDisabled) {
-                        handleConfirm()
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+      <AlertDialogContent className="sm:max-w-[425px]">
+        <AlertDialogHeader className="flex flex-col items-center text-center">
+          <div className={cn('mb-4 rounded-full p-3', config.iconBg)}>
+            <Icon className={cn('h-6 w-6', config.iconColor)} />
           </div>
+          <AlertDialogTitle className="text-lg font-semibold">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="mt-2 text-center text-sm text-muted-foreground">
+            {description}
+          </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading || isProcessing}>
+        {requireInput && (
+          <div className="mt-2 space-y-2 px-1">
+            <label className="block text-center text-sm text-muted-foreground">
+              请输入 <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm font-medium">{requireInput}</code> 以确认操作
+            </label>
+            <Input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder={`输入 "${requireInput}"`}
+              disabled={loading || isProcessing}
+              autoFocus
+              className="text-center"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isConfirmDisabled) {
+                  handleConfirm()
+                }
+              }}
+            />
+          </div>
+        )}
+
+        <AlertDialogFooter className="mt-4 flex-row justify-center gap-2 sm:justify-center">
+          <AlertDialogCancel disabled={loading || isProcessing} className="mt-0">
             {cancelText}
           </AlertDialogCancel>
           <Button

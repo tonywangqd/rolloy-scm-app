@@ -76,8 +76,6 @@ export const channelInsertSchema = z.object({
   id: uuidSchema.optional(),
   channel_code: z.string().min(1, 'Channel code is required').max(50, 'Channel code too long'),
   channel_name: z.string().min(1, 'Channel name is required').max(200, 'Channel name too long'),
-  platform: z.string().max(100).nullable().optional(),
-  region: z.string().max(50).nullable().optional(),
   is_active: z.boolean().optional().default(true),
 })
 
