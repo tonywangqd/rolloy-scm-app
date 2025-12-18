@@ -322,7 +322,7 @@ export async function updateChannel(
 
 export async function deleteChannel(
   channelCode: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; canDeactivate?: boolean }> {
   const authResult = await requireAuth()
   if ('error' in authResult) {
     return { success: false, error: authResult.error }
@@ -339,15 +339,42 @@ export async function deleteChannel(
 
   const supabase = await createServerSupabaseClient()
 
-  const { error } = await supabase.from('channels').delete().eq('channel_code', channelCode)
+  try {
+    // Check for references in related tables
+    const [salesForecasts, salesActuals, productionDeliveries] = await Promise.all([
+      supabase.from('sales_forecasts').select('id').eq('channel_code', channelCode).limit(1),
+      supabase.from('sales_actuals').select('id').eq('channel_code', channelCode).limit(1),
+      supabase.from('production_deliveries').select('id').eq('channel_code', channelCode).limit(1),
+    ])
 
-  if (error) {
-    return { success: false, error: error.message }
+    // Check if any references exist
+    const hasReferences = [salesForecasts, salesActuals, productionDeliveries].some(
+      (result) => result.data && result.data.length > 0
+    )
+
+    if (hasReferences) {
+      return {
+        success: false,
+        error: '该渠道已有关联数据（销售预测、实际销售或交货记录），无法删除。建议使用"停用"功能。',
+        canDeactivate: true,
+      }
+    }
+
+    const { error } = await supabase.from('channels').delete().eq('channel_code', channelCode)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/settings/channels')
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '删除操作失败',
+    }
   }
-
-  revalidatePath('/settings')
-  revalidatePath('/settings/channels')
-  return { success: true }
 }
 
 // Warehouse Actions
@@ -426,7 +453,7 @@ export async function updateWarehouse(
 
 export async function deleteWarehouse(
   id: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; canDeactivate?: boolean }> {
   const authResult = await requireAuth()
   if ('error' in authResult) {
     return { success: false, error: authResult.error }
@@ -443,15 +470,42 @@ export async function deleteWarehouse(
 
   const supabase = await createServerSupabaseClient()
 
-  const { error } = await supabase.from('warehouses').delete().eq('id', id)
+  try {
+    // Check for references in related tables
+    const [shipments, inventorySnapshots, orderArrivals] = await Promise.all([
+      supabase.from('shipments').select('id').eq('destination_warehouse_id', id).limit(1),
+      supabase.from('inventory_snapshots').select('id').eq('warehouse_id', id).limit(1),
+      supabase.from('order_arrivals').select('id').eq('warehouse_id', id).limit(1),
+    ])
 
-  if (error) {
-    return { success: false, error: error.message }
+    // Check if any references exist
+    const hasReferences = [shipments, inventorySnapshots, orderArrivals].some(
+      (result) => result.data && result.data.length > 0
+    )
+
+    if (hasReferences) {
+      return {
+        success: false,
+        error: '该仓库已有关联数据（发运单、库存记录或到货记录），无法删除。建议使用"停用"功能。',
+        canDeactivate: true,
+      }
+    }
+
+    const { error } = await supabase.from('warehouses').delete().eq('id', id)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/settings/warehouses')
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '删除操作失败',
+    }
   }
-
-  revalidatePath('/settings')
-  revalidatePath('/settings/warehouses')
-  return { success: true }
 }
 
 // Supplier Actions
@@ -530,7 +584,7 @@ export async function updateSupplier(
 
 export async function deleteSupplier(
   id: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; canDeactivate?: boolean }> {
   const authResult = await requireAuth()
   if ('error' in authResult) {
     return { success: false, error: authResult.error }
@@ -547,13 +601,35 @@ export async function deleteSupplier(
 
   const supabase = await createServerSupabaseClient()
 
-  const { error } = await supabase.from('suppliers').delete().eq('id', id)
+  try {
+    // Check for references in related tables
+    const { data: purchaseOrders } = await supabase
+      .from('purchase_orders')
+      .select('id')
+      .eq('supplier_id', id)
+      .limit(1)
 
-  if (error) {
-    return { success: false, error: error.message }
+    if (purchaseOrders && purchaseOrders.length > 0) {
+      return {
+        success: false,
+        error: '该供应商已有关联的采购订单，无法删除。建议使用"停用"功能。',
+        canDeactivate: true,
+      }
+    }
+
+    const { error } = await supabase.from('suppliers').delete().eq('id', id)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/settings/suppliers')
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '删除操作失败',
+    }
   }
-
-  revalidatePath('/settings')
-  revalidatePath('/settings/suppliers')
-  return { success: true }
 }

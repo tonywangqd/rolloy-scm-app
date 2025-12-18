@@ -368,6 +368,33 @@ export async function deletePurchaseOrder(
         }
       }
 
+      // Get all delivery IDs for this PO
+      const { data: deliveries } = await supabase
+        .from('production_deliveries')
+        .select('id')
+        .in('po_item_id', poItemIds)
+
+      if (deliveries && deliveries.length > 0) {
+        const deliveryIds = deliveries.map((d) => d.id)
+
+        // Check if any deliveries are linked to shipments
+        const { data: shipmentLinks, error: shipmentCheckError } = await supabase
+          .from('delivery_shipment_allocations')
+          .select('id, delivery_id')
+          .in('delivery_id', deliveryIds)
+
+        if (shipmentCheckError) {
+          return { success: false, error: `检查发运关联失败: ${shipmentCheckError.message}` }
+        }
+
+        if (shipmentLinks && shipmentLinks.length > 0) {
+          return {
+            success: false,
+            error: `无法删除：有 ${shipmentLinks.length} 条交货记录已关联到发运单。请先删除相关发运单。`,
+          }
+        }
+      }
+
       // Delete all production deliveries for these PO items
       const { error: deleteDeliveriesError } = await supabase
         .from('production_deliveries')
