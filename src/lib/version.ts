@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.4.3',
+  number: '3.5.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-18 19:54',
+  updatedAt: '2025-12-18 20:15',
 
   // 版本标签
-  tag: 'V3模拟引擎 Phase 3' as const,
+  tag: '销量预测向导设计' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 渠道管理移除数据库不存在的字段，优化删除确认对话框样式',
+  changelog: 'docs: 完成销量预测向导技术架构设计文档',
 }
 
 // 格式化显示
