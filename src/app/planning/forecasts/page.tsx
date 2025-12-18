@@ -19,7 +19,7 @@ import {
 import { ToastContainer } from '@/components/ui/toast'
 import { ExportButton } from '@/components/ui/export-button'
 import { useToast } from '@/lib/hooks/use-toast'
-import { ArrowLeft, Save, Plus, Trash2, FileSpreadsheet } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, FileSpreadsheet, Sparkles, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Product, Channel, SalesForecast } from '@/lib/types/database'
@@ -341,6 +341,32 @@ export default function ForecastsPage() {
             返回计划
           </Button>
         </Link>
+
+        {/* Smart Wizard Entry - New Feature */}
+        <Card className="border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardContent className="py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500">
+                  <Sparkles className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">智能预测向导</h3>
+                  <p className="text-sm text-gray-600">
+                    AI 辅助预测，5步完成批量录入，效率提升 80%
+                  </p>
+                </div>
+              </div>
+              <Link href="/planning/forecasts/wizard">
+                <Button variant="primary" size="lg">
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  启动向导
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Week Range Selection */}
         <Card>
