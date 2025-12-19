@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.8.2',
+  number: '3.8.3',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 11:31',
+  updatedAt: '2025-12-19 11:36',
 
   // 版本标签
-  tag: '采购订单确认优化' as const,
+  tag: 'INP性能优化' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: 优化PO确认按钮显示，修复状态筛选选项',
+  changelog: 'perf: 使用useTransition优化确认按钮，避免UI阻塞',
 }
 
 // 格式化显示
