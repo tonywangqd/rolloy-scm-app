@@ -168,10 +168,10 @@ export async function fetchReverseScheduleAudit(
       .select('week_iso, actual_qty')
       .eq('sku', sku),
 
-    // 5. 采购订单（实际下单）
+    // 5. 采购订单（实际下单）- 新增 planned_ship_date
     supabase
       .from('purchase_orders')
-      .select('po_number, actual_order_date, purchase_order_items!inner(sku, ordered_qty)')
+      .select('po_number, actual_order_date, planned_ship_date, purchase_order_items!inner(sku, ordered_qty)')
       .eq('purchase_order_items.sku', sku)
       .not('actual_order_date', 'is', null),
 
@@ -279,9 +279,11 @@ export async function fetchReverseScheduleAudit(
     actualSalesMap.set(a.week_iso, current + a.actual_qty)
   })
 
-  // 6.2 实际下单 (PO)
+  // 6.2 实际下单 (PO) - ✅ 新增：跟踪 planned_ship_date
   const actualOrderMap = new Map<string, number>()
   const orderDetailsByWeek = new Map<string, Array<{ po_number: string; qty: number; order_date: string }>>()
+  // ✅ 新增：存储每个PO的planned_ship_date，用于正推计算
+  const poPlannedShipDates: Array<{ po_number: string; qty: number; planned_ship_date: string | null; order_week: string }> = []
 
   ;(purchaseOrders || []).forEach((po: any) => {
     if (!po.actual_order_date) return
@@ -294,6 +296,13 @@ export async function fetchReverseScheduleAudit(
       const details = orderDetailsByWeek.get(orderWeek) || []
       details.push({ po_number: po.po_number, qty: item.ordered_qty, order_date: po.actual_order_date })
       orderDetailsByWeek.set(orderWeek, details)
+      // ✅ 新增：存储planned_ship_date用于正推计算
+      poPlannedShipDates.push({
+        po_number: po.po_number,
+        qty: item.ordered_qty,
+        planned_ship_date: po.planned_ship_date || null,
+        order_week: orderWeek,
+      })
     })
   })
 
@@ -410,10 +419,10 @@ export async function fetchReverseScheduleAudit(
     }
   }
 
-  // 次优先级：如果没有预计出厂记录，使用计算的预计
+  // ✅ CRITICAL FIX: 优先使用 PO 的 planned_ship_date（预计出厂日期）
+  // 如果 PO 设置了 planned_ship_date，使用它；否则回退到默认计算
   if (plannedFactoryShipFromDeliveriesMap.size === 0) {
     // 核心逻辑：剩余预计出厂 = 总下单 - 总实际出厂
-    // 不再基于下单周正推，而是直接计算剩余量并分配到未来最近的可用周
 
     // 1. 计算总下单量
     const totalOrdered = Array.from(actualOrderMap.values()).reduce((a, b) => a + b, 0)
@@ -426,38 +435,58 @@ export async function fetchReverseScheduleAudit(
     const totalActualFactoryShip = Array.from(actualFactoryShipMap.values()).reduce((a, b) => a + b, 0)
 
     // 3. 剩余待出厂 = 总下单 - 总实际出厂
-    const remainingToShip = Math.max(0, totalOrderBase - totalActualFactoryShip)
+    let remainingToShip = Math.max(0, totalOrderBase - totalActualFactoryShip)
 
-    // 4. 如果有剩余，分配到未来最近的可用周
-    if (remainingToShip > 0) {
-      // 找到当前周或下一周作为预计出厂周
-      // 优先使用最近的订单周 + 生产周期
+    // 4. ✅ 新增：优先使用 PO 的 planned_ship_date 计算预计出厂周
+    if (remainingToShip > 0 && poPlannedShipDates.length > 0) {
+      // 按 PO 分别处理，每个 PO 可能有不同的 planned_ship_date
+      for (const poData of poPlannedShipDates) {
+        if (remainingToShip <= 0) break
+
+        let targetWeek: string | null = null
+
+        if (poData.planned_ship_date) {
+          // ✅ 使用 PO 设定的预计出厂日期
+          targetWeek = getWeekFromDate(new Date(poData.planned_ship_date))
+        } else {
+          // 回退：使用下单周 + 生产周期
+          targetWeek = addWeeksToISOWeek(poData.order_week, leadTimes.production_weeks)
+        }
+
+        if (targetWeek) {
+          // 如果目标周已有实际出厂，推到下一周
+          let finalWeek = targetWeek
+          while (actualFactoryShipMap.has(finalWeek)) {
+            const nextWeek = addWeeksToISOWeek(finalWeek, 1)
+            if (!nextWeek) break
+            finalWeek = nextWeek
+          }
+
+          // 分配该 PO 的数量到目标周
+          const allocateQty = Math.min(poData.qty, remainingToShip)
+          const existing = plannedFactoryShipByWeek.get(finalWeek) || 0
+          plannedFactoryShipByWeek.set(finalWeek, existing + allocateQty)
+          remainingToShip -= allocateQty
+        }
+      }
+    } else if (remainingToShip > 0) {
+      // 没有 PO 数据，使用建议下单的回退逻辑
       let targetWeek: string | null = null
 
-      if (actualOrderMap.size > 0) {
-        // 从实际下单中找最近的订单周
-        const latestOrderWeek = Array.from(actualOrderMap.keys()).sort().pop()
-        if (latestOrderWeek) {
-          targetWeek = addWeeksToISOWeek(latestOrderWeek, leadTimes.production_weeks)
-        }
-      } else if (suggestedOrderByWeek.size > 0) {
-        // 从建议下单中找最近的订单周
+      if (suggestedOrderByWeek.size > 0) {
         const latestSuggestedWeek = Array.from(suggestedOrderByWeek.keys()).sort().pop()
         if (latestSuggestedWeek) {
           targetWeek = addWeeksToISOWeek(latestSuggestedWeek, leadTimes.production_weeks)
         }
       }
 
-      // 如果找到目标周，分配剩余量
       if (targetWeek) {
-        // 如果目标周已有实际出厂，推到下一周
         let finalWeek = targetWeek
         while (actualFactoryShipMap.has(finalWeek)) {
           const nextWeek = addWeeksToISOWeek(finalWeek, 1)
           if (!nextWeek) break
           finalWeek = nextWeek
         }
-
         plannedFactoryShipByWeek.set(finalWeek, remainingToShip)
       }
     }
