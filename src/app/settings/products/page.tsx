@@ -17,9 +17,15 @@ import {
 } from '@/components/ui/table'
 import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Power, PowerOff } from 'lucide-react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import type { Product } from '@/lib/types/database'
-import { deleteProduct as deleteProductAction, deactivateProduct, activateProduct } from '@/lib/actions/settings'
+import {
+  getProducts,
+  createProduct as createProductAction,
+  updateProduct as updateProductAction,
+  deleteProduct as deleteProductAction,
+  deactivateProduct,
+  activateProduct
+} from '@/lib/actions/settings'
 
 interface EditingProduct {
   sku: string
@@ -44,17 +50,12 @@ export default function ProductsPage() {
 
   const loadProducts = async () => {
     setLoading(true)
-    const supabase = createClient()
+    const result = await getProducts()
 
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .order('sku')
-
-    if (error) {
-      setMessage('加载失败')
+    if (!result.success) {
+      setMessage(`加载失败: ${result.error}`)
     } else {
-      setProducts(data || [])
+      setProducts(result.data || [])
     }
 
     setLoading(false)
@@ -106,13 +107,11 @@ export default function ProductsPage() {
     setSaving(true)
     setMessage('')
 
-    const supabase = createClient()
-
     if (editingProduct.isNew) {
-      const { error } = await (supabase.from('products') as any).insert({
+      const result = await createProductAction({
         sku: editingProduct.sku,
-        spu: '',  // Required field, default to empty string
-        color_code: '',  // Required field, default to empty string
+        spu: '',
+        color_code: '',
         product_name: editingProduct.product_name,
         unit_cost_usd: editingProduct.unit_cost_usd,
         safety_stock_weeks: editingProduct.safety_stock_weeks,
@@ -120,27 +119,24 @@ export default function ProductsPage() {
         is_active: editingProduct.is_active,
       })
 
-      if (error) {
-        setMessage(`创建失败: ${error.message}`)
+      if (!result.success) {
+        setMessage(`创建失败: ${result.error}`)
       } else {
         setMessage('创建成功')
         setEditingProduct(null)
         await loadProducts()
       }
     } else {
-      const { error } = await (supabase
-        .from('products') as any)
-        .update({
-          product_name: editingProduct.product_name,
-          unit_cost_usd: editingProduct.unit_cost_usd,
-          safety_stock_weeks: editingProduct.safety_stock_weeks,
-          production_lead_weeks: editingProduct.production_lead_weeks,
-          is_active: editingProduct.is_active,
-        })
-        .eq('sku', editingProduct.sku)
+      const result = await updateProductAction(editingProduct.sku, {
+        product_name: editingProduct.product_name,
+        unit_cost_usd: editingProduct.unit_cost_usd,
+        safety_stock_weeks: editingProduct.safety_stock_weeks,
+        production_lead_weeks: editingProduct.production_lead_weeks,
+        is_active: editingProduct.is_active,
+      })
 
-      if (error) {
-        setMessage(`更新失败: ${error.message}`)
+      if (!result.success) {
+        setMessage(`更新失败: ${result.error}`)
       } else {
         setMessage('更新成功')
         setEditingProduct(null)

@@ -3,7 +3,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth/check-auth'
 import { revalidatePath } from 'next/cache'
-import type { ProductInsert, ChannelInsert, WarehouseInsert, SupplierInsert } from '@/lib/types/database'
+import type { Product, ProductInsert, ChannelInsert, WarehouseInsert, SupplierInsert } from '@/lib/types/database'
 import {
   productInsertSchema,
   productUpdateSchema,
@@ -17,6 +17,27 @@ import {
   deleteByIdSchema,
   deleteByCodeSchema,
 } from '@/lib/validations'
+
+// Product Query Action
+export async function getProducts(): Promise<{ success: boolean; data?: Product[]; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .order('sku')
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  return { success: true, data: data || [] }
+}
 
 // Product Actions
 export async function createProduct(
