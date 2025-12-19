@@ -1,3 +1,4 @@
+import React from 'react'
 import { Card } from '@/components/ui/card'
 import { Package, Clock, AlertTriangle, FileText, CheckCircle } from 'lucide-react'
 import type { RemainingShipmentSummary as RemainingShipmentSummaryType } from '@/lib/queries/logistics'
@@ -6,7 +7,7 @@ interface RemainingShipmentSummaryProps {
   summary: RemainingShipmentSummaryType
 }
 
-export function RemainingShipmentSummary({ summary }: RemainingShipmentSummaryProps) {
+export const RemainingShipmentSummary = React.memo<RemainingShipmentSummaryProps>(function RemainingShipmentSummary({ summary }) {
   // If no unshipped items, show success state
   if (summary.totalUnshippedQty === 0) {
     return (
@@ -116,4 +117,4 @@ export function RemainingShipmentSummary({ summary }: RemainingShipmentSummaryPr
       </div>
     </div>
   )
-}
+})

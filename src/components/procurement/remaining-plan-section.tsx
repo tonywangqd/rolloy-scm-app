@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { NumericInput } from '@/components/ui/numeric-input'
@@ -66,7 +66,7 @@ export function RemainingPlanSection({
   const isBalanced = totalPlanned === remainingQty && remainingQty > 0
   const hasError = totalPlanned > 0 && totalPlanned !== remainingQty
 
-  // Notify parent of changes
+  // Notify parent of changes - use ref to avoid including onChange in deps
   useEffect(() => {
     // Only send valid items (non-empty week and positive quantity)
     const validPlans: RemainingDeliveryPlan[] = planItems
@@ -77,30 +77,35 @@ export function RemainingPlanSection({
       }))
 
     onChange(validPlans)
-  }, [planItems, onChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planItems])
 
-  const addPlanItem = () => {
-    setPlanItems([...planItems, { id: crypto.randomUUID(), week_iso: '', planned_qty: 0 }])
-  }
+  // Memoize handlers to prevent re-renders
+  const addPlanItem = useCallback(() => {
+    setPlanItems(prev => [...prev, { id: crypto.randomUUID(), week_iso: '', planned_qty: 0 }])
+  }, [])
 
-  const removePlanItem = (id: string) => {
-    if (planItems.length > 1) {
-      setPlanItems(planItems.filter((item) => item.id !== id))
-    }
-  }
+  const removePlanItem = useCallback((id: string) => {
+    setPlanItems(prev => {
+      if (prev.length > 1) {
+        return prev.filter((item) => item.id !== id)
+      }
+      return prev
+    })
+  }, [])
 
-  const updatePlanItem = (id: string, field: 'week_iso' | 'planned_qty', value: any) => {
-    setPlanItems(
-      planItems.map((item) =>
+  const updatePlanItem = useCallback((id: string, field: 'week_iso' | 'planned_qty', value: any) => {
+    setPlanItems(prev =>
+      prev.map((item) =>
         item.id === id ? { ...item, [field]: value } : item
       )
     )
-  }
+  }, [])
 
   // Validate ISO week format (YYYY-Wnn)
-  const validateWeek = (weekIso: string): boolean => {
+  const validateWeek = useCallback((weekIso: string): boolean => {
     return /^\d{4}-W\d{2}$/.test(weekIso)
-  }
+  }, [])
 
   // No remaining quantity = no need for plan
   if (remainingQty === 0) {

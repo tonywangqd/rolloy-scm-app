@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.10.0',
+  number: '3.10.1',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 15:00',
+  updatedAt: '2025-12-19 15:30',
 
   // 版本标签
-  tag: '待发货摘要' as const,
+  tag: '性能优化' as const,
 
   // 更新说明 (可选)
-  changelog: 'feat: 在发货管理页面添加剩余预计发货摘要功能；fix: 修复采购模块类型错误',
+  changelog: 'fix: 全面优化交货页面性能，修复日期选择器卡顿和页面重渲染问题',
 }
 
 // 格式化显示

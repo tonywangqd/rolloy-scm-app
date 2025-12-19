@@ -1,3 +1,4 @@
+import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Package, AlertTriangle, Clock, TrendingUp } from 'lucide-react'
 import type { RemainingDeliverySummary } from '@/lib/types/database'
@@ -7,7 +8,7 @@ interface RemainingDeliverySummaryProps {
   summary: RemainingDeliverySummary
 }
 
-export function RemainingDeliverySummaryComponent({ summary }: RemainingDeliverySummaryProps) {
+export const RemainingDeliverySummaryComponent = React.memo<RemainingDeliverySummaryProps>(function RemainingDeliverySummaryComponent({ summary }) {
   const {
     totalRemainingQty,
     totalPendingPOs,
@@ -178,4 +179,4 @@ export function RemainingDeliverySummaryComponent({ summary }: RemainingDelivery
       </CardContent>
     </Card>
   )
-}
+})
