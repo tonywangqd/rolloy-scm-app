@@ -1617,6 +1617,24 @@ export interface RemainingDeliveryPlan {
 }
 
 /**
+ * Remaining delivery summary for procurement dashboard
+ */
+export interface RemainingDeliverySummary {
+  totalRemainingQty: number       // Total pending delivery quantity
+  totalPendingPOs: number          // Number of pending POs
+  totalPendingSKUs: number         // Number of pending SKU lines
+  weeklyPlan: WeeklyDeliveryPlan[] // Weekly distribution of planned deliveries
+  overdueCount: number             // Number of overdue orders (ordered > 30 days ago)
+}
+
+export interface WeeklyDeliveryPlan {
+  week_iso: string
+  week_start_date: string
+  planned_qty: number
+  delivery_count: number
+}
+
+/**
  * Enhanced delivery creation payload
  * Extends existing ProductionDeliveryInsert with remaining plan
  */

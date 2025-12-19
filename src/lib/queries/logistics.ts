@@ -368,3 +368,64 @@ export async function fetchArrivalsStats(): Promise<ArrivalsStats> {
 
   return stats
 }
+
+/**
+ * Remaining shipment summary statistics
+ * Shows summary of all unshipped deliveries
+ */
+export interface RemainingShipmentSummary {
+  totalUnshippedQty: number         // Total quantity not yet shipped
+  totalUnshippedLines: number        // Number of delivery lines with remaining qty
+  avgDaysSinceDelivery: number | null // Average days since delivery
+  overdueCount: number               // Count of deliveries overdue (>7 days)
+  oldestDeliveryDays: number | null  // Longest days since delivery
+}
+
+/**
+ * Fetch remaining shipment summary
+ * Calculates summary statistics from unshipped deliveries
+ */
+export async function fetchRemainingShipmentSummary(): Promise<RemainingShipmentSummary> {
+  const unshipped = await fetchUnshippedDeliveries()
+
+  if (unshipped.length === 0) {
+    return {
+      totalUnshippedQty: 0,
+      totalUnshippedLines: 0,
+      avgDaysSinceDelivery: null,
+      overdueCount: 0,
+      oldestDeliveryDays: null,
+    }
+  }
+
+  const totalUnshippedQty = unshipped.reduce((sum, d) => sum + d.unshipped_qty, 0)
+  const totalUnshippedLines = unshipped.length
+
+  // Calculate overdue (>7 days since delivery)
+  const OVERDUE_THRESHOLD_DAYS = 7
+  const overdueCount = unshipped.filter(
+    (d) => d.days_since_delivery !== null && d.days_since_delivery > OVERDUE_THRESHOLD_DAYS
+  ).length
+
+  // Calculate average days since delivery
+  const deliveriesWithDays = unshipped.filter((d) => d.days_since_delivery !== null)
+  let avgDaysSinceDelivery: number | null = null
+  if (deliveriesWithDays.length > 0) {
+    const totalDays = deliveriesWithDays.reduce((sum, d) => sum + (d.days_since_delivery || 0), 0)
+    avgDaysSinceDelivery = Math.round((totalDays / deliveriesWithDays.length) * 10) / 10
+  }
+
+  // Find oldest delivery
+  let oldestDeliveryDays: number | null = null
+  if (deliveriesWithDays.length > 0) {
+    oldestDeliveryDays = Math.max(...deliveriesWithDays.map((d) => d.days_since_delivery || 0))
+  }
+
+  return {
+    totalUnshippedQty,
+    totalUnshippedLines,
+    avgDaysSinceDelivery,
+    overdueCount,
+    oldestDeliveryDays,
+  }
+}

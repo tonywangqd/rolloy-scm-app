@@ -2,14 +2,18 @@ import Link from 'next/link'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { fetchShipments } from '@/lib/queries/logistics'
+import { fetchShipments, fetchRemainingShipmentSummary } from '@/lib/queries/logistics'
 import { Plus, Package, Truck } from 'lucide-react'
 import { LogisticsTable } from '@/components/logistics/logistics-table'
+import { RemainingShipmentSummary } from '@/components/logistics/remaining-shipment-summary'
 
 export const dynamic = 'force-dynamic'
 
 export default async function LogisticsPage() {
-  const shipments = await fetchShipments()
+  const [shipments, remainingSummary] = await Promise.all([
+    fetchShipments(),
+    fetchRemainingShipmentSummary(),
+  ])
 
   // Calculate summary stats
   const inTransit = shipments.filter(
@@ -83,6 +87,9 @@ export default async function LogisticsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Remaining Shipment Summary */}
+        <RemainingShipmentSummary summary={remainingSummary} />
 
         {/* Shipments Table with Search/Filter */}
         <Card>

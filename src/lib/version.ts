@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.8.3',
+  number: '3.10.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 11:36',
+  updatedAt: '2025-12-19 15:00',
 
   // 版本标签
-  tag: 'INP性能优化' as const,
+  tag: '待发货摘要' as const,
 
   // 更新说明 (可选)
-  changelog: 'perf: 使用useTransition优化确认按钮，避免UI阻塞',
+  changelog: 'feat: 在发货管理页面添加剩余预计发货摘要功能；fix: 修复采购模块类型错误',
 }
 
 // 格式化显示

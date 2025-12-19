@@ -1,15 +1,20 @@
 import { Header } from '@/components/layout/header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { OrdersTable } from '@/components/procurement/orders-table'
+import { RemainingDeliverySummaryComponent } from '@/components/procurement/remaining-delivery-summary'
 import { ExportButton } from '@/components/ui/export-button'
-import { fetchPurchaseOrders } from '@/lib/queries/procurement'
+import { fetchPurchaseOrders, fetchRemainingDeliverySummary } from '@/lib/queries/procurement'
 import { Package, Factory, CheckCircle, Clock } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ProcurementPage() {
-  const orders = await fetchPurchaseOrders()
+  // Fetch data in parallel
+  const [orders, remainingSummary] = await Promise.all([
+    fetchPurchaseOrders(),
+    fetchRemainingDeliverySummary(),
+  ])
 
   // Calculate summary stats
   const totalOrders = orders.length
@@ -92,6 +97,9 @@ export default async function ProcurementPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Remaining Delivery Summary */}
+        <RemainingDeliverySummaryComponent summary={remainingSummary} />
 
         {/* Orders Table */}
         <Card>
