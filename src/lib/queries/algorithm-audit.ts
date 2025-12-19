@@ -847,6 +847,7 @@ export async function fetchAlgorithmAuditV3(
         id,
         po_number,
         actual_order_date,
+        planned_ship_date,
         purchase_order_items!inner(id, sku, ordered_qty)
       `)
       .eq('purchase_order_items.sku', sku)
@@ -914,13 +915,14 @@ export async function fetchAlgorithmAuditV3(
   // Planned weeks should only show pending_qty (not yet fulfilled)
   // ================================================================
 
-  // Build PO item fulfillment map: po_item_id -> { ordered, delivered, pending, order_week }
+  // Build PO item fulfillment map: po_item_id -> { ordered, delivered, pending, order_week, planned_ship_date }
   interface POItemFulfillment {
     ordered_qty: number
     delivered_qty: number
     pending_qty: number
     order_week: string
     order_date: string
+    planned_ship_date: string | null  // ✅ 新增：PO的预计出厂日期
   }
   const poItemFulfillmentMap = new Map<string, POItemFulfillment>()
 
@@ -933,7 +935,7 @@ export async function fetchAlgorithmAuditV3(
   })
 
   // Build fulfillment status for each PO item
-  purchaseOrdersV3.forEach((po) => {
+  purchaseOrdersV3.forEach((po: any) => {
     if (!po.actual_order_date) return
     const orderWeek = getWeekFromDate(new Date(po.actual_order_date))
     const items = Array.isArray(po.purchase_order_items)
@@ -952,6 +954,7 @@ export async function fetchAlgorithmAuditV3(
         pending_qty: Math.max(0, pending), // Ensure non-negative
         order_week: orderWeek,
         order_date: po.actual_order_date,
+        planned_ship_date: po.planned_ship_date || null, // ✅ 存储 PO 的预计出厂日期
       })
     })
   })
@@ -1183,11 +1186,22 @@ export async function fetchAlgorithmAuditV3(
   const plannedArrivalMapV3 = new Map<string, number>()
 
   // For each PO item, calculate planned factory ship week based on pending_qty
+  // ✅ CRITICAL FIX: 优先使用 PO 的 planned_ship_date（预计出厂日期）
+  // 如果没有 planned_ship_date，则回退到默认计算：order_week + production_weeks
   poItemFulfillmentMap.forEach((fulfillment) => {
     if (fulfillment.pending_qty <= 0) return // Skip if fully fulfilled
 
     // Calculate when this pending order should ship from factory
-    const factoryShipWeek = addWeeksToISOWeek(fulfillment.order_week, leadTimesV3.production_weeks)
+    // ✅ 优先使用 PO 设定的预计出厂日期
+    let factoryShipWeek: string | null = null
+    if (fulfillment.planned_ship_date) {
+      // 使用 PO 的预计出厂日期转换为周次
+      factoryShipWeek = getWeekFromDate(new Date(fulfillment.planned_ship_date))
+    } else {
+      // 回退到默认计算：下单周 + 生产周期
+      factoryShipWeek = addWeeksToISOWeek(fulfillment.order_week, leadTimesV3.production_weeks)
+    }
+
     if (factoryShipWeek) {
       const current = plannedFactoryShipMapV3.get(factoryShipWeek) || 0
       plannedFactoryShipMapV3.set(factoryShipWeek, current + fulfillment.pending_qty)

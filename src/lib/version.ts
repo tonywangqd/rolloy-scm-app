@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.7.8',
+  number: '3.7.9',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 10:28',
+  updatedAt: '2025-12-19 10:53',
 
   // 版本标签
-  tag: '主数据管理修复' as const,
+  tag: '算法审计修复' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 修复仓库/供应商创建错误，移除数据库中不存在的字段',
+  changelog: 'fix: 算法审计V3使用PO的planned_ship_date计算预计出厂周，而非默认生产周期',
 }
 
 // 格式化显示
