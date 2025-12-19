@@ -155,12 +155,13 @@ export async function fetchReverseScheduleAudit(
       .eq('param_key', 'lead_times')
       .single(),
 
-    // 3. 销量预测（只选择必要字段）
+    // 3. 销量预测（包含is_closed字段，用于区分显示和计算）
+    // ✅ 修改：不过滤 is_closed，让销量预测始终显示
+    // is_closed 用于判断是否参与"预计下单"计算
     supabase
       .from('sales_forecasts')
-      .select('week_iso, forecast_qty')
-      .eq('sku', sku)
-      .eq('is_closed', false),
+      .select('week_iso, forecast_qty, is_closed')
+      .eq('sku', sku),
 
     // 4. 实际销量
     supabase
@@ -239,24 +240,38 @@ export async function fetchReverseScheduleAudit(
 
   // ================================================================
   // STEP 4: 构建销量预测 Map（Forecast）
+  // ✅ 修改：分离显示和计算
+  // - forecastMap: 用于显示销量预测（包含所有记录）
+  // - openForecastMap: 用于倒推计算预计下单（仅未关闭的记录）
   // ================================================================
 
-  const forecastMap = new Map<string, number>()
-  ;(forecasts || []).forEach(f => {
-    const current = forecastMap.get(f.week_iso) || 0
-    forecastMap.set(f.week_iso, current + f.forecast_qty)
+  const forecastMap = new Map<string, number>()  // 用于显示
+  const openForecastMap = new Map<string, number>()  // 用于计算预计下单
+  ;(forecasts || []).forEach((f: any) => {
+    // 所有预测都用于显示
+    const currentDisplay = forecastMap.get(f.week_iso) || 0
+    forecastMap.set(f.week_iso, currentDisplay + f.forecast_qty)
+
+    // 只有未关闭的预测用于计算预计下单
+    if (!f.is_closed) {
+      const currentCalc = openForecastMap.get(f.week_iso) || 0
+      openForecastMap.set(f.week_iso, currentCalc + f.forecast_qty)
+    }
   })
 
   // ================================================================
   // STEP 5: 倒推计算 - 预计下单（Reverse Schedule）
-  // ✅ 关键修改：预计下单 = 倒推需求 - 实际已下单（显示剩余缺口）
+  // ✅ 关键修改：
+  // 1. 只用未关闭的预测 (openForecastMap) 计算预计下单
+  // 2. 预计下单 = 倒推需求 - 实际已下单（显示剩余缺口）
   // ================================================================
 
   const reverseSchedule: ReverseScheduleItem[] = []
-  // 原始倒推需求（未扣减实际下单）
+  // 原始倒推需求（未扣减实际下单）- 只基于未关闭的预测
   const rawSuggestedOrderByWeek = new Map<string, number>()
 
-  forecastMap.forEach((qty, targetWeek) => {
+  // ✅ 使用 openForecastMap（未关闭的预测）而非 forecastMap
+  openForecastMap.forEach((qty, targetWeek) => {
     if (qty > 0) {
       // 倒推：销量需求周 - 总周期 = 预计下单周
       const orderWeek = addWeeksToISOWeek(targetWeek, -leadTimes.total_weeks)

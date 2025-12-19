@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.8.0',
+  number: '3.8.1',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 11:15',
+  updatedAt: '2025-12-19 11:23',
 
   // 版本标签
-  tag: '预计下单逻辑优化' as const,
+  tag: '预测覆盖逻辑修复' as const,
 
   // 更新说明 (可选)
-  changelog: 'refactor: 预计下单显示剩余缺口（倒推需求 - 实际已下单），UI术语建议→预计',
+  changelog: 'fix: 预测覆盖后销量预测仍显示，只有预计下单变为0',
 }
 
 // 格式化显示
