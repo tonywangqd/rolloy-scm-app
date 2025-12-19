@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.10.3',
+  number: '3.11.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 18:30',
+  updatedAt: '2025-12-19 20:00',
 
   // 版本标签
-  tag: 'Bug修复' as const,
+  tag: '新功能' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 修复数据库发运单费用计算错误（tax_refund_usd报关费用应加上而非减去）',
+  changelog: 'feat: 为发运单创建页面添加草稿保存功能（自动保存、恢复草稿、清除草稿）',
 }
 
 // 格式化显示
