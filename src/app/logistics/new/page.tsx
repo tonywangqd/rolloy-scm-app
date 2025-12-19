@@ -161,7 +161,7 @@ export default function NewShipmentPage() {
   const totalShippedQty = selectedArray.reduce((sum, d) => sum + d.userShippedQty, 0)
   const uniqueSkus = new Set(selectedArray.map((d) => d.sku)).size
   const freightCost = formData.weight_kg * formData.cost_per_kg_usd
-  const totalCost = freightCost + formData.surcharge_usd - formData.tax_refund_usd
+  const totalCost = freightCost + formData.surcharge_usd + formData.tax_refund_usd
 
   // Validation for each step
   const canProceedToStep2 = selectedDeliveries.size > 0

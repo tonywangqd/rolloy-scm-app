@@ -27,7 +27,7 @@ export default async function ShipmentDetailPage({ params }: ShipmentDetailPageP
 
   // Calculate costs
   const freightCost = (shipment.weight_kg || 0) * (shipment.cost_per_kg_usd || 0)
-  const totalCost = freightCost + (shipment.surcharge_usd || 0) - (shipment.tax_refund_usd || 0)
+  const totalCost = freightCost + (shipment.surcharge_usd || 0) + (shipment.tax_refund_usd || 0)
 
   // Status badge variant
   const getStatusVariant = (date: string | null) => {

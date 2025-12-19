@@ -135,7 +135,7 @@ export default function EditShipmentPage({ params }: EditShipmentPageProps) {
     : warehouses
 
   const freightCost = formData.weight_kg * formData.cost_per_kg_usd
-  const totalCost = freightCost + formData.surcharge_usd - formData.tax_refund_usd
+  const totalCost = freightCost + formData.surcharge_usd + formData.tax_refund_usd
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
