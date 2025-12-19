@@ -88,10 +88,11 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   onChange: setStatusFilter,
                   options: [
                     { value: 'all', label: '全部状态' },
-                    { value: 'Pending', label: 'Pending' },
-                    { value: 'Partial', label: 'Partial' },
-                    { value: 'Fulfilled', label: 'Fulfilled' },
-                    { value: 'Cancelled', label: 'Cancelled' },
+                    { value: 'Draft', label: '草稿' },
+                    { value: 'Confirmed', label: '已确认' },
+                    { value: 'In Production', label: '生产中' },
+                    { value: 'Delivered', label: '已交付' },
+                    { value: 'Cancelled', label: '已取消' },
                   ],
                 },
               ]}

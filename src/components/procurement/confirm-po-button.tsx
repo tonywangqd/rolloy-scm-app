@@ -38,17 +38,20 @@ export function ConfirmPOButton({ poId, poNumber, className }: ConfirmPOButtonPr
 
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
       onClick={handleConfirm}
       disabled={loading}
-      className={className}
-      title="确认订单"
+      className={`${className} border-green-500 text-green-600 hover:bg-green-50`}
+      title="确认订单后可进行交货"
     >
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
-        <CheckCircle className="h-4 w-4 text-green-600" />
+        <>
+          <CheckCircle className="h-4 w-4 mr-1" />
+          确认
+        </>
       )}
     </Button>
   )
