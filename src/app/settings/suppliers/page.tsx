@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -18,17 +17,18 @@ import {
 } from '@/components/ui/table'
 import { ArrowLeft, Plus, Pencil, Trash2, Save, X } from 'lucide-react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import type { Supplier } from '@/lib/types/database'
+import {
+  getSuppliers,
+  createSupplier as createSupplierAction,
+  updateSupplier as updateSupplierAction,
+  deleteSupplier as deleteSupplierAction,
+} from '@/lib/actions/settings'
 
 interface EditingSupplier {
   id?: string
   supplier_code: string
   supplier_name: string
-  contact_name: string
-  contact_phone: string
-  contact_email: string
-  address: string
   payment_terms_days: number
   is_active: boolean
   isNew?: boolean
@@ -47,17 +47,12 @@ export default function SuppliersPage() {
 
   const loadSuppliers = async () => {
     setLoading(true)
-    const supabase = createClient()
+    const result = await getSuppliers()
 
-    const { data, error } = await supabase
-      .from('suppliers')
-      .select('*')
-      .order('supplier_code')
-
-    if (error) {
-      setMessage('加载失败')
+    if (!result.success) {
+      setMessage(`加载失败: ${result.error}`)
     } else {
-      setSuppliers(data || [])
+      setSuppliers(result.data || [])
     }
 
     setLoading(false)
@@ -68,10 +63,6 @@ export default function SuppliersPage() {
       id: supplier.id,
       supplier_code: supplier.supplier_code,
       supplier_name: supplier.supplier_name,
-      contact_name: supplier.contact_name || '',
-      contact_phone: supplier.contact_phone || '',
-      contact_email: supplier.contact_email || '',
-      address: supplier.address || '',
       payment_terms_days: supplier.payment_terms_days || 60,
       is_active: supplier.is_active,
     })
@@ -81,10 +72,6 @@ export default function SuppliersPage() {
     setEditingSupplier({
       supplier_code: '',
       supplier_name: '',
-      contact_name: '',
-      contact_phone: '',
-      contact_email: '',
-      address: '',
       payment_terms_days: 60,
       is_active: true,
       isNew: true,
@@ -106,44 +93,31 @@ export default function SuppliersPage() {
     setSaving(true)
     setMessage('')
 
-    const supabase = createClient()
-
     if (editingSupplier.isNew) {
-      const { error } = await (supabase.from('suppliers') as any).insert({
+      const result = await createSupplierAction({
         supplier_code: editingSupplier.supplier_code,
         supplier_name: editingSupplier.supplier_name,
-        contact_name: editingSupplier.contact_name || null,
-        contact_phone: editingSupplier.contact_phone || null,
-        contact_email: editingSupplier.contact_email || null,
-        address: editingSupplier.address || null,
         payment_terms_days: editingSupplier.payment_terms_days,
         is_active: editingSupplier.is_active,
       })
 
-      if (error) {
-        setMessage(`创建失败: ${error.message}`)
+      if (!result.success) {
+        setMessage(`创建失败: ${result.error}`)
       } else {
         setMessage('创建成功')
         setEditingSupplier(null)
         await loadSuppliers()
       }
     } else {
-      const { error } = await (supabase
-        .from('suppliers') as any)
-        .update({
-          supplier_code: editingSupplier.supplier_code,
-          supplier_name: editingSupplier.supplier_name,
-          contact_name: editingSupplier.contact_name || null,
-          contact_phone: editingSupplier.contact_phone || null,
-          contact_email: editingSupplier.contact_email || null,
-          address: editingSupplier.address || null,
-          payment_terms_days: editingSupplier.payment_terms_days,
-          is_active: editingSupplier.is_active,
-        })
-        .eq('id', editingSupplier.id!)
+      const result = await updateSupplierAction(editingSupplier.id!, {
+        supplier_code: editingSupplier.supplier_code,
+        supplier_name: editingSupplier.supplier_name,
+        payment_terms_days: editingSupplier.payment_terms_days,
+        is_active: editingSupplier.is_active,
+      })
 
-      if (error) {
-        setMessage(`更新失败: ${error.message}`)
+      if (!result.success) {
+        setMessage(`更新失败: ${result.error}`)
       } else {
         setMessage('更新成功')
         setEditingSupplier(null)
@@ -157,12 +131,10 @@ export default function SuppliersPage() {
   const deleteSupplier = async (id: string, code: string) => {
     if (!confirm(`确定要删除供应商 ${code} 吗？`)) return
 
-    const supabase = createClient()
+    const result = await deleteSupplierAction(id)
 
-    const { error } = await supabase.from('suppliers').delete().eq('id', id)
-
-    if (error) {
-      setMessage(`删除失败: ${error.message}`)
+    if (!result.success) {
+      setMessage(`删除失败: ${result.error}`)
     } else {
       setMessage('删除成功')
       await loadSuppliers()
@@ -232,48 +204,6 @@ export default function SuppliersPage() {
                     }
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contact_name">联系人</Label>
-                  <Input
-                    id="contact_name"
-                    value={editingSupplier.contact_name}
-                    onChange={(e) =>
-                      setEditingSupplier({ ...editingSupplier, contact_name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contact_phone">联系电话</Label>
-                  <Input
-                    id="contact_phone"
-                    value={editingSupplier.contact_phone}
-                    onChange={(e) =>
-                      setEditingSupplier({ ...editingSupplier, contact_phone: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contact_email">联系邮箱</Label>
-                  <Input
-                    id="contact_email"
-                    type="email"
-                    value={editingSupplier.contact_email}
-                    onChange={(e) =>
-                      setEditingSupplier({ ...editingSupplier, contact_email: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                <Label htmlFor="address">地址</Label>
-                <Textarea
-                  id="address"
-                  value={editingSupplier.address}
-                  onChange={(e) =>
-                    setEditingSupplier({ ...editingSupplier, address: e.target.value })
-                  }
-                  placeholder="供应商地址..."
-                />
               </div>
               <div className="mt-4 flex items-center gap-4">
                 <label className="flex items-center gap-2">
@@ -328,8 +258,6 @@ export default function SuppliersPage() {
                   <TableRow>
                     <TableHead>供应商编码</TableHead>
                     <TableHead>供应商名称</TableHead>
-                    <TableHead>联系人</TableHead>
-                    <TableHead>联系电话</TableHead>
                     <TableHead className="text-right">账期</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead className="text-right">操作</TableHead>
@@ -340,8 +268,6 @@ export default function SuppliersPage() {
                     <TableRow key={supplier.id}>
                       <TableCell className="font-medium">{supplier.supplier_code}</TableCell>
                       <TableCell>{supplier.supplier_name}</TableCell>
-                      <TableCell>{supplier.contact_name || '-'}</TableCell>
-                      <TableCell>{supplier.contact_phone || '-'}</TableCell>
                       <TableCell className="text-right">{supplier.payment_terms_days} 天</TableCell>
                       <TableCell>
                         <Badge variant={supplier.is_active ? 'success' : 'default'}>

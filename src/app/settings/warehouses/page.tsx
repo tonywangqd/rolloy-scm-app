@@ -18,8 +18,13 @@ import {
 } from '@/components/ui/table'
 import { ArrowLeft, Plus, Pencil, Trash2, Save, X } from 'lucide-react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import type { Warehouse } from '@/lib/types/database'
+import {
+  getWarehouses,
+  createWarehouse as createWarehouseAction,
+  updateWarehouse as updateWarehouseAction,
+  deleteWarehouse as deleteWarehouseAction,
+} from '@/lib/actions/settings'
 
 interface EditingWarehouse {
   id?: string
@@ -27,7 +32,6 @@ interface EditingWarehouse {
   warehouse_name: string
   warehouse_type: 'FBA' | '3PL'
   region: 'East' | 'Central' | 'West'
-  state: string
   is_active: boolean
   isNew?: boolean
 }
@@ -48,17 +52,12 @@ export default function WarehousesPage() {
 
   const loadWarehouses = async () => {
     setLoading(true)
-    const supabase = createClient()
+    const result = await getWarehouses()
 
-    const { data, error } = await supabase
-      .from('warehouses')
-      .select('*')
-      .order('warehouse_code')
-
-    if (error) {
-      setMessage('加载失败')
+    if (!result.success) {
+      setMessage(`加载失败: ${result.error}`)
     } else {
-      setWarehouses(data || [])
+      setWarehouses(result.data || [])
     }
 
     setLoading(false)
@@ -71,7 +70,6 @@ export default function WarehousesPage() {
       warehouse_name: warehouse.warehouse_name,
       warehouse_type: warehouse.warehouse_type as 'FBA' | '3PL',
       region: warehouse.region as 'East' | 'Central' | 'West',
-      state: warehouse.state || '',
       is_active: warehouse.is_active,
     })
   }
@@ -82,7 +80,6 @@ export default function WarehousesPage() {
       warehouse_name: '',
       warehouse_type: 'FBA',
       region: 'East',
-      state: '',
       is_active: true,
       isNew: true,
     })
@@ -103,40 +100,33 @@ export default function WarehousesPage() {
     setSaving(true)
     setMessage('')
 
-    const supabase = createClient()
-
     if (editingWarehouse.isNew) {
-      const { error } = await (supabase.from('warehouses') as any).insert({
+      const result = await createWarehouseAction({
         warehouse_code: editingWarehouse.warehouse_code,
         warehouse_name: editingWarehouse.warehouse_name,
         warehouse_type: editingWarehouse.warehouse_type,
         region: editingWarehouse.region,
-        state: editingWarehouse.state || null,
         is_active: editingWarehouse.is_active,
       })
 
-      if (error) {
-        setMessage(`创建失败: ${error.message}`)
+      if (!result.success) {
+        setMessage(`创建失败: ${result.error}`)
       } else {
         setMessage('创建成功')
         setEditingWarehouse(null)
         await loadWarehouses()
       }
     } else {
-      const { error } = await (supabase
-        .from('warehouses') as any)
-        .update({
-          warehouse_code: editingWarehouse.warehouse_code,
-          warehouse_name: editingWarehouse.warehouse_name,
-          warehouse_type: editingWarehouse.warehouse_type,
-          region: editingWarehouse.region,
-          state: editingWarehouse.state || null,
-          is_active: editingWarehouse.is_active,
-        })
-        .eq('id', editingWarehouse.id!)
+      const result = await updateWarehouseAction(editingWarehouse.id!, {
+        warehouse_code: editingWarehouse.warehouse_code,
+        warehouse_name: editingWarehouse.warehouse_name,
+        warehouse_type: editingWarehouse.warehouse_type,
+        region: editingWarehouse.region,
+        is_active: editingWarehouse.is_active,
+      })
 
-      if (error) {
-        setMessage(`更新失败: ${error.message}`)
+      if (!result.success) {
+        setMessage(`更新失败: ${result.error}`)
       } else {
         setMessage('更新成功')
         setEditingWarehouse(null)
@@ -150,12 +140,10 @@ export default function WarehousesPage() {
   const deleteWarehouse = async (id: string, code: string) => {
     if (!confirm(`确定要删除仓库 ${code} 吗？`)) return
 
-    const supabase = createClient()
+    const result = await deleteWarehouseAction(id)
 
-    const { error } = await supabase.from('warehouses').delete().eq('id', id)
-
-    if (error) {
-      setMessage(`删除失败: ${error.message}`)
+    if (!result.success) {
+      setMessage(`删除失败: ${result.error}`)
     } else {
       setMessage('删除成功')
       await loadWarehouses()
@@ -197,7 +185,7 @@ export default function WarehousesPage() {
               <CardTitle>{editingWarehouse.isNew ? '添加仓库' : '编辑仓库'}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-2">
                   <Label htmlFor="warehouse_code">仓库编码 *</Label>
                   <Input
@@ -258,17 +246,6 @@ export default function WarehousesPage() {
                     ))}
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="state">州/省</Label>
-                  <Input
-                    id="state"
-                    value={editingWarehouse.state}
-                    onChange={(e) =>
-                      setEditingWarehouse({ ...editingWarehouse, state: e.target.value })
-                    }
-                    placeholder="例: CA"
-                  />
-                </div>
               </div>
               <div className="mt-4 flex items-center gap-4">
                 <label className="flex items-center gap-2">
@@ -325,7 +302,6 @@ export default function WarehousesPage() {
                     <TableHead>仓库名称</TableHead>
                     <TableHead>类型</TableHead>
                     <TableHead>区域</TableHead>
-                    <TableHead>州/省</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>
@@ -341,7 +317,6 @@ export default function WarehousesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>{getRegionLabel(warehouse.region)}</TableCell>
-                      <TableCell>{warehouse.state || '-'}</TableCell>
                       <TableCell>
                         <Badge variant={warehouse.is_active ? 'success' : 'default'}>
                           {warehouse.is_active ? '启用' : '停用'}

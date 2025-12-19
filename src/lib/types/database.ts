@@ -407,8 +407,6 @@ export interface Warehouse {
   warehouse_name: string
   warehouse_type: WarehouseType
   region: Region
-  state: string | null
-  postal_code: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -420,8 +418,6 @@ export interface WarehouseInsert {
   warehouse_name: string
   warehouse_type: WarehouseType
   region: Region
-  state?: string | null
-  postal_code?: string | null
   is_active?: boolean
 }
 
@@ -430,8 +426,6 @@ export interface WarehouseUpdate {
   warehouse_name?: string
   warehouse_type?: WarehouseType
   region?: Region
-  state?: string | null
-  postal_code?: string | null
   is_active?: boolean
 }
 
@@ -439,10 +433,6 @@ export interface Supplier {
   id: string
   supplier_code: string
   supplier_name: string
-  contact_name: string | null
-  contact_email: string | null
-  contact_phone: string | null
-  address: string | null
   payment_terms_days: number
   is_active: boolean
   created_at: string
@@ -453,10 +443,6 @@ export interface SupplierInsert {
   id?: string
   supplier_code: string
   supplier_name: string
-  contact_name?: string | null
-  contact_email?: string | null
-  contact_phone?: string | null
-  address?: string | null
   payment_terms_days?: number
   is_active?: boolean
 }
@@ -464,10 +450,6 @@ export interface SupplierInsert {
 export interface SupplierUpdate {
   supplier_code?: string
   supplier_name?: string
-  contact_name?: string | null
-  contact_email?: string | null
-  contact_phone?: string | null
-  address?: string | null
   payment_terms_days?: number
   is_active?: boolean
 }

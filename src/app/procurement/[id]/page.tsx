@@ -327,30 +327,14 @@ export default async function PurchaseOrderDetailPage({
               <CardTitle>供应商信息 / Supplier Information</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-sm font-medium text-gray-500">供应商代码</p>
                   <p className="mt-1 text-base">{supplier.supplier_code}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">联系人</p>
-                  <p className="mt-1 text-base">{supplier.contact_name || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">联系邮箱</p>
-                  <p className="mt-1 text-base">{supplier.contact_email || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">联系电话</p>
-                  <p className="mt-1 text-base">{supplier.contact_phone || '-'}</p>
-                </div>
-                <div>
                   <p className="text-sm font-medium text-gray-500">付款账期 (天)</p>
                   <p className="mt-1 text-base">{supplier.payment_terms_days}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">地址</p>
-                  <p className="mt-1 text-base">{supplier.address || '-'}</p>
                 </div>
               </div>
             </CardContent>

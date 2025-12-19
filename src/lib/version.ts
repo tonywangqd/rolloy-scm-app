@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.7.7',
+  number: '3.7.8',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 10:22',
+  updatedAt: '2025-12-19 10:28',
 
   // 版本标签
-  tag: '产品管理Server Actions' as const,
+  tag: '主数据管理修复' as const,
 
   // 更新说明 (可选)
-  changelog: 'refactor: 产品管理页面改用 Server Actions，修复 Failed to fetch 错误',
+  changelog: 'fix: 修复仓库/供应商创建错误，移除数据库中不存在的字段',
 }
 
 // 格式化显示

@@ -3,7 +3,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth/check-auth'
 import { revalidatePath } from 'next/cache'
-import type { Product, ProductInsert, ChannelInsert, WarehouseInsert, SupplierInsert } from '@/lib/types/database'
+import type { Product, ProductInsert, Channel, ChannelInsert, Warehouse, WarehouseInsert, Supplier, SupplierInsert } from '@/lib/types/database'
 import {
   productInsertSchema,
   productUpdateSchema,
@@ -31,6 +31,69 @@ export async function getProducts(): Promise<{ success: boolean; data?: Product[
     .from('products')
     .select('*')
     .order('sku')
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  return { success: true, data: data || [] }
+}
+
+// Channel Query Action
+export async function getChannels(): Promise<{ success: boolean; data?: Channel[]; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('channels')
+    .select('*')
+    .order('channel_code')
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  return { success: true, data: data || [] }
+}
+
+// Warehouse Query Action
+export async function getWarehouses(): Promise<{ success: boolean; data?: Warehouse[]; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('warehouses')
+    .select('*')
+    .order('warehouse_code')
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  return { success: true, data: data || [] }
+}
+
+// Supplier Query Action
+export async function getSuppliers(): Promise<{ success: boolean; data?: Supplier[]; error?: string }> {
+  const authResult = await requireAuth()
+  if ('error' in authResult) {
+    return { success: false, error: authResult.error }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('*')
+    .order('supplier_code')
 
   if (error) {
     return { success: false, error: error.message }

@@ -98,8 +98,6 @@ export const warehouseInsertSchema = z.object({
     .max(200, 'Warehouse name too long'),
   warehouse_type: warehouseTypeSchema,
   region: regionSchema,
-  state: z.string().max(50).nullable().optional(),
-  postal_code: z.string().max(20).nullable().optional(),
   is_active: z.boolean().optional().default(true),
 })
 
@@ -115,10 +113,6 @@ export const supplierInsertSchema = z.object({
     .string()
     .min(1, 'Supplier name is required')
     .max(200, 'Supplier name too long'),
-  contact_name: z.string().max(100).nullable().optional(),
-  contact_email: z.string().email('Invalid email format').max(100).nullable().optional(),
-  contact_phone: z.string().max(50).nullable().optional(),
-  address: z.string().max(500).nullable().optional(),
   payment_terms_days: z
     .number()
     .int('Payment terms must be integer')
