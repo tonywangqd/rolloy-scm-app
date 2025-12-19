@@ -248,24 +248,29 @@ export async function fetchReverseScheduleAudit(
   })
 
   // ================================================================
-  // STEP 5: 倒推计算 - 建议下单（Reverse Schedule）
-  // 从销量预测倒推：这周应该下多少单（为满足未来N周的销量）
+  // STEP 5: 倒推计算 - 预计下单（Reverse Schedule）
+  // ✅ 关键修改：预计下单 = 倒推需求 - 实际已下单（显示剩余缺口）
   // ================================================================
 
   const reverseSchedule: ReverseScheduleItem[] = []
-  const suggestedOrderByWeek = new Map<string, number>()
+  // 原始倒推需求（未扣减实际下单）
+  const rawSuggestedOrderByWeek = new Map<string, number>()
 
   forecastMap.forEach((qty, targetWeek) => {
     if (qty > 0) {
-      // 倒推：销量需求周 - 总周期 = 建议下单周
+      // 倒推：销量需求周 - 总周期 = 预计下单周
       const orderWeek = addWeeksToISOWeek(targetWeek, -leadTimes.total_weeks)
       if (orderWeek) {
         reverseSchedule.push({ target_week: targetWeek, qty, suggested_order_week: orderWeek })
-        const current = suggestedOrderByWeek.get(orderWeek) || 0
-        suggestedOrderByWeek.set(orderWeek, current + qty)
+        const current = rawSuggestedOrderByWeek.get(orderWeek) || 0
+        rawSuggestedOrderByWeek.set(orderWeek, current + qty)
       }
     }
   })
+
+  // ✅ 新增：计算剩余缺口 = 倒推需求 - 实际已下单
+  // 使用全局扣减策略：总需求 - 总实际下单 = 剩余缺口
+  // 然后按周分配剩余缺口
 
   // ================================================================
   // STEP 6: 构建实际数据 Map（Actual Data）
@@ -367,6 +372,58 @@ export async function fetchReverseScheduleAudit(
       }
     })
   })
+
+  // ================================================================
+  // STEP 6.5: ✅ 计算预计下单（剩余缺口）
+  // 公式：预计下单 = 倒推需求总量 - 实际已下单总量
+  // 策略：按周分配剩余缺口
+  // ================================================================
+
+  const suggestedOrderByWeek = new Map<string, number>()
+
+  // 计算总量
+  const totalRawSuggested = Array.from(rawSuggestedOrderByWeek.values()).reduce((a, b) => a + b, 0)
+  const totalActualOrders = Array.from(actualOrderMap.values()).reduce((a, b) => a + b, 0)
+
+  // 剩余缺口 = 倒推需求 - 实际下单
+  const remainingGap = Math.max(0, totalRawSuggested - totalActualOrders)
+
+  if (remainingGap > 0) {
+    // 按周分配剩余缺口：按原始倒推需求的比例分配
+    // 简化策略：将剩余缺口分配到最近的预计下单周
+    const sortedWeeks = Array.from(rawSuggestedOrderByWeek.keys()).sort()
+
+    // 找到当前周或之后的第一个有需求的周
+    const currentWeek = getCurrentWeek()
+    let distributedGap = 0
+
+    for (const week of sortedWeeks) {
+      if (distributedGap >= remainingGap) break
+
+      // 只在当前周或未来周显示预计下单
+      if (week >= currentWeek) {
+        const rawQty = rawSuggestedOrderByWeek.get(week) || 0
+        // 按比例分配：该周占总需求的比例 * 剩余缺口
+        const allocatedQty = totalRawSuggested > 0
+          ? Math.round((rawQty / totalRawSuggested) * remainingGap)
+          : 0
+
+        if (allocatedQty > 0) {
+          suggestedOrderByWeek.set(week, allocatedQty)
+          distributedGap += allocatedQty
+        }
+      }
+    }
+
+    // 如果还有未分配的缺口（由于四舍五入），分配到第一个有效周
+    const unallocated = remainingGap - distributedGap
+    if (unallocated > 0 && sortedWeeks.length > 0) {
+      const firstValidWeek = sortedWeeks.find(w => w >= currentWeek) || sortedWeeks[sortedWeeks.length - 1]
+      const existing = suggestedOrderByWeek.get(firstValidWeek) || 0
+      suggestedOrderByWeek.set(firstValidWeek, existing + unallocated)
+    }
+  }
+  // 如果 remainingGap <= 0，suggestedOrderByWeek 为空，表示不需要再下单
 
   // ================================================================
   // STEP 7: 正推计算 - 部分履约追踪（Forward Projection）

@@ -214,17 +214,18 @@ function generateOrderSuggestedTooltip(row: ReverseScheduleAuditRow): React.Reac
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-lg">📦</span>
-        <h4 className="text-sm font-semibold text-orange-700">建议下单 (倒推)</h4>
+        <h4 className="text-sm font-semibold text-orange-700">预计下单 (倒推缺口)</h4>
       </div>
       <div className="border-t border-gray-200 pt-2">
         <div className="text-sm text-gray-900 font-medium">数量: {row.suggested_order} 件</div>
-        <div className="text-xs text-gray-600 mt-1">来源: 从销量预测倒推计算</div>
+        <div className="text-xs text-gray-600 mt-1">来源: 销量预测倒推 - 实际已下单</div>
         <div className="text-xs text-orange-600 mt-2 p-2 bg-orange-50 rounded">
           <strong>计算公式:</strong><br />
-          销量需求周 - 总周期 = 建议下单周
+          预计下单 = 倒推需求 - 实际已下单<br />
+          （仅显示剩余缺口）
         </div>
         <div className="text-xs text-gray-500 mt-1">
-          含义: 为满足未来销量需求，这周应该下单 {row.suggested_order} 件
+          含义: 为满足未来销量需求，还需要下单 {row.suggested_order} 件
         </div>
       </div>
     </div>
@@ -648,7 +649,7 @@ export function ReverseScheduleAuditTable({ rows }: ReverseScheduleAuditTablePro
             <th
               colSpan={2}
               className="px-3 py-2 text-center border-r border-gray-300 font-semibold bg-orange-50"
-              title="建议=倒推（从销量预测）"
+              title="预计=倒推（从销量预测计算缺口）"
             >
               下单 (倒推)
             </th>
@@ -688,7 +689,7 @@ export function ReverseScheduleAuditTable({ rows }: ReverseScheduleAuditTablePro
             <th className="px-2 py-1 text-center border-r border-gray-300 text-purple-700 font-medium bg-purple-50/50">实际</th>
 
             {/* 下单 - 2 columns */}
-            <th className="px-2 py-1 text-center text-orange-700 font-medium bg-orange-50/50" title="从销量预测倒推">建议</th>
+            <th className="px-2 py-1 text-center text-orange-700 font-medium bg-orange-50/50" title="倒推计算的剩余需求缺口">预计</th>
             <th className="px-2 py-1 text-center border-r border-gray-300 text-orange-700 font-medium bg-orange-50/50">实际</th>
 
             {/* 出厂 - 2 columns */}

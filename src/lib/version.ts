@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.7.10',
+  number: '3.8.0',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 11:06',
+  updatedAt: '2025-12-19 11:15',
 
   // 版本标签
-  tag: '算法验证修复' as const,
+  tag: '预计下单逻辑优化' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 算法验证页面(V5)使用PO的planned_ship_date计算预计出厂周',
+  changelog: 'refactor: 预计下单显示剩余缺口（倒推需求 - 实际已下单），UI术语建议→预计',
 }
 
 // 格式化显示
