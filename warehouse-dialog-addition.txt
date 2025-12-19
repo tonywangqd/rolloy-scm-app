@@ -1,0 +1,231 @@
+这个文件包含了需要添加到 new/page.tsx 的新增仓库功能代码片段
+
+## 1. 状态管理 (添加到组件顶部状态声明处)
+
+  // Warehouse dialog state
+  const [showWarehouseDialog, setShowWarehouseDialog] = useState(false)
+  const [creatingWarehouse, setCreatingWarehouse] = useState(false)
+  const [warehouseError, setWarehouseError] = useState('')
+  const [newWarehouse, setNewWarehouse] = useState({
+    warehouse_code: '',
+    warehouse_name: '',
+    warehouse_type: '' as WarehouseType | '',
+    region: '' as 'East' | 'Central' | 'West' | '',
+  })
+
+## 2. 刷新仓库列表函数 (添加到组件函数中)
+
+  const refreshWarehouses = async () => {
+    const supabase = createClient()
+    const { data: warehousesData } = await supabase
+      .from('warehouses')
+      .select('*')
+      .eq('is_active', true)
+      .order('warehouse_code')
+
+    setWarehouses(warehousesData || [])
+  }
+
+## 3. 新增仓库处理函数 (添加到组件函数中)
+
+  const handleCreateWarehouse = async () => {
+    setCreatingWarehouse(true)
+    setWarehouseError('')
+
+    // Validation
+    if (!newWarehouse.warehouse_code || !newWarehouse.warehouse_name) {
+      setWarehouseError('仓库代码和名称为必填项')
+      setCreatingWarehouse(false)
+      return
+    }
+
+    if (!newWarehouse.warehouse_type) {
+      setWarehouseError('请选择仓库类型')
+      setCreatingWarehouse(false)
+      return
+    }
+
+    if (!newWarehouse.region) {
+      setWarehouseError('请选择区域')
+      setCreatingWarehouse(false)
+      return
+    }
+
+    try {
+      const result = await createWarehouse({
+        warehouse_code: newWarehouse.warehouse_code,
+        warehouse_name: newWarehouse.warehouse_name,
+        warehouse_type: newWarehouse.warehouse_type as WarehouseType,
+        region: newWarehouse.region as 'East' | 'Central' | 'West',
+        is_active: true,
+      })
+
+      if (result.success) {
+        // Refresh warehouse list
+        await refreshWarehouses()
+
+        // Find the newly created warehouse and select it
+        const supabase = createClient()
+        const { data: newWarehouseData } = await supabase
+          .from('warehouses')
+          .select('id')
+          .eq('warehouse_code', newWarehouse.warehouse_code)
+          .single()
+
+        if (newWarehouseData) {
+          setFormData({ ...formData, destination_warehouse_id: newWarehouseData.id })
+        }
+
+        // Reset and close dialog
+        setNewWarehouse({
+          warehouse_code: '',
+          warehouse_name: '',
+          warehouse_type: '',
+          region: '',
+        })
+        setShowWarehouseDialog(false)
+      } else {
+        setWarehouseError(result.error || '创建失败')
+      }
+    } catch (err) {
+      setWarehouseError('创建失败,请重试')
+    } finally {
+      setCreatingWarehouse(false)
+    }
+  }
+
+## 4. UI组件 - 新增按钮 (替换目的仓库选择器部分)
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="destination_warehouse_id">目的仓库 *</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowWarehouseDialog(true)}
+                        className="h-8 text-xs"
+                      >
+                        <Plus className="mr-1 h-3 w-3" />
+                        新增仓库
+                      </Button>
+                    </div>
+                    <select
+                      id="destination_warehouse_id"
+                      value={formData.destination_warehouse_id}
+                      onChange={(e) =>
+                        setFormData({ ...formData, destination_warehouse_id: e.target.value })
+                      }
+                      required
+                      className="flex h-10 w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">选择仓库</option>
+                      {filteredWarehouses.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.warehouse_code} - {w.warehouse_name} ({w.warehouse_type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+## 5. Dialog组件 (添加到组件return的末尾,在最后一个</div>之前)
+
+      {/* Add Warehouse Dialog */}
+      <Dialog open={showWarehouseDialog} onOpenChange={setShowWarehouseDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新增目的仓库</DialogTitle>
+            <DialogDescription>
+              快速添加新的目的仓库,添加后会自动选中
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {warehouseError && (
+              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                {warehouseError}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="new_warehouse_code">仓库代码 *</Label>
+              <Input
+                id="new_warehouse_code"
+                value={newWarehouse.warehouse_code}
+                onChange={(e) =>
+                  setNewWarehouse({ ...newWarehouse, warehouse_code: e.target.value })
+                }
+                placeholder="例如: FBA-LAX1"
+                disabled={creatingWarehouse}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new_warehouse_name">仓库名称 *</Label>
+              <Input
+                id="new_warehouse_name"
+                value={newWarehouse.warehouse_name}
+                onChange={(e) =>
+                  setNewWarehouse({ ...newWarehouse, warehouse_name: e.target.value })
+                }
+                placeholder="例如: 洛杉矶FBA仓"
+                disabled={creatingWarehouse}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new_warehouse_type">仓库类型 *</Label>
+              <select
+                id="new_warehouse_type"
+                value={newWarehouse.warehouse_type}
+                onChange={(e) =>
+                  setNewWarehouse({ ...newWarehouse, warehouse_type: e.target.value as WarehouseType | '' })
+                }
+                disabled={creatingWarehouse}
+                className="flex h-10 w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">请选择</option>
+                <option value="FBA">FBA仓</option>
+                <option value="3PL">海外仓(3PL)</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new_warehouse_region">区域 *</Label>
+              <select
+                id="new_warehouse_region"
+                value={newWarehouse.region}
+                onChange={(e) =>
+                  setNewWarehouse({ ...newWarehouse, region: e.target.value as 'East' | 'Central' | 'West' | '' })
+                }
+                disabled={creatingWarehouse}
+                className="flex h-10 w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">请选择</option>
+                <option value="East">东部</option>
+                <option value="Central">中部</option>
+                <option value="West">西部</option>
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowWarehouseDialog(false)}
+              disabled={creatingWarehouse}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleCreateWarehouse}
+              disabled={creatingWarehouse}
+            >
+              {creatingWarehouse ? '创建中...' : '创建仓库'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>

@@ -981,3 +981,147 @@ export async function forceDeleteShipment(
     }
   }
 }
+
+/**
+ * Create shipment with optional planned remaining shipments
+ *
+ * This function extends the shipment creation to support planned shipment records
+ * for remaining unshipped quantities, improving 12-week inventory projection accuracy.
+ *
+ * Pattern: Mirrors the procurement delivery system's dual-track approach
+ * (planned vs actual deliveries)
+ *
+ * @param payload - Shipment data with allocations and optional planned remaining
+ * @returns Success/error response with shipment IDs
+ */
+export async function createShipmentWithPlannedRemaining(
+  payload: import('@/lib/types/database').ShipmentWithPlannedRemainingInput
+): Promise<{
+  success: boolean
+  error?: string
+  data?: {
+    actual_shipment_id: string
+    planned_shipment_ids: string[]
+  }
+}> {
+  try {
+    // 1. Authentication check
+    const authResult = await requireAuth()
+    if ('error' in authResult) {
+      return { success: false, error: authResult.error }
+    }
+
+    // 2. Validate input (basic validation)
+    if (!payload.tracking_number || !payload.destination_warehouse_id) {
+      return {
+        success: false,
+        error: 'Tracking number and destination warehouse are required',
+      }
+    }
+
+    if (!payload.allocations || payload.allocations.length === 0) {
+      return {
+        success: false,
+        error: 'At least one delivery allocation is required',
+      }
+    }
+
+    // Validate planned remaining if provided
+    if (payload.planned_remaining) {
+      for (const planItem of payload.planned_remaining) {
+        if (!planItem.delivery_id || !planItem.planned_week_iso || planItem.remaining_qty <= 0) {
+          return {
+            success: false,
+            error: 'Invalid planned remaining: delivery_id, planned_week_iso, and positive remaining_qty are required',
+          }
+        }
+
+        // Validate ISO week format
+        if (!/^\d{4}-W\d{2}$/.test(planItem.planned_week_iso)) {
+          return {
+            success: false,
+            error: `Invalid ISO week format: ${planItem.planned_week_iso}. Expected format: YYYY-Wnn (e.g., 2025-W05)`,
+          }
+        }
+      }
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // 3. Convert allocations and planned_remaining to JSONB format
+    const allocationsJson = payload.allocations.map((a) => ({
+      delivery_id: a.delivery_id,
+      shipped_qty: a.shipped_qty,
+      remarks: a.remarks || null,
+    }))
+
+    const plannedRemainingJson = payload.planned_remaining
+      ? payload.planned_remaining.map((p) => ({
+          delivery_id: p.delivery_id,
+          remaining_qty: p.remaining_qty,
+          planned_week_iso: p.planned_week_iso,
+          planned_arrival_days: p.planned_arrival_days || 40,
+        }))
+      : null
+
+    // 4. Call RPC function
+    const { data: result, error: rpcError } = await supabase.rpc(
+      'create_shipment_with_planned_remaining',
+      {
+        p_tracking_number: payload.tracking_number,
+        p_batch_code: payload.batch_code || null,
+        p_logistics_batch_code: payload.logistics_batch_code || null,
+        p_destination_warehouse_id: payload.destination_warehouse_id,
+        p_customs_clearance: payload.customs_clearance ?? false,
+        p_logistics_plan: payload.logistics_plan || null,
+        p_logistics_region: payload.logistics_region || null,
+        p_planned_departure_date: payload.planned_departure_date || null,
+        p_actual_departure_date: payload.actual_departure_date || null,
+        p_planned_arrival_days: payload.planned_arrival_days || null,
+        p_planned_arrival_date: payload.planned_arrival_date || null,
+        p_actual_arrival_date: payload.actual_arrival_date || null,
+        p_weight_kg: payload.weight_kg || null,
+        p_unit_count: payload.unit_count || null,
+        p_cost_per_kg_usd: payload.cost_per_kg_usd || null,
+        p_surcharge_usd: payload.surcharge_usd || 0,
+        p_tax_refund_usd: payload.tax_refund_usd || 0,
+        p_remarks: payload.remarks || null,
+        p_allocations: allocationsJson,
+        p_planned_remaining: plannedRemainingJson,
+      }
+    )
+
+    if (rpcError || !result || result.length === 0) {
+      console.error('RPC error:', rpcError)
+      return {
+        success: false,
+        error: rpcError?.message || 'Failed to create shipment',
+      }
+    }
+
+    const { success, actual_shipment_id, planned_shipment_ids, error_message } = result[0]
+
+    if (!success) {
+      return { success: false, error: error_message || 'Unknown error from database' }
+    }
+
+    // 5. Revalidate cache
+    revalidatePath('/logistics')
+    revalidatePath('/logistics/shipments')
+    revalidatePath('/procurement/deliveries')
+
+    return {
+      success: true,
+      data: {
+        actual_shipment_id: actual_shipment_id || '',
+        planned_shipment_ids: planned_shipment_ids || [],
+      },
+    }
+  } catch (err) {
+    console.error('Error in createShipmentWithPlannedRemaining:', err)
+    return {
+      success: false,
+      error: `Failed to create shipment: ${err instanceof Error ? err.message : 'Unknown error'}`,
+    }
+  }
+}

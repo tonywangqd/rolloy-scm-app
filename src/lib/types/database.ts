@@ -302,6 +302,36 @@ export type Database = {
           error_message: string | null
         }[]
       }
+      create_shipment_with_planned_remaining: {
+        Args: {
+          p_tracking_number: string
+          p_batch_code?: string | null
+          p_logistics_batch_code?: string | null
+          p_destination_warehouse_id?: string | null
+          p_customs_clearance?: boolean
+          p_logistics_plan?: string | null
+          p_logistics_region?: string | null
+          p_planned_departure_date?: string | null
+          p_actual_departure_date?: string | null
+          p_planned_arrival_days?: number | null
+          p_planned_arrival_date?: string | null
+          p_actual_arrival_date?: string | null
+          p_weight_kg?: number | null
+          p_unit_count?: number | null
+          p_cost_per_kg_usd?: number | null
+          p_surcharge_usd?: number
+          p_tax_refund_usd?: number
+          p_remarks?: string | null
+          p_allocations?: unknown
+          p_planned_remaining?: unknown
+        }
+        Returns: {
+          success: boolean
+          actual_shipment_id: string | null
+          planned_shipment_ids: string[] | null
+          error_message: string | null
+        }[]
+      }
       get_delivery_allocations: {
         Args: {
           p_delivery_id: string
@@ -704,6 +734,7 @@ export interface Shipment {
   cost_per_kg_usd: number | null
   surcharge_usd: number
   tax_refund_usd: number
+  shipment_status: ShipmentStatus // NEW: Lifecycle status (draft | in_transit | arrived | finalized | cancelled)
   // Computed fields
   actual_transit_days: number | null
   effective_arrival_date: string | null
@@ -780,6 +811,57 @@ export interface ShipmentItemInsert {
 
 export interface ShipmentItemUpdate {
   shipped_qty?: number
+}
+
+// ================================================================
+// PLANNED SHIPMENT TYPES (Shipment Planned Remaining)
+// ================================================================
+
+/**
+ * Planned shipment specification for remaining unshipped quantities
+ * Used when creating actual shipment to specify future planned shipments
+ */
+export interface PlannedShipmentRemaining {
+  delivery_id: string           // UUID of the delivery
+  remaining_qty: number          // Remaining unshipped quantity
+  planned_week_iso: string       // ISO week format "2025-W05"
+  planned_arrival_days?: number  // Default: 40 days
+}
+
+/**
+ * Enhanced shipment creation payload with planned remaining shipments
+ * Extends the existing shipment creation to support planned shipment records
+ */
+export interface ShipmentWithPlannedRemainingInput {
+  // Actual shipment fields (existing)
+  tracking_number: string
+  batch_code?: string | null
+  logistics_batch_code?: string | null
+  destination_warehouse_id: string
+  customs_clearance?: boolean
+  logistics_plan?: string | null
+  logistics_region?: Region | null
+  planned_departure_date?: string | null
+  actual_departure_date?: string | null
+  planned_arrival_days?: number | null
+  planned_arrival_date?: string | null
+  actual_arrival_date?: string | null
+  weight_kg?: number | null
+  unit_count?: number | null
+  cost_per_kg_usd?: number | null
+  surcharge_usd?: number
+  tax_refund_usd?: number
+  remarks?: string | null
+
+  // Delivery allocations for actual shipment
+  allocations: {
+    delivery_id: string
+    shipped_qty: number
+    remarks?: string | null
+  }[]
+
+  // NEW: Planned remaining shipments for unshipped quantities
+  planned_remaining?: PlannedShipmentRemaining[] | null
 }
 
 // ================================================================
