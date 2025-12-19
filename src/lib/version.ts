@@ -7,16 +7,16 @@
 
 export const VERSION = {
   // 版本号 (语义化版本)
-  number: '3.10.2',
+  number: '3.10.3',
 
   // 更新时间 (中国时区 CST/UTC+8)
-  updatedAt: '2025-12-19 16:00',
+  updatedAt: '2025-12-19 18:30',
 
   // 版本标签
   tag: 'Bug修复' as const,
 
   // 更新说明 (可选)
-  changelog: 'fix: 修复发运单模块中报关费用计算错误（应加上而非减去）',
+  changelog: 'fix: 修复数据库发运单费用计算错误（tax_refund_usd报关费用应加上而非减去）',
 }
 
 // 格式化显示
