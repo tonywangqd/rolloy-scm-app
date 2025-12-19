@@ -1,348 +1,109 @@
-# Implementation Summary
+# Implementation Summary: Shipment Planned Week Feature
 
-## Latest Update: 2025-12-08 - Algorithm Audit V3/V4 Double-Counting Fix
+## Overview
+Implemented the "剩余数量预计发运日期" (Remaining Quantity Planned Shipment Week) input functionality in the shipment creation page, following the design specification in `/specs/shipment-planned-date/design.md`.
 
-### Critical Bug Fix
-
-**Problem**: Planned quantities were not deducted when actual data existed, causing supply chain quantities to be counted twice.
-
-**Example**:
-```
-PO-001: Ordered 50 units, planned factory ship W52
-Actual:
-  - W01: 45 units shipped
-  - W02: 5 units shipped
-
-Before Fix:
-  W52 planned_factory_ship: 50 units
-  W01 actual_factory_ship: 45 units
-  W02 actual_factory_ship: 5 units
-  Total: 50 + 45 + 5 = 100 units ❌ (double counting)
-
-After Fix:
-  W52 planned_factory_ship: 0 units (fully fulfilled)
-  W01 actual_factory_ship: 45 units
-  W02 actual_factory_ship: 5 units
-  Total: 0 + 45 + 5 = 50 units ✅ (correct)
-```
-
-### Root Cause
-
-Original V3 logic had three issues:
-1. Order aggregation (lines 872-885): Aggregated `ordered_qty` directly without considering fulfilled portions
-2. Planned calculation (lines 974-1006): Calculated planned quantities from sales demand independently
-3. Data merging (lines 1082-1099): Added planned and actual quantities directly, causing duplication
-
-### Solution
-
-**Core Principle**: Planned Qty = Pending Qty (unfulfilled portion only), not original ordered qty.
-
-#### Implementation Steps
-
-**1. Enhanced Data Queries (STEP 4, lines 819-846)**
-
-Added relationship ID fields:
-```typescript
-// Purchase Orders: add purchase_order_items.id
-purchase_order_items!inner(id, sku, ordered_qty)
-
-// Production Deliveries: add id, po_item_id
-select('id, sku, po_item_id, delivered_qty, actual_delivery_date')
-
-// Shipments: add production_delivery_id
-select('id, tracking_number, production_delivery_id, ...')
-```
-
-**2. PO Fulfillment Tracking (STEP 5, lines 872-925)**
-
-```typescript
-interface POItemFulfillment {
-  ordered_qty: number       // Original order quantity
-  delivered_qty: number     // Actually delivered quantity
-  pending_qty: number       // Pending delivery ← KEY
-  order_week: string
-  order_date: string
-}
-
-// Calculate pending_qty = ordered_qty - delivered_qty
-// Only pending_qty shows in planned factory ship week
-```
-
-**3. Delivery Fulfillment Tracking (STEP 5, lines 936-977)**
-
-```typescript
-interface DeliveryFulfillment {
-  delivered_qty: number     // Factory shipped quantity
-  shipped_qty: number       // Actually loaded quantity
-  pending_ship_qty: number  // Pending shipment ← KEY
-  delivery_week: string
-}
-```
-
-**4. Shipment Fulfillment Tracking (STEP 5, lines 995-1058)**
-
-```typescript
-interface ShipmentFulfillment {
-  shipped_qty: number               // Shipped quantity
-  arrived: boolean                  // Already arrived ← KEY
-  departure_week: string
-  planned_arrival_week: string | null
-  actual_arrival_week: string | null
-}
-```
-
-**5. Recalculated Planned Quantities (STEP 7, lines 1107-1189)**
-
-Old logic (deleted):
-```typescript
-// Problem: Calculated from sales demand, ignored fulfillment
-plannedFactoryShipMapV3.set(factoryShipWeek, current + salesDemand)
-```
-
-New logic:
-```typescript
-// 1. Calculate from PO pending_qty
-poItemFulfillmentMap.forEach((fulfillment) => {
-  if (fulfillment.pending_qty <= 0) return  // Skip if fully fulfilled
-  plannedFactoryShipMapV3.set(
-    factoryShipWeek,
-    current + fulfillment.pending_qty  // Use pending_qty, not ordered_qty
-  )
-})
-
-// 2. Calculate from delivery pending_ship_qty
-deliveryFulfillmentMap.forEach((fulfillment) => {
-  if (fulfillment.pending_ship_qty <= 0) return
-  // ...
-})
-
-// 3. Calculate from in-transit shipments
-shipmentFulfillmentMap.forEach((fulfillment) => {
-  if (fulfillment.arrived) return  // Skip if arrived
-  // ...
-})
-```
-
-### Impact
-
-**Direct Impact**:
-- Algorithm Audit V3 page: Data display fixed
-- Algorithm Audit V4 page: Automatically inherits fix (built on V3)
-
-**Indirect Impact**:
-- Inventory projection accuracy improved
-- Replenishment suggestions accuracy improved
-
-**No Impact**:
-- Purchase order management
-- Logistics management
-- Other pages not using algorithm audit data
-
-### Files Changed
-
-```
-Commit: 31382eb
-Date: 2025-12-08 23:15 CST
-Files:
-  - src/lib/queries/algorithm-audit.ts (+368 -103)
-  - src/lib/version.ts (v1.17.2)
-  - docs/algorithm-audit-v3-fix-validation.md (new)
-```
-
-### Testing
-
-✅ Build successful: `npm run build` passed
-✅ TypeScript compilation passed
-✅ No breaking changes
-✅ Data consistency validated
-
-### Validation Document
-
-See `/Users/tony/Desktop/rolloy-scm/docs/algorithm-audit-v3-fix-validation.md` for:
-- Detailed test scenarios
-- Validation methods
-- Regression checklist
-- Frontend tooltip enhancement suggestions
-
----
-
-## Previous Implementation: Algorithm Audit V4 (2025-12-05)
-
-## Implementation Overview
-
-Successfully implemented the core backend logic for Algorithm Audit V4 as specified in `specs/algorithm-audit-v4/design.md`.
+## Modified File
+- `/src/app/logistics/new/page.tsx`
 
 ## Changes Made
 
-### 1. Type Definitions (`src/lib/types/database.ts`)
+### 1. Updated Imports
+Added necessary imports for the new functionality:
+- `AlertCircle` and `Calendar` icons from `lucide-react`
+- `getISOWeek`, `getISOWeekYear`, `addWeeks` from `date-fns`
 
-Added complete V4 type system at the end of the file:
+### 2. Extended TypeScript Interface
+Extended the `SelectedDelivery` interface to include:
+```typescript
+plannedWeekIso?: string // Planned shipment week for remaining quantity
+```
 
-- **Coverage Types:**
-  - `CoverageStatus`: 'Fully Covered' | 'Partially Covered' | 'Uncovered' | 'Unknown'
-  - `PropagationConfidence`: 'high' | 'medium' | 'low' | 'none'
-  - `PropagationSourceType`: Source types for propagated quantities
+### 3. Added Helper Functions
 
-- **Core Types:**
-  - `DemandCoverage`: Demand coverage analysis for a sales week
-  - `OrderMatch`: Matched order within ±1 week tolerance
-  - `PropagationSource`: Propagation source metadata
+#### `handlePlannedWeekChange(deliveryId: string, weekIso: string)`
+- Updates the planned shipment week for a specific delivery's remaining quantity
+- Stores the ISO week string (e.g., "2025-W05") in the delivery state
 
-- **Detail Types (for expandable rows):**
-  - `OrderDetailV4`: Detailed order information with fulfillment status
-  - `DeliveryDetailV4`: Delivery details with PO traceability
-  - `ShipmentDetailV4`: Shipment information with status tracking
-  - `ArrivalDetailV4`: Arrival records with warehouse information
+#### `getNext12Weeks(): string[]`
+- Generates an array of the next 12 weeks in ISO format
+- Uses date-fns functions to calculate ISO week numbers
+- Returns format: ["2025-W51", "2025-W52", "2026-W01", ...]
 
-- **Main Types:**
-  - `AlgorithmAuditRowV4`: Extends V3 with lineage and coverage data
-  - `AlgorithmAuditResultV4`: Complete V4 audit result with enhanced metadata
+### 4. Added UI Component in Step 2
 
-### 2. Query Functions (`src/lib/queries/algorithm-audit.ts`)
+When a user inputs a shipped quantity that is less than the available unshipped quantity, the system now displays:
 
-Added V4 implementation at the end of the file:
+**Visual Design:**
+- Amber-colored alert box (bg-amber-50, border-amber-200)
+- Alert icon indicating remaining quantity
+- Calendar icon next to the week selector
+- Dropdown showing next 12 weeks in ISO format
+- Confirmation text when a week is selected
 
-#### Core Algorithm Functions:
+**Functionality:**
+- Only shows when `userShippedQty < unshipped_qty`
+- Displays remaining quantity: `剩余 X 件未发运`
+- Provides week selector with options from next 12 weeks
+- Optional selection (user can skip if desired)
+- Shows helper text "(用于库存预测)" when a week is selected
 
-1. **`matchSalesDemandsToOrders()`**
-   - Implements demand matching with ±1 week tolerance
-   - Calculates coverage status (Fully Covered/Partially Covered/Uncovered)
-   - Tracks uncovered quantities
-   - Returns Map of week -> DemandCoverage
+## User Experience Flow
 
-2. **`fetchOrderDetailsByWeeks()`**
-   - Fetches PO details for specific weeks
-   - Includes fulfillment status (Complete/Partial/Pending)
-   - Provides delivered and pending quantities
-   - Links to supplier information
+1. User selects deliveries in Step 1
+2. In Step 2, when entering shipped quantities:
+   - If shipped quantity < available quantity
+   - An amber alert box appears below the quantity input
+   - Shows: "剩余 X 件未发运"
+   - User can select a planned shipment week from dropdown
+   - Week selection is optional
 
-3. **`fetchDeliveryDetailsByWeeks()`**
-   - Fetches production delivery details
-   - Calculates shipped vs unshipped quantities
-   - Links back to PO for traceability
-   - Includes shipment status
+## Example Usage
 
-4. **`fetchShipmentDetailsByDepartureWeeks()`**
-   - Fetches shipments by departure date
-   - Tracks current status (Arrived/In Transit/Departed/Awaiting)
-   - Links to delivery records
-   - Includes planned vs actual arrival weeks
+**Scenario:**
+- Delivery has 100 units available
+- User ships 60 units
+- System shows: "剩余 40 件未发运"
+- User selects "2025-W05" as planned shipment week
+- This data will be used for inventory projections
 
-5. **`fetchShipmentDetailsByArrivalWeeks()`**
-   - Fetches arrivals by actual arrival date
-   - Links to destination warehouse
-   - Provides warehouse code and name
-   - Tracks arrived quantities
+## Technical Notes
 
-6. **`fetchAlgorithmAuditV4()` - Main Function**
-   - Integrates V3 base logic with V4 enhancements
-   - Performs demand matching
-   - Fetches all detail records in parallel
-   - Builds comprehensive detail maps
-   - Enhances rows with coverage and lineage data
-   - Calculates V4-specific metadata:
-     - Total demand across all weeks
-     - Total ordered quantities
-     - Overall coverage percentage
+1. **Data Structure:**
+   The `plannedWeekIso` field is stored in the `selectedDeliveries` Map state
 
-## Key Features Implemented
+2. **Validation:**
+   No validation is currently enforced - the field is optional
 
-### 1. Demand Coverage Analysis
-- Backward calculation from sales week to target order week
-- ±1 week tolerance window for order matching
-- Three-tier coverage status
-- Explicit tracking of uncovered quantities
+3. **Integration:**
+   This frontend component prepares the data structure. Backend integration (passing to Server Action) will be implemented in a subsequent phase
 
-### 2. Data Traceability
-- Order → Delivery → Shipment → Arrival linkage
-- PO number tracking throughout supply chain
-- Supplier information at order level
-- Warehouse information at arrival level
+4. **Reference:**
+   Pattern follows the procurement delivery system's remaining plan functionality in `/src/components/procurement/remaining-plan-section.tsx`
 
-### 3. Optimized Queries
-- Parallel fetching of all detail types
-- Week-range based filtering (not individual weeks)
-- Batch processing for efficiency
-- Minimal database round-trips
+## Next Steps (Not Implemented)
 
-### 4. Type Safety
-- Complete TypeScript type coverage
-- Proper handling of nested Supabase relations
-- Type-safe detail maps
-- Explicit return types for all functions
+1. Update the Server Action `createShipmentWithAllocations` to accept `plannedWeekIso` data
+2. Create database migration for planned shipment records
+3. Update RPC function to create planned shipment entries
+4. Integrate with inventory projection algorithm
 
-## Performance Characteristics
+## Files to Review
 
-- **Base V3 calculation**: ~1-2s (unchanged)
-- **Additional V4 overhead**: ~0.5-1s (detail fetching)
-- **Total estimated time**: 2-3s for 16-week audit
-- **Scalability**: Linear with number of weeks (up to ~5s for 52 weeks)
+- Main implementation: `/src/app/logistics/new/page.tsx` (lines 25, 42, 313-336, 797-829)
+- Design spec: `/specs/shipment-planned-date/design.md`
+- Reference implementation: `/src/components/procurement/remaining-plan-section.tsx`
 
-## Testing Status
+## Testing Checklist
 
-- ✅ TypeScript compilation successful
-- ✅ Build successful (npm run build)
-- ✅ No ESLint errors in new code
-- ⚠️  Integration testing pending (requires Supabase connection)
+- [ ] UI displays correctly when remaining quantity exists
+- [ ] UI hides when shipped qty equals available qty
+- [ ] Dropdown shows correct 12-week range
+- [ ] State updates correctly when week is selected
+- [ ] Form can be submitted with or without planned week selection
+- [ ] Draft save/restore includes plannedWeekIso field
 
-## Next Steps for Frontend Integration
+---
 
-1. **Create UI Component** (`src/components/settings/algorithm-audit-table-v4.tsx`):
-   - Expandable row pattern for details
-   - Coverage status badges
-   - PO number links to edit pages
-   - Shipment tracking visualization
-
-2. **Update Page** (`src/app/settings/algorithm-audit/page.tsx`):
-   - Switch from V3 to V4 function
-   - Add feature flag for gradual rollout
-   - Display coverage percentage in header
-
-3. **Add Detail Modals**:
-   - Order details modal with fulfillment breakdown
-   - Shipment tracking timeline
-   - Warehouse arrival confirmation
-
-## Data Validation
-
-The implementation includes several safety checks:
-
-1. **No Phantom Arrivals**: arrival_effective only shows when shipment records exist
-2. **Type Safety**: All nested data properly typed to prevent runtime errors
-3. **Null Handling**: Graceful fallbacks for missing data (N/A, null)
-4. **Empty State Handling**: Returns empty arrays when no data found
-
-## Known Limitations
-
-1. **PO Traceability in Arrivals**:
-   - Requires complex multi-level join
-   - Currently returns null (can be enhanced in future)
-
-2. **Multi-PO Shipments**:
-   - Shipments with items from multiple POs show single primary PO
-   - Full M:N resolution out of scope for V4.0
-
-3. **Historical Data**:
-   - Pre-system data may have incomplete lineage
-   - No special handling for legacy orders yet
-
-## Code Quality
-
-- **Lines Added**: ~520 new lines
-- **Function Count**: 6 major functions
-- **Type Definitions**: 11 new interfaces/types
-- **Documentation**: Comprehensive JSDoc comments
-- **Error Handling**: Try-catch in database queries
-
-## Success Criteria Met
-
-✅ AC-1: Coverage status calculation implemented
-✅ AC-2: Order detail expansion support ready
-✅ AC-3: Delivery traceability via PO number
-✅ AC-4: No double counting (each order flows once)
-✅ AC-5: Uncovered demand explicitly tracked
-
-## Git Commit Ready
-
-All code changes are type-safe, well-documented, and build successfully.
-Ready for commit and frontend integration.
+**Implementation Date:** 2025-12-19
+**Status:** Frontend Complete - Backend Integration Pending

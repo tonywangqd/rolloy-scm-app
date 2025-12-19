@@ -2480,5 +2480,5 @@ export interface PurchaseOrderV2 extends PurchaseOrder {
  */
 export interface ShipmentV2 extends Shipment {
   channel_allocation?: Record<string, number> // JSONB: {"Amazon": 90, "Shopify": 10}
-  shipment_status?: 'draft' | 'in_transit' | 'arrived' | 'finalized'
+  // shipment_status is inherited from Shipment interface
 }
