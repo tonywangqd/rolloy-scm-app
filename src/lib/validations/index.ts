@@ -57,9 +57,7 @@ export const productInsertSchema = z.object({
   spu: z.string().max(50).optional().default(''),
   color_code: z.string().max(20).optional().default(''),
   product_name: z.string().min(1, 'Product name is required').max(200, 'Product name too long'),
-  category: z.string().max(100).nullable().optional(),
   unit_cost_usd: nonNegativeNumber.optional().default(0),
-  unit_weight_kg: nonNegativeNumber.nullable().optional(),
   safety_stock_weeks: z
     .number()
     .int('Safety stock weeks must be integer')
@@ -67,6 +65,13 @@ export const productInsertSchema = z.object({
     .max(52, 'Safety stock weeks cannot exceed 52')
     .optional()
     .default(4),
+  production_lead_weeks: z
+    .number()
+    .int('Production lead weeks must be integer')
+    .min(1, 'Production lead weeks must be at least 1')
+    .max(52, 'Production lead weeks cannot exceed 52')
+    .optional()
+    .default(5),
   is_active: z.boolean().optional().default(true),
 })
 

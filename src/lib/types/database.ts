@@ -348,9 +348,7 @@ export interface Product {
   spu: string
   color_code: string
   product_name: string
-  category: string | null
   unit_cost_usd: number
-  unit_weight_kg: number | null
   safety_stock_weeks: number
   production_lead_weeks: number
   is_active: boolean
@@ -364,9 +362,7 @@ export interface ProductInsert {
   spu?: string
   color_code?: string
   product_name: string
-  category?: string | null
   unit_cost_usd?: number
-  unit_weight_kg?: number | null
   safety_stock_weeks?: number
   production_lead_weeks?: number
   is_active?: boolean
@@ -377,9 +373,7 @@ export interface ProductUpdate {
   spu?: string
   color_code?: string
   product_name?: string
-  category?: string | null
   unit_cost_usd?: number
-  unit_weight_kg?: number | null
   safety_stock_weeks?: number
   production_lead_weeks?: number
   is_active?: boolean

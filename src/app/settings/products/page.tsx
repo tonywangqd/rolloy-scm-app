@@ -114,9 +114,7 @@ export default function ProductsPage() {
         spu: '',  // Required field, default to empty string
         color_code: '',  // Required field, default to empty string
         product_name: editingProduct.product_name,
-        category: null,
         unit_cost_usd: editingProduct.unit_cost_usd,
-        unit_weight_kg: null,
         safety_stock_weeks: editingProduct.safety_stock_weeks,
         production_lead_weeks: editingProduct.production_lead_weeks,
         is_active: editingProduct.is_active,
